@@ -11,7 +11,7 @@ _db: Database | None = None
 
 def get_db() -> Database:
     global _client, _db
-    if _db:
+    if _db is not None:
         return _db
 
     _client = pymongo.MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)

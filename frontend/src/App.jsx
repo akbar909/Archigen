@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Toaster, toast } from 'react-hot-toast'
 import './App.css'
 import AuthPanel from './components/AuthPanel'
 import Sidebar from './components/Sidebar'
@@ -9,7 +11,12 @@ import { fetchDesign, fetchHistory, generateDesign, login, register } from './se
 function App() {
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('archigen_user')
-    return stored ? JSON.parse(stored) : null
+    if (!stored || stored === "undefined") return null
+    try {
+      return JSON.parse(stored)
+    } catch {
+      return null
+    }
   })
   const [design, setDesign] = useState(null)
   const [history, setHistory] = useState([])
@@ -17,11 +24,14 @@ function App() {
   const [message, setMessage] = useState('')
 
   const isAuthed = !!user
+  const navigate = useNavigate()
 
   const storeSession = (data) => {
     localStorage.setItem('archigen_token', data.token)
-    localStorage.setItem('archigen_user', JSON.stringify(data.user))
-    setUser(data.user)
+    // Fallback user object if the backend doesn't return it
+    const userData = data.user || { token: data.token }
+    localStorage.setItem('archigen_user', JSON.stringify(userData))
+    setUser(userData)
   }
 
   const clearSession = () => {
@@ -30,6 +40,8 @@ function App() {
     setUser(null)
     setDesign(null)
     setHistory([])
+    toast.success('Logged out successfully')
+    navigate('/auth')
   }
 
   const loadHistory = async () => {
@@ -37,7 +49,7 @@ function App() {
       const data = await fetchHistory()
       setHistory(data.items || [])
     } catch (err) {
-      setMessage(err?.response?.data?.error || 'Failed to fetch history')
+      toast.error(err?.response?.data?.error || 'Failed to fetch history')
     }
   }
 
@@ -53,10 +65,14 @@ function App() {
       const data = await fn(payload)
       storeSession(data)
       setMessage('')
+      toast.success(mode === 'register' ? 'Registration successful!' : 'Login successful!')
       await loadHistory()
+      navigate('/')
     } catch (err) {
       const detail = err?.response?.data?.error || err.message || 'Authentication failed'
+      // Still set message for inline display if needed, but primarily use toast
       setMessage(detail)
+      toast.error(detail)
     }
   }
 
@@ -66,10 +82,12 @@ function App() {
     try {
       const data = await generateDesign({ prompt, style, timeout })
       setDesign(data.design)
+      toast.success('Design generated!')
       await loadHistory()
     } catch (err) {
       const detail = err?.response?.data?.error || err.message || 'Generation failed'
       setMessage(detail)
+      toast.error(detail)
     } finally {
       setLoading(false)
     }
@@ -81,7 +99,7 @@ function App() {
       setDesign(data.design)
       setMessage('')
     } catch (err) {
-      setMessage(err?.response?.data?.error || 'Failed to load design')
+      toast.error(err?.response?.data?.error || 'Failed to load design')
     }
   }
 
@@ -103,51 +121,48 @@ function App() {
     }
   }, [history])
 
-  if (!isAuthed) {
-    return (
-      <div className="min-h-screen relative overflow-hidden bg-slate-950 text-slate-100">
-        <div className="aurora" />
-        <div className="grid-overlay" />
-        <div className="beam" />
-        <div className="relative max-w-6xl mx-auto px-4 md:px-8 py-14">
-          <div className="glass-card neon-border p-6 md:p-10 grid md:grid-cols-[1.2fr,1fr] gap-8 items-center">
-            <div className="space-y-4 md:space-y-6">
-              <div className="pill inline-flex items-center gap-2 px-3 py-1 text-xs uppercase tracking-[0.25em] text-slate-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Autonomous spatial AI
-              </div>
-              <div className="space-y-3">
-                <h1 className="text-4xl md:text-5xl font-bold leading-tight">
-                  Architect-grade 3D concepts, generated live.
-                </h1>
-                <p className="text-slate-300 text-lg max-w-2xl">
-                  Describe intent, constraints, or mood. ArchiGen sculpts structured 3D-ready JSON layouts with physically aware rooms, doors, and flow.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                <div className="glass-card p-3 border border-slate-700/60">
-                  <p className="text-slate-400">Realtime renders</p>
-                  <p className="text-xl font-semibold"><span className="text-accent">60</span> fps</p>
-                </div>
-                <div className="glass-card p-3 border border-slate-700/60">
-                  <p className="text-slate-400">JSON fidelity</p>
-                  <p className="text-xl font-semibold">99.4%</p>
-                </div>
-                <div className="glass-card p-3 border border-slate-700/60">
-                  <p className="text-slate-400">Avg. turnaround</p>
-                  <p className="text-xl font-semibold">8.3s</p>
-                </div>
-              </div>
-              {message && <p className="text-red-300">{message}</p>}
+  const renderAuthView = () => (
+    <div className="min-h-screen relative overflow-hidden bg-slate-950 text-slate-100">
+      <div className="aurora" />
+      <div className="grid-overlay" />
+      <div className="beam" />
+      <div className="relative max-w-6xl mx-auto px-4 md:px-8 py-14">
+        <div className="glass-card neon-border p-6 md:p-10 grid md:grid-cols-[1.2fr,1fr] gap-8 items-center">
+          <div className="space-y-4 md:space-y-6">
+            <div className="pill inline-flex items-center gap-2 px-3 py-1 text-xs uppercase tracking-[0.25em] text-slate-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Autonomous spatial AI
             </div>
-            <AuthPanel onAuth={handleAuth} />
+            <div className="space-y-3">
+              <h1 className="text-4xl md:text-5xl font-bold leading-tight">
+                Architect-grade 3D concepts, generated live.
+              </h1>
+              <p className="text-slate-300 text-lg max-w-2xl">
+                Describe intent, constraints, or mood. ArchiGen sculpts structured 3D-ready JSON layouts with physically aware rooms, doors, and flow.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              <div className="glass-card p-3 border border-slate-700/60">
+                <p className="text-slate-400">Realtime renders</p>
+                <p className="text-xl font-semibold"><span className="text-accent">60</span> fps</p>
+              </div>
+              <div className="glass-card p-3 border border-slate-700/60">
+                <p className="text-slate-400">JSON fidelity</p>
+                <p className="text-xl font-semibold">99.4%</p>
+              </div>
+              <div className="glass-card p-3 border border-slate-700/60">
+                <p className="text-slate-400">Avg. turnaround</p>
+                <p className="text-xl font-semibold">8.3s</p>
+              </div>
+            </div>
           </div>
+          <AuthPanel onAuth={handleAuth} />
         </div>
       </div>
-    )
-  }
+    </div>
+  )
 
-  return (
+  const renderMainView = () => (
     <div className="min-h-screen relative bg-slate-950 text-slate-100 overflow-hidden">
       <div className="aurora" />
       <div className="grid-overlay" />
@@ -233,6 +248,26 @@ function App() {
         </div>
       </main>
     </div>
+  )
+
+  return (
+    <>
+      <Toaster 
+        position="top-right" 
+        toastOptions={{
+          style: {
+            background: '#1e293b',
+            color: '#f8fafc',
+            border: '1px solid rgba(148, 163, 184, 0.2)'
+          }
+        }} 
+      />
+      <Routes>
+        <Route path="/auth" element={!isAuthed ? renderAuthView() : <Navigate to="/" />} />
+        <Route path="/" element={isAuthed ? renderMainView() : <Navigate to="/auth" />} />
+        <Route path="*" element={<Navigate to={isAuthed ? "/" : "/auth"} />} />
+      </Routes>
+    </>
   )
 }
 

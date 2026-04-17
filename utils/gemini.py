@@ -92,11 +92,16 @@ def _validate_home_design_schema(design: dict[str, Any]) -> tuple[bool, list[str
 	room_types = set()
 	for room in rooms:
 		if isinstance(room, dict) and "type" in room:
-			room_type = room.get("type", "").strip()
+			room_type = room.get("type", "").strip().lower()
 			room_types.add(room_type)
 
-	required_room_types = {"Bedroom", "Bathroom", "Living Room"}
-	missing_types = required_room_types - room_types
+	missing_types = set()
+	if not any("bedroom" in rt for rt in room_types):
+		missing_types.add("Bedroom")
+	if not any("bathroom" in rt for rt in room_types):
+		missing_types.add("Bathroom")
+	if not any("living" in rt for rt in room_types):
+		missing_types.add("Living Room")
 
 	if missing_types:
 		errors.append(f"Design missing required room types: {missing_types}")
