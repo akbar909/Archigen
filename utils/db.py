@@ -27,3 +27,11 @@ def users_collection() -> Collection:
 
 def designs_collection() -> Collection:
     return get_db()["designs"]
+
+
+def projects_collection() -> Collection:
+    return get_db()["projects"]
+
+
+def versions_collection() -> Collection:
+    return get_db()["versions"]

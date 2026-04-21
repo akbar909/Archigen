@@ -34,7 +34,10 @@ def create_app() -> Flask:
 		return jsonify({
 			"status": "ok",
 			"message": "ArchiGen API is running",
-			"endpoints": ["/health", "/api/auth/login", "/api/auth/register", "/api/chat", "/api/history"],
+			"endpoints": ["/health", "/api/auth/login", "/api/auth/register",
+					"/api/chat", "/api/history",
+					"/api/projects", "/api/projects/<id>/generate",
+					"/api/projects/<id>/versions", "/api/versions/<id>"],
 		}), 200
 
 	return app

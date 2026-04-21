@@ -24,20 +24,20 @@ def test_api_key():
         
         result = generate_home_design(test_prompt, timeout=60)
         
-        print("\n✓ API Key is VALID!")
+        print("\n[OK] API Key is VALID!")
         print("-" * 50)
         print("Response received:")
         print(json.dumps(result, indent=2))
         return True
         
     except EnvironmentError as e:
-        print(f"\n✗ Configuration Error: {e}")
+        print(f"\n[ERROR] Configuration Error: {e}")
         return False
     except RuntimeError as e:
-        print(f"\n✗ API Error: {e}")
+        print(f"\n[ERROR] API Error: {e}")
         return False
     except ValueError as e:
-        print(f"\n✗ Response Error: {e}")
+        print(f"\n[ERROR] Response Error: {e}")
         return False
     except Exception as e:
         print(f"\n✗ Unexpected Error: {type(e).__name__}: {e}")

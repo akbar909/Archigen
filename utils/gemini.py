@@ -43,6 +43,10 @@ STRICT RULES:
 """
 
 
+class GeminiTemporaryUnavailableError(RuntimeError):
+	"""Raised when Gemini is temporarily unavailable after retry attempts."""
+
+
 def _extract_text_from_response(response_data: dict[str, Any]) -> str:
 	candidates = response_data.get("candidates", [])
 	if not candidates:
@@ -248,9 +252,8 @@ def _get_api_key() -> str:
 	)
 
 
-def generate_home_design(user_prompt: str, timeout: int = 45) -> dict[str, Any]:
+def generate_home_design(user_prompt: str, timeout: int = 60) -> dict[str, Any]:
 	api_key = _get_api_key()
-
 	endpoint = f"{GEMINI_API_BASE_URL}/{GEMINI_MODEL}:generateContent?key={parse.quote(api_key)}"
 
 	payload = {
@@ -279,27 +282,34 @@ def generate_home_design(user_prompt: str, timeout: int = 45) -> dict[str, Any]:
 	try:
 		with request.urlopen(req, timeout=timeout) as response:
 			raw = response.read().decode("utf-8")
+
+		response_data = json.loads(raw)
+		response_text = _extract_text_from_response(response_data)
+
+		# Safe JSON parsing with recovery
+		parsed_json, parse_error = _safe_parse_json(response_text, strict=False)
+		if parsed_json is None:
+			raise ValueError(f"Failed to parse Gemini response: {parse_error}")
+
+		# Validate schema
+		is_valid, validation_errors = _validate_home_design_schema(parsed_json)
+		if not is_valid:
+			raise ValueError(f"Design validation failed: {'; '.join(validation_errors)}")
+
+		return parsed_json
+
 	except error.HTTPError as exc:
+		status_code = exc.code
 		detail = exc.read().decode("utf-8", errors="replace")
-		raise RuntimeError(f"Gemini API error {exc.code}: {detail}") from exc
+		if status_code in (429, 500, 502, 503, 504):
+			raise GeminiTemporaryUnavailableError(
+				f"Gemini API error {status_code}: {detail}"
+			) from exc
+		raise RuntimeError(f"Gemini API error {status_code}: {detail}") from exc
+
 	except error.URLError as exc:
-		raise RuntimeError(f"Gemini API connection error: {exc.reason}") from exc
+		raise GeminiTemporaryUnavailableError(
+			f"Gemini API connection error: {exc.reason}"
+		) from exc
 
-	response_data = json.loads(raw)
-	response_text = _extract_text_from_response(response_data)
-
-	# Safe JSON parsing with recovery
-	parsed_json, parse_error = _safe_parse_json(response_text, strict=False)
-
-	if parsed_json is None:
-		raise ValueError(f"Failed to parse Gemini response: {parse_error}")
-
-	# Validate schema
-	is_valid, validation_errors = _validate_home_design_schema(parsed_json)
-	if not is_valid:
-		raise ValueError(
-			f"Design validation failed: {'; '.join(validation_errors)}"
-		)
-
-	return parsed_json
 
