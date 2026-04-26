@@ -1,31 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'react-hot-toast'
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
 import AuthPanel from './components/AuthPanel'
-import Sidebar from './components/Sidebar'
 import ChatInput from './components/ChatInput'
-import Viewer3D from './components/Viewer3D'
 import LandingPage from './components/LandingPage'
-import { 
-  fetchDesign, 
-  fetchHistory, 
-  generateDesign, 
-  login, 
-  register,
-  fetchProjects,
+import Sidebar from './components/Sidebar'
+import Viewer3D from './components/Viewer3D'
+import {
   createProject,
-  generateVersion,
+  deleteProject,
+  fetchProjects,
   fetchVersion,
-  fetchVersions
+  fetchVersions,
+  generateDesign,
+  generateVersion,
+  login,
+  register,
+  renameProject
 } from './services/api'
 
 // ──────────────────────────────────────────
 // Icon helpers
 // ──────────────────────────────────────────
-const MenuIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 12h18M3 6h18M3 18h18" />
+const SidebarToggleIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
   </svg>
 )
 
@@ -61,7 +62,10 @@ function App() {
   
   // UI State
   const [loading, setLoading] = useState(false)
+  const [sidebarLoading, setSidebarLoading] = useState(false)
+  const [projectAction, setProjectAction] = useState({ type: null, projectId: null })
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState('viewer') // 'viewer' | 'json'
   
   const navigate = useNavigate()
@@ -86,7 +90,8 @@ function App() {
     navigate('/auth')
   }
 
-  const loadProjectsList = async () => {
+  const loadProjectsList = async ({ showLoader = true } = {}) => {
+    if (showLoader) setSidebarLoading(true)
     try {
       const data = await fetchProjects()
       // For each project, fetch its versions to populate the sidebar list
@@ -99,6 +104,8 @@ function App() {
       setProjects(projectsWithVersions)
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Failed to load projects')
+    } finally {
+      if (showLoader) setSidebarLoading(false)
     }
   }
 
@@ -126,7 +133,11 @@ function App() {
       let data;
       if (activeProjectId) {
         // Generate new version in existing project
-        data = await generateVersion(activeProjectId, { prompt, style })
+        data = await generateVersion(activeProjectId, {
+          prompt,
+          style,
+          base_version_id: activeVersionId || undefined,
+        })
         setDesign(data.version.design)
         setActiveVersionId(data.version.id)
         toast.success(`Version ${data.version.version_num} generated! ✨`)
@@ -139,7 +150,7 @@ function App() {
         setActiveVersionId(data.design_id)
       }
       
-      await loadProjectsList()
+      await loadProjectsList({ showLoader: false })
     } catch (err) {
       const detail = err?.response?.data?.error || err.message || 'Generation failed'
       toast.error(detail)
@@ -172,8 +183,9 @@ function App() {
         setDesign(null)
         setActiveProjectId(data.project.id)
         setActiveVersionId(null)
+        setSidebarCollapsed(false)
         toast.success('New project created. Describe your space to generate Version 1!')
-        await loadProjectsList()
+        await loadProjectsList({ showLoader: false })
       }
     } catch (err) {
       toast.error('Failed to create project')
@@ -183,9 +195,27 @@ function App() {
     }
   }
 
-  const handleNewVersion = (projectId, style) => {
+  const handleNewVersion = async (projectId) => {
     setActiveProjectId(projectId)
-    // We don't clear the version yet, just focus the input
+    setActiveTab('viewer')
+
+    const targetProject = projects.find(p => p.id === projectId)
+    const latestVersion = targetProject?.versions?.[0] || null
+
+    if (latestVersion?.id) {
+      setActiveVersionId(latestVersion.id)
+      setDesign(null)
+      try {
+        const data = await fetchVersion(latestVersion.id)
+        setDesign(data.version.design)
+      } catch (err) {
+        toast.error(err?.response?.data?.error || 'Failed to load project context')
+      }
+    } else {
+      setActiveVersionId(null)
+      setDesign(null)
+    }
+
     const input = document.getElementById('design-prompt-input')
     if (input) {
       input.focus()
@@ -194,17 +224,22 @@ function App() {
   }
 
   const handleRenameProject = async (projectId, newName) => {
+    setProjectAction({ type: 'renaming', projectId })
     try {
       await renameProject(projectId, newName)
-      await loadProjectsList()
+      await loadProjectsList({ showLoader: false })
       toast.success('Project renamed')
     } catch (err) {
       toast.error('Failed to rename')
+    } finally {
+      setProjectAction({ type: null, projectId: null })
     }
   }
 
   const handleDeleteProject = async (projectId) => {
     if (!window.confirm("Are you sure? This will delete all versions of this project.")) return
+
+    setProjectAction({ type: 'deleting', projectId })
     try {
       await deleteProject(projectId)
       if (activeProjectId === projectId) {
@@ -212,10 +247,12 @@ function App() {
         setActiveProjectId(null)
         setActiveVersionId(null)
       }
-      await loadProjectsList()
+      await loadProjectsList({ showLoader: false })
       toast.success('Project deleted')
     } catch (err) {
       toast.error('Failed to delete')
+    } finally {
+      setProjectAction({ type: null, projectId: null })
     }
   }
 
@@ -237,6 +274,11 @@ function App() {
     return v ? v.version_num : null
   }, [activeProject, activeVersionId])
 
+  const hasGeneratedAnyDesign = useMemo(() => {
+    if (design) return true
+    return projects.some(project => Array.isArray(project.versions) && project.versions.length > 0)
+  }, [design, projects])
+
   // ── App Shell View (after login) ──────────────────
   const renderAppView = () => (
     <div className="app-shell">
@@ -254,6 +296,11 @@ function App() {
         onLogout={clearSession}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        isCollapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+        loading={sidebarLoading}
+        actionType={projectAction.type}
+        actionProjectId={projectAction.projectId}
       />
 
       {/* Main area */}
@@ -261,13 +308,24 @@ function App() {
         {/* TopBar */}
         <div className="topbar">
           <div className="topbar-left">
-            {/* Hamburger — mobile only */}
+            {/* Sidebar toggle */}
+            {sidebarCollapsed && (
+              <button
+                className="menu-toggle desktop-only"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="Open sidebar"
+                title="Open sidebar"
+              >
+                <SidebarToggleIcon />
+              </button>
+            )}
             <button
               className="menu-toggle mobile-only"
               onClick={() => setSidebarOpen(v => !v)}
               aria-label="Toggle sidebar"
+              title="Toggle sidebar"
             >
-              <MenuIcon />
+              <SidebarToggleIcon />
             </button>
             <div>
               <div className="topbar-title">
@@ -449,6 +507,7 @@ function App() {
           onSend={handleSend}
           loading={loading}
           disabled={false}
+          showQuickPrompts={!hasGeneratedAnyDesign}
         />
       </div>
     </div>

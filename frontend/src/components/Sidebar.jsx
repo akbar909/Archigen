@@ -11,6 +11,12 @@ const LogoutIcon = () => (
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
   </svg>
 )
+const PanelToggleIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
+  </svg>
+)
 const FolderIcon = ({ open }) => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     {open
@@ -40,6 +46,11 @@ const TrashIcon = () => (
     <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
   </svg>
 )
+const SpinnerIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sidebar-spin">
+    <path d="M21 12a9 9 0 11-6.2-8.56" />
+  </svg>
+)
 
 // ── Version badge colours by number ──────────────────────────────────
 function versionColor(n) {
@@ -48,16 +59,33 @@ function versionColor(n) {
 }
 
 // ── Single project row (expandable) ──────────────────────────────────
-function ProjectRow({ project, activeProjectId, activeVersionId, onSelectVersion, onNewVersion, onRename, onDelete, expandedId, setExpandedId }) {
+function ProjectRow({ project, activeProjectId, activeVersionId, onSelectVersion, onNewVersion, onRename, onDelete, expandedId, setExpandedId, actionType, actionProjectId }) {
   const isExpanded = expandedId === project.id
   const isActive   = activeProjectId === project.id
 
   const versions  = project.versions || []
   const vCount    = project.version_count || versions.length || 1
+  const isRenaming = actionType === 'renaming' && actionProjectId === project.id
+  const isDeleting = actionType === 'deleting' && actionProjectId === project.id
+  const actionBusy = isRenaming || isDeleting
 
   const toggle = (e) => {
     e.stopPropagation()
     setExpandedId(isExpanded ? null : project.id)
+  }
+
+  const handleRename = async (e) => {
+    e.stopPropagation()
+    const nextName = window.prompt('Rename project', project.name)
+    if (!nextName) return
+    const trimmed = nextName.trim()
+    if (!trimmed || trimmed === project.name) return
+    await onRename(project.id, trimmed)
+  }
+
+  const handleDelete = async (e) => {
+    e.stopPropagation()
+    await onDelete(project.id)
   }
 
   return (
@@ -103,6 +131,48 @@ function ProjectRow({ project, activeProjectId, activeVersionId, onSelectVersion
           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
             {project.updated_at ? new Date(project.updated_at).toLocaleDateString() : ''}
           </span>
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              onClick={handleRename}
+              title="Rename project"
+              aria-label="Rename project"
+              disabled={actionBusy}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 20, height: 20,
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                color: 'var(--text-muted)',
+                cursor: actionBusy ? 'not-allowed' : 'pointer',
+                opacity: actionBusy && !isRenaming ? 0.5 : 1,
+              }}
+            >
+              {isRenaming ? <SpinnerIcon /> : <EditIcon />}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDelete}
+              title="Delete project"
+              aria-label="Delete project"
+              disabled={actionBusy}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 20, height: 20,
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                color: 'var(--danger)',
+                cursor: actionBusy ? 'not-allowed' : 'pointer',
+                opacity: actionBusy && !isDeleting ? 0.5 : 1,
+              }}
+            >
+              {isDeleting ? <SpinnerIcon /> : <TrashIcon />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -188,6 +258,11 @@ export default function Sidebar({
   onLogout,
   isOpen,
   onClose,
+  isCollapsed,
+  onToggleCollapse,
+  loading = false,
+  actionType = null,
+  actionProjectId = null,
 }) {
   const [expandedId, setExpandedId] = useState(activeProjectId || null)
   const [search, setSearch] = useState('')
@@ -201,19 +276,31 @@ export default function Sidebar({
       {/* Mobile overlay */}
       <div className={`sidebar-overlay ${isOpen ? 'active' : ''}`} onClick={onClose} />
 
-      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${isOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
         {/* Header */}
         <div className="sidebar-header">
           <div className="sidebar-logo">
             Archi<span>Gen</span>
           </div>
-          <button
-            onClick={onNewProject}
-            className="menu-toggle"
-            title="New Project"
-          >
-            <PlusIcon />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={onToggleCollapse}
+              className="menu-toggle desktop-only"
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              type="button"
+            >
+              <PanelToggleIcon />
+            </button>
+            <button
+              onClick={onNewProject}
+              className="menu-toggle"
+              title="New Project"
+              type="button"
+            >
+              <PlusIcon />
+            </button>
+          </div>
         </div>
 
         {/* New Project CTA */}
@@ -241,7 +328,25 @@ export default function Sidebar({
 
         {/* Projects list */}
         <div className="sidebar-history scroll-soft" style={{ flex: 1 }}>
-          {filtered.length === 0 && (
+          {loading && (
+            <div style={{ padding: '8px 4px 12px' }}>
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="sidebar-skeleton-item">
+                  <div className="sidebar-skeleton-row">
+                    <span className="sidebar-skeleton-dot" />
+                    <span className="sidebar-skeleton-line w-55" />
+                    <span className="sidebar-skeleton-line w-15" />
+                  </div>
+                  <div className="sidebar-skeleton-row meta">
+                    <span className="sidebar-skeleton-line w-22" />
+                    <span className="sidebar-skeleton-line w-28" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && filtered.length === 0 && (
             <div style={{ padding: '32px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: '1.75rem', marginBottom: 8 }}>🏗️</div>
               <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
@@ -253,7 +358,7 @@ export default function Sidebar({
             </div>
           )}
 
-          {filtered.map(project => (
+          {!loading && filtered.map(project => (
             <ProjectRow
               key={project.id}
               project={project}
@@ -268,6 +373,8 @@ export default function Sidebar({
               onDelete={onDeleteProject}
               expandedId={expandedId}
               setExpandedId={setExpandedId}
+              actionType={actionType}
+              actionProjectId={actionProjectId}
             />
           ))}
         </div>

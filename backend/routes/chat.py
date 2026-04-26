@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
@@ -29,6 +30,7 @@ def _serialize_version(doc):
     return {
         "id":          str(doc["_id"]),
         "project_id":  str(doc.get("project_id", "")),
+        "base_version_id": str(doc.get("base_version_id")) if doc.get("base_version_id") else None,
         "version_num": doc.get("version_num", 1),
         "prompt":      doc.get("prompt", ""),
         "style":       doc.get("style", "modern"),
@@ -184,14 +186,47 @@ def generate_version(project_id: str):
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "").strip()
     style  = data.get("style", project.get("style", "modern"))
+    base_version_id = data.get("base_version_id")
 
     if not prompt:
         return jsonify({"error": "'prompt' is required"}), 400
 
-    try:
-        design = generate_home_design(
-            f"{prompt} Style: {style}.".strip(), timeout=60
+    base_version = None
+    if base_version_id:
+        try:
+            base_obj_id = ObjectId(base_version_id)
+        except Exception:
+            return jsonify({"error": "Invalid base_version_id"}), 400
+
+        base_version = versions_collection().find_one({
+            "_id": base_obj_id,
+            "project_id": proj_id,
+            "user_id": request.user["_id"],
+        })
+        if not base_version:
+            return jsonify({"error": "Base version not found"}), 404
+    else:
+        # When refining without explicitly selecting a version, use latest version of the same project.
+        base_version = versions_collection().find_one(
+            {"project_id": proj_id, "user_id": request.user["_id"]},
+            sort=[("version_num", -1)]
         )
+
+    if base_version and base_version.get("design"):
+        base_design_json = json.dumps(base_version["design"], ensure_ascii=True)
+        generation_prompt = (
+            "You are refining an existing architectural design. "
+            "Preserve the current layout and room inventory unless the user explicitly requests changes.\n\n"
+            f"Current design JSON:\n{base_design_json}\n\n"
+            f"User refinement request: {prompt}\n"
+            f"Preferred style: {style}\n\n"
+            "Return the full updated design JSON only."
+        )
+    else:
+        generation_prompt = f"{prompt} Style: {style}.".strip()
+
+    try:
+        design = generate_home_design(generation_prompt, timeout=60)
     except GeminiTemporaryUnavailableError as exc:
         return jsonify({"success": False, "error": str(exc)}), 503
     except (ValueError, EnvironmentError) as exc:
@@ -213,6 +248,7 @@ def generate_version(project_id: str):
     ver_doc = {
         "project_id": proj_id,
         "user_id":    request.user["_id"],
+        "base_version_id": base_version.get("_id") if base_version else None,
         "version_num": next_num,
         "prompt":     prompt,
         "style":      style,

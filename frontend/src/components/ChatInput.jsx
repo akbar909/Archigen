@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const STYLE_CATEGORIES = [
   { id: 'modern',     label: 'Modern',     emoji: '🏙️' },
@@ -27,7 +27,7 @@ const SendIcon = ({ loading }) => loading ? (
   </svg>
 )
 
-export default function ChatInput({ onSend, loading, disabled }) {
+export default function ChatInput({ onSend, loading, disabled, showQuickPrompts = true }) {
   const [prompt, setPrompt] = useState('')
   const [style, setStyle] = useState('modern')
   const textareaRef = useRef(null)
@@ -56,7 +56,7 @@ export default function ChatInput({ onSend, loading, disabled }) {
   return (
     <div className="input-wrapper">
       {/* Quick Prompts — shown only when textarea is empty */}
-      {!prompt && !loading && (
+      {showQuickPrompts && !prompt && !loading && (
         <div className="quick-prompts fade-up">
           {QUICK_PROMPTS.map(p => (
             <button
@@ -114,14 +114,6 @@ export default function ChatInput({ onSend, loading, disabled }) {
             <SendIcon loading={loading} />
           </button>
         </div>
-      </div>
-
-      <div className="input-hint">
-        Press{' '}
-        <kbd style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: '0.625rem' }}>Enter</kbd>
-        {' '}to generate ·{' '}
-        <kbd style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: '0.625rem' }}>Shift+Enter</kbd>
-        {' '}for new line
       </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

@@ -1,0 +1,9 @@
+# Environment and secrets
+.env
+.env.*
+*.env
+*.key
+*.pem
+
+# Project-specific secret files
+backend/gem_api.env

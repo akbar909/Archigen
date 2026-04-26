@@ -72,7 +72,9 @@ body {
   transition: width 0.2s ease, transform 0.2s ease;
   z-index: 50;
 }
-.sidebar.collapsed { width: 0; min-width: 0; padding: 0; overflow: hidden; }
+@media (min-width: 769px) {
+  .sidebar.collapsed { width: 0; min-width: 0; padding: 0; overflow: hidden; border-right: 0; }
+}
 
 .sidebar-header {
   display: flex;
@@ -162,6 +164,59 @@ body {
   font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.sidebar-spin { animation: sidebar-spin 0.9s linear infinite; }
+@keyframes sidebar-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.sidebar-skeleton-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.sidebar-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-skeleton-row.meta {
+  margin-top: 6px;
+  padding-left: 14px;
+}
+
+.sidebar-skeleton-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.08), rgba(255,255,255,0.18), rgba(255,255,255,0.08));
+  background-size: 200% 100%;
+  animation: sidebar-shimmer 1.4s ease-in-out infinite;
+}
+
+.sidebar-skeleton-line {
+  display: inline-block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.08), rgba(255,255,255,0.18), rgba(255,255,255,0.08));
+  background-size: 200% 100%;
+  animation: sidebar-shimmer 1.4s ease-in-out infinite;
+}
+
+.sidebar-skeleton-line.w-55 { width: 55%; }
+.sidebar-skeleton-line.w-15 { width: 15%; }
+.sidebar-skeleton-line.w-22 { width: 22%; }
+.sidebar-skeleton-line.w-28 { width: 28%; }
+
+@keyframes sidebar-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .sidebar-footer {
@@ -469,8 +524,10 @@ body {
 /* ── Responsive Utilities ── */
 /* Hidden on desktop, visible only on mobile */
 .mobile-only { display: none; }
+.desktop-only { display: flex; }
 @media (max-width: 768px) {
   .mobile-only { display: flex; }
+  .desktop-only { display: none; }
 }
 
 .landing {
