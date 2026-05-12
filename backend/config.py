@@ -6,7 +6,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Flask server config
 HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", "5000"))
+PORT = int(os.getenv("PORT", "7860"))
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
 # MongoDB config
