@@ -5,6 +5,7 @@ from bson import ObjectId
 from flask import Request, jsonify, request
 
 from utils.auth import decode_token
+import jwt
 
 F = TypeVar("F", bound=Callable)
 
@@ -25,6 +26,10 @@ def require_auth(fn: F) -> F:
             if not user_id or not email:
                 raise ValueError("Invalid token payload")
             request.user = {"_id": ObjectId(user_id), "email": email}
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
         except Exception:
             return jsonify({"error": "Invalid or expired token"}), 401
 
