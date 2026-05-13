@@ -110,7 +110,7 @@ export default function Viewer3D({ design }) {
   const windows = Array.isArray(design?.windows) ? design.windows : []
 
   return (
-    <div style={{ height: '420px', width: '100%', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ height: 'clamp(280px, 58vw, 420px)', width: '100%', position: 'relative', overflow: 'hidden' }}>
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [14, 11, 16], fov: 42, near: 0.1, far: 200 }}>
         <color attach="background" args={[0.055, 0.08, 0.13]} />
 

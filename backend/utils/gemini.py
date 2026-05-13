@@ -21,8 +21,8 @@ STRICT RULES:
 * No explanation or extra text
 * Use meters
 * Rooms must not overlap
-* Include at least:
-
+* RESPECT USER REQUIREMENTS: If the user specifies a number or types of rooms, generate EXACTLY what they ask for
+* If the user does NOT specify room requirements, include at least:
 	* 1 bedroom
 	* 1 bathroom
 	* 1 living room
@@ -47,6 +47,59 @@ class GeminiTemporaryUnavailableError(RuntimeError):
 	"""Raised when Gemini is temporarily unavailable after retry attempts."""
 
 
+def validate_architectural_prompt(prompt: str) -> tuple[bool, str | None]:
+	"""
+	Validate that a prompt is about architectural/design topics.
+	Returns (is_valid, error_message).
+	"""
+	if not prompt or not isinstance(prompt, str):
+		return False, "Prompt cannot be empty"
+
+	prompt_lower = prompt.lower().strip()
+	
+	# Reject common non-architectural queries
+	rejection_keywords = {
+		"how are you", "who are you", "what's your name", "tell me about yourself",
+		"hello", "hi ", "hey ", "goodbye", "bye ",
+		"what time", "what date", "what's the weather",
+		"tell me a joke", "sing a song", "write a poem",
+		"calculate", "solve", "math problem",
+		"covid", "vaccine", "politics", "religion"
+	}
+	
+	for keyword in rejection_keywords:
+		if keyword in prompt_lower:
+			return False, f"❌ This is not an architectural design request. Please describe a room or space you want to design."
+	
+	# Validate minimum length (avoid super short queries that are likely chatter)
+	if len(prompt_lower) < 10:
+		return False, f"❌ Prompt too short. Please describe what you want to design in more detail (at least 10 characters)."
+	
+	# Accept if contains architectural keywords
+	architectural_keywords = {
+		"room", "bedroom", "bathroom", "kitchen", "living", "lounge",
+		"house", "home", "apartment", "design", "build", "space", "area",
+		"floor", "layout", "modern", "classic", "minimal", "industrial", "biophilic", "coastal",
+		"windows", "doors", "furniture", "layout", "open", "cozy", "spacious"
+	}
+	
+	has_arch_keyword = any(keyword in prompt_lower for keyword in architectural_keywords)
+	
+	if has_arch_keyword:
+		return True, None
+	
+	# If no keywords but reasonable length with descriptive words, allow it with warning
+	descriptive_keywords = {"with", "and", "have", "want", "like", "small", "large", "big"}
+	has_descriptive = any(keyword in prompt_lower for keyword in descriptive_keywords)
+	
+	if has_descriptive and len(prompt_lower) > 15:
+		# Probably a design request, allow it
+		return True, None
+	
+	# Otherwise reject
+	return False, "❌ Please describe an architectural design or space (e.g., 'a modern bedroom with large windows')"
+
+
 def _extract_text_from_response(response_data: dict[str, Any]) -> str:
 	candidates = response_data.get("candidates", [])
 	if not candidates:
@@ -65,7 +118,7 @@ def _extract_text_from_response(response_data: dict[str, Any]) -> str:
 	return text
 
 
-def _validate_home_design_schema(design: dict[str, Any]) -> tuple[bool, list[str]]:
+def _validate_home_design_schema(design: dict[str, Any], user_prompt: str = "") -> tuple[bool, list[str]]:
 	"""Validate that design has required architectural elements."""
 	errors = []
 
@@ -92,23 +145,25 @@ def _validate_home_design_schema(design: dict[str, Any]) -> tuple[bool, list[str
 		elif not isinstance(design.get(required_list), list):
 			errors.append(f"'{required_list}' must be a list")
 
-	# Check for required room types
-	room_types = set()
-	for room in rooms:
-		if isinstance(room, dict) and "type" in room:
-			room_type = room.get("type", "").strip().lower()
-			room_types.add(room_type)
+	# Check for required room types only if user hasn't specified custom room requirements
+	# Skip strict room type validation if user explicitly requested specific rooms (e.g., "just one room")
+	if not any(keyword in user_prompt.lower() for keyword in ["just", "only", "single", "one room"]):
+		room_types = set()
+		for room in rooms:
+			if isinstance(room, dict) and "type" in room:
+				room_type = room.get("type", "").strip().lower()
+				room_types.add(room_type)
 
-	missing_types = set()
-	if not any("bedroom" in rt for rt in room_types):
-		missing_types.add("Bedroom")
-	if not any("bathroom" in rt for rt in room_types):
-		missing_types.add("Bathroom")
-	if not any("living" in rt for rt in room_types):
-		missing_types.add("Living Room")
+		missing_types = set()
+		if not any("bedroom" in rt for rt in room_types):
+			missing_types.add("Bedroom")
+		if not any("bathroom" in rt for rt in room_types):
+			missing_types.add("Bathroom")
+		if not any("living" in rt for rt in room_types):
+			missing_types.add("Living Room")
 
-	if missing_types:
-		errors.append(f"Design missing required room types: {missing_types}")
+		if missing_types:
+			errors.append(f"Design missing required room types: {missing_types}")
 
 	# Validate individual rooms (ensure required spatial fields)
 	required_room_fields = {"type", "width", "length", "height", "position"}
@@ -291,8 +346,8 @@ def generate_home_design(user_prompt: str, timeout: int = 60) -> dict[str, Any]:
 		if parsed_json is None:
 			raise ValueError(f"Failed to parse Gemini response: {parse_error}")
 
-		# Validate schema
-		is_valid, validation_errors = _validate_home_design_schema(parsed_json)
+		# Validate schema - pass user_prompt so validation knows if user requested specific rooms
+		is_valid, validation_errors = _validate_home_design_schema(parsed_json, user_prompt)
 		if not is_valid:
 			raise ValueError(f"Design validation failed: {'; '.join(validation_errors)}")
 

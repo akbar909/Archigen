@@ -5,7 +5,7 @@ from bson import ObjectId
 from flask import Blueprint, jsonify, request
 
 from utils.db import designs_collection, projects_collection, versions_collection
-from utils.gemini import GeminiTemporaryUnavailableError, generate_home_design
+from utils.gemini import GeminiTemporaryUnavailableError, generate_home_design, validate_architectural_prompt
 from utils.middleware import require_auth
 
 
@@ -190,6 +190,11 @@ def generate_version(project_id: str):
 
     if not prompt:
         return jsonify({"error": "'prompt' is required"}), 400
+
+    # Validate that prompt is about architecture/design
+    is_valid_prompt, validation_error = validate_architectural_prompt(prompt)
+    if not is_valid_prompt:
+        return jsonify({"error": validation_error}), 400
 
     base_version = None
     if base_version_id:

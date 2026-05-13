@@ -5,5 +5,8 @@
 *.key
 *.pem
 
+# Node dependencies
+node_modules/
+
 # Project-specific secret files
 backend/gem_api.env
