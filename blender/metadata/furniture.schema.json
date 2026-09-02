@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FurnitureAssetMetadata",
+  "description": "Metadata schema for 3D furniture models used in ArchGen Blender generation system.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the furniture asset (e.g., 'sofa_001', 'bed_king_002').",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable display name of the furniture item (e.g., 'Modern Minimalist Sofa')."
+    },
+    "category": {
+      "type": "string",
+      "description": "Category of the furniture piece.",
+      "enum": [
+        "sofa",
+        "armchair",
+        "chair",
+        "coffee_table",
+        "dining_table",
+        "desk",
+        "bed",
+        "nightstand",
+        "wardrobe",
+        "bookshelf",
+        "cabinet",
+        "kitchen_counter",
+        "refrigerator",
+        "stove",
+        "sink",
+        "toilet",
+        "bathtub",
+        "shower",
+        "lamp",
+        "plant",
+        "outdoor_chair",
+        "outdoor_table",
+        "general"
+      ]
+    },
+    "room": {
+      "type": "string",
+      "description": "Target room or area where this asset typically belongs.",
+      "enum": [
+        "living_room",
+        "bedroom",
+        "dining_room",
+        "kitchen",
+        "bathroom",
+        "outdoor",
+        "general"
+      ]
+    },
+    "style": {
+      "type": "array",
+      "description": "Architectural or interior styles suitable for this furniture asset.",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["modern", "minimal"], ["scandinavian", "contemporary"], ["classic", "vintage"]]
+    },
+    "width": {
+      "type": "number",
+      "description": "Bounding box width (X dimension in meters).",
+      "minimum": 0.01
+    },
+    "depth": {
+      "type": "number",
+      "description": "Bounding box depth (Y dimension in meters).",
+      "minimum": 0.01
+    },
+    "height": {
+      "type": "number",
+      "description": "Bounding box height (Z dimension in meters).",
+      "minimum": 0.01
+    },
+    "model_file": {
+      "type": "string",
+      "description": "Relative file path from the blender/ root directory to the 3D model asset."
+    },
+    "format": {
+      "type": "string",
+      "description": "File format of the 3D model (GLB is strongly recommended for Three.js compatibility).",
+      "enum": ["glb", "gltf", "blend", "obj", "fbx"],
+      "default": "glb"
+    },
+    "license": {
+      "type": "string",
+      "description": "License under which this model is distributed (e.g., 'CC0', 'CC-BY-4.0', 'Proprietary')."
+    },
+    "source": {
+      "type": "string",
+      "description": "Origin repository, platform, or creator website (e.g., 'Poly Haven', 'ambientCG', 'ArchGen Team')."
+    },
+    "source_url": {
+      "type": "string",
+      "description": "Web URL or repository link to original asset source."
+    },
+    "author": {
+      "type": "string",
+      "description": "Author, 3D artist, or copyright holder name."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Searchable tags and keywords for procedural asset matching and filtering.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "category",
+    "room",
+    "style",
+    "width",
+    "depth",
+    "height",
+    "model_file",
+    "format",
+    "license"
+  ],
+  "additionalProperties": false
+}

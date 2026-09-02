@@ -11,7 +11,7 @@ DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
 # MongoDB config
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://fyp:fyp@cluster0.xr6mbty.mongodb.net/?appName=Cluster0")
-MONGO_DB_NAME = os.getenv("name", "yourpassword")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", os.getenv("name", "archigen"))
 
 # Auth / JWT
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")

@@ -22,7 +22,7 @@ def test_api_key():
         print(f"Sending request: {test_prompt}")
         print("Waiting for Gemini response...")
         
-        result = generate_home_design(test_prompt, timeout=60)
+        result = generate_home_design(test_prompt, timeout=120)
         
         print("\n[OK] API Key is VALID!")
         print("-" * 50)

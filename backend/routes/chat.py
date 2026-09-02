@@ -1,11 +1,18 @@
 import datetime as dt
 import json
 
+# pyrefly: ignore [missing-import]
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
 
 from utils.db import designs_collection, projects_collection, versions_collection
-from utils.gemini import GeminiTemporaryUnavailableError, generate_home_design, validate_architectural_prompt
+from utils.gemini import (
+    GeminiSchemaValidationError,
+    GeminiTemporaryUnavailableError,
+    build_generation_prompt,
+    generate_home_design,
+    validate_architectural_prompt,
+)
 from utils.middleware import require_auth
 
 
@@ -219,21 +226,20 @@ def generate_version(project_id: str):
 
     if base_version and base_version.get("design"):
         base_design_json = json.dumps(base_version["design"], ensure_ascii=True)
-        generation_prompt = (
-            "You are refining an existing architectural design. "
-            "Preserve the current layout and room inventory unless the user explicitly requests changes.\n\n"
-            f"Current design JSON:\n{base_design_json}\n\n"
-            f"User refinement request: {prompt}\n"
-            f"Preferred style: {style}\n\n"
-            "Return the full updated design JSON only."
+        generation_prompt = build_generation_prompt(
+            f"{prompt}\nCurrent design JSON:\n{base_design_json}",
+            style=style,
+            base_design=base_version.get("design"),
         )
     else:
-        generation_prompt = f"{prompt} Style: {style}.".strip()
+        generation_prompt = build_generation_prompt(prompt, style=style)
 
     try:
-        design = generate_home_design(generation_prompt, timeout=60)
+        design = generate_home_design(generation_prompt, timeout=120)
     except GeminiTemporaryUnavailableError as exc:
         return jsonify({"success": False, "error": str(exc)}), 503
+    except GeminiSchemaValidationError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 422
     except (ValueError, EnvironmentError) as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
     except RuntimeError as exc:
@@ -292,20 +298,20 @@ def generate_design_legacy():
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "").strip()
     style  = data.get("style", "modern")
-    timeout = data.get("timeout", 60)
+    timeout = data.get("timeout", 120)
 
     if not prompt:
         return jsonify({"error": "'prompt' is required and must be a non-empty string."}), 400
 
-    if not isinstance(timeout, int) or timeout < 5 or timeout > 180:
-        timeout = 60
+    if not isinstance(timeout, int) or timeout < 5 or timeout > 240:
+        timeout = 120
 
     try:
-        design = generate_home_design(
-            f"{prompt} Style: {style}.".strip(), timeout=timeout
-        )
+        design = generate_home_design(build_generation_prompt(prompt, style=style), timeout=timeout)
     except GeminiTemporaryUnavailableError as exc:
         return jsonify({"success": False, "error": str(exc)}), 503
+    except GeminiSchemaValidationError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 422
     except (ValueError, EnvironmentError) as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
     except RuntimeError as exc:

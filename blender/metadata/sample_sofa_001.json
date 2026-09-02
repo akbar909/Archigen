@@ -1,0 +1,17 @@
+{
+  "id": "sofa_001",
+  "name": "Modern Sofa",
+  "category": "sofa",
+  "room": "living_room",
+  "style": ["modern", "minimal"],
+  "width": 2.2,
+  "depth": 0.9,
+  "height": 0.85,
+  "model_file": "assets/furniture/living_room/sofa_001.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "Poly Haven",
+  "source_url": "https://polyhaven.com/a/leather_sofa",
+  "author": "Poly Haven Contributors",
+  "tags": ["sofa", "modern", "living room", "couch", "seating"]
+}

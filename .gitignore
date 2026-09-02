@@ -5,8 +5,45 @@
 *.key
 *.pem
 
-# Node dependencies
-node_modules/
+# Python Virtual Environments
+.venv/
+venv/
+env/
+backend/.venv/
+backend/venv/
+*/.venv/
+*/venv/
 
-# Project-specific secret files
-backend/gem_api.env
+# Node dependencies & builds
+node_modules/
+*/node_modules/
+dist/
+frontend/dist/
+build/
+
+# Python caches and bytecode
+__pycache__/
+*/__pycache__/
+*/**/__pycache__/
+*.py[cod]
+*.pyc
+*$py.class
+.pytest_cache/
+
+# Blender temporary files, backups, and crash logs
+*.blend
+*.blend1
+*.blend2
+*.blend@
+*.crash.txt
+@*
+
+# Blender generated output models (keep directory structure via .gitkeep)
+blender/output/*.glb
+blender/output/*.gltf
+blender/output/*.bin
+blender/output/*.obj
+blender/output/*.mtl
+blender/output/*.png
+blender/output/*.jpg
+!blender/output/.gitkeep

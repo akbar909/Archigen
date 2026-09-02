@@ -5,6 +5,7 @@ from config import DEBUG, HOST, PORT
 from routes.auth import auth_bp
 from routes.chat import chat_bp
 from utils.db import get_db
+from utils.gemini import GeminiSchemaValidationError
 
 
 def create_app() -> Flask:
@@ -39,6 +40,10 @@ def create_app() -> Flask:
 					"/api/projects", "/api/projects/<id>/generate",
 					"/api/projects/<id>/versions", "/api/versions/<id>"],
 		}), 200
+
+	@app.errorhandler(GeminiSchemaValidationError)
+	def handle_gemini_schema_validation_error(exc):
+		return jsonify({"success": False, "error": str(exc)}), 422
 
 	return app
 

@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  Building,
+  Factory,
+  Landmark,
+  Leaf,
+  Loader2,
+  Minimize,
+  Send,
+  Waves,
+} from 'lucide-react'
 
 const STYLE_CATEGORIES = [
-  { id: 'modern',     label: 'Modern',     emoji: '🏙️' },
-  { id: 'minimal',    label: 'Minimal',    emoji: '⬜' },
-  { id: 'classic',    label: 'Classic',    emoji: '🏛️' },
-  { id: 'industrial', label: 'Industrial', emoji: '🏗️' },
-  { id: 'biophilic',  label: 'Biophilic',  emoji: '🌿' },
-  { id: 'coastal',    label: 'Coastal',    emoji: '🌊' },
+  { id: 'modern', label: 'Modern', icon: Building },
+  { id: 'minimal', label: 'Minimal', icon: Minimize },
+  { id: 'classic', label: 'Classic', icon: Landmark },
+  { id: 'industrial', label: 'Industrial', icon: Factory },
+  { id: 'biophilic', label: 'Biophilic', icon: Leaf },
+  { id: 'coastal', label: 'Coastal', icon: Waves },
 ]
 
 const QUICK_PROMPTS = [
@@ -16,16 +26,6 @@ const QUICK_PROMPTS = [
   'Compact smart home with modular rooms',
   'Mediterranean villa with inner courtyard',
 ]
-
-const SendIcon = ({ loading }) => loading ? (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
-    <path d="M21 12a9 9 0 11-6.219-8.56" />
-  </svg>
-) : (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-  </svg>
-)
 
 export default function ChatInput({ onSend, loading, disabled, showQuickPrompts = true }) {
   const [prompt, setPrompt] = useState('')
@@ -37,12 +37,12 @@ export default function ChatInput({ onSend, loading, disabled, showQuickPrompts 
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
   }, [prompt])
 
   const handleSubmit = () => {
     if (!prompt.trim() || loading) return
-    onSend({ prompt: prompt.trim(), style, timeout: 60 })
+    onSend({ prompt: prompt.trim(), style, timeout: 120 })
     setPrompt('')
   }
 
@@ -55,51 +55,55 @@ export default function ChatInput({ onSend, loading, disabled, showQuickPrompts 
 
   return (
     <div className="input-wrapper">
-      {/* Quick Prompts — shown only when textarea is empty */}
-      {showQuickPrompts && !prompt && !loading && (
-        <div className="quick-prompts fade-up">
-          {QUICK_PROMPTS.map(p => (
+      {/* Quick prompt suggestions */}
+      {showQuickPrompts && (
+        <div className="quick-prompts">
+          {QUICK_PROMPTS.map((qp) => (
             <button
-              key={p}
-              className="quick-prompt-btn"
-              onClick={() => { setPrompt(p); textareaRef.current?.focus() }}
+              key={qp}
               type="button"
+              className="quick-prompt-btn"
+              onClick={() => setPrompt(qp)}
             >
-              {p}
+              {qp}
             </button>
           ))}
         </div>
       )}
 
-      {/* Main Input Box */}
+      {/* Main input container */}
       <div className="input-container">
         <textarea
           ref={textareaRef}
-          id="design-prompt-input"
-          className="input-textarea scroll-soft"
-          placeholder='Describe your dream space… e.g. "A modern 3-bedroom house with open kitchen and garden view"'
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          onKeyDown={handleKeyDown}
+          className="input-textarea"
           rows={1}
+          placeholder='Describe your dream space... e.g. "A modern 3-bedroom house with open kitchen and garden view"'
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={handleKeyDown}
           disabled={disabled || loading}
         />
 
         <div className="input-bottom-row">
-          {/* Style category pills */}
+          {/* Style category pills with real Lucide icons */}
           <div className="style-pills">
-            {STYLE_CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                type="button"
-                className={`style-pill ${style === cat.id ? 'active' : ''}`}
-                onClick={() => setStyle(cat.id)}
-                title={cat.label}
-              >
-                <span style={{ fontSize: '0.875em' }}>{cat.emoji}</span>
-                <span>{cat.label}</span>
-              </button>
-            ))}
+            {STYLE_CATEGORIES.map((cat) => {
+              const IconComponent = cat.icon
+              const isActive = style === cat.id
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`style-pill ${isActive ? 'active' : ''}`}
+                  onClick={() => setStyle(cat.id)}
+                  title={cat.label}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <IconComponent size={13} strokeWidth={isActive ? 2.2 : 1.8} />
+                  <span>{cat.label}</span>
+                </button>
+              )
+            })}
           </div>
 
           {/* Send button */}
@@ -111,12 +115,14 @@ export default function ChatInput({ onSend, loading, disabled, showQuickPrompts 
             title={loading ? 'Generating…' : 'Generate (Enter)'}
             type="button"
           >
-            <SendIcon loading={loading} />
+            {loading ? (
+              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Send size={15} />
+            )}
           </button>
         </div>
       </div>
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

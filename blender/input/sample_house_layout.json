@@ -1,0 +1,118 @@
+{
+  "house_id": "house_sample_001",
+  "project_name": "ArchGen Modern 2-Bedroom Villa",
+  "unit": "meters",
+  "building": {
+    "wall_height": 2.8,
+    "wall_thickness": 0.2,
+    "slab_thickness": 0.25
+  },
+  "rooms": [
+    {
+      "id": "room_living_01",
+      "name": "Living Room",
+      "type": "living_room",
+      "style": "modern",
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 5.5,
+        "depth": 6.0
+      },
+      "flooring": {
+        "material": "hardwood_oak",
+        "color": [0.76, 0.60, 0.42]
+      },
+      "furniture_requirements": [
+        {
+          "category": "sofa",
+          "preferred_id": "sofa_001",
+          "placement_hint": "center_back_wall",
+          "position": [2.75, 1.2, 0.0],
+          "rotation_deg": 0.0
+        },
+        {
+          "category": "coffee_table",
+          "preferred_id": null,
+          "placement_hint": "center",
+          "position": [2.75, 2.5, 0.0],
+          "rotation_deg": 0.0
+        }
+      ]
+    },
+    {
+      "id": "room_bedroom_01",
+      "name": "Master Bedroom",
+      "type": "bedroom",
+      "style": "modern",
+      "bounds": {
+        "x": 5.5,
+        "y": 0.0,
+        "width": 4.5,
+        "depth": 5.0
+      },
+      "flooring": {
+        "material": "carpet_gray",
+        "color": [0.85, 0.85, 0.88]
+      },
+      "furniture_requirements": [
+        {
+          "category": "bed",
+          "preferred_id": null,
+          "placement_hint": "center_back_wall",
+          "position": [7.75, 1.2, 0.0],
+          "rotation_deg": 0.0
+        }
+      ]
+    },
+    {
+      "id": "room_kitchen_01",
+      "name": "Open Kitchen",
+      "type": "kitchen",
+      "style": "modern",
+      "bounds": {
+        "x": 0.0,
+        "y": 6.0,
+        "width": 4.0,
+        "depth": 4.0
+      },
+      "flooring": {
+        "material": "ceramic_tile",
+        "color": [0.92, 0.92, 0.92]
+      },
+      "furniture_requirements": []
+    }
+  ],
+  "openings": {
+    "doors": [
+      {
+        "id": "door_main_entry",
+        "type": "exterior_door",
+        "position": [2.75, 0.0, 0.0],
+        "width": 0.95,
+        "height": 2.1
+      },
+      {
+        "id": "door_bedroom_01",
+        "type": "interior_door",
+        "position": [5.5, 2.5, 0.0],
+        "width": 0.85,
+        "height": 2.1
+      }
+    ],
+    "windows": [
+      {
+        "id": "win_living_01",
+        "position": [0.0, 3.0, 1.0],
+        "width": 1.8,
+        "height": 1.4
+      },
+      {
+        "id": "win_bedroom_01",
+        "position": [10.0, 2.5, 1.0],
+        "width": 1.5,
+        "height": 1.4
+      }
+    ]
+  }
+}
