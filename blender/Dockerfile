@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Download and install Blender
 WORKDIR /opt
-RUN wget -q ${BLENDER_TAR_URL} -O blender.tar.xz && \
+RUN curl -sSL ${BLENDER_TAR_URL} -o blender.tar.xz && \
     tar -xf blender.tar.xz && \
     rm blender.tar.xz && \
     mv blender-${BLENDER_VERSION}-linux-x64 blender
