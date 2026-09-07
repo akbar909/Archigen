@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libxi6 \
     libxrender1 \
-    libxxf86vm \
+    libxxf86vm1 \
     libxfixes3 \
     libxkbcommon0 \
     libsm6 \
@@ -54,8 +54,15 @@ WORKDIR /app/blender
 # Copy blender directory structure and scripts
 COPY . /app/blender/
 
-# Ensure output directory exists
+# Install worker dependencies
+RUN pip3 install --no-cache-dir flask flask-cors boto3 requests
+
+# Ensure output and input directories exist
 RUN mkdir -p /app/blender/output /app/blender/input
 
-# Default command: Runs sample house generation in headless background mode
-CMD ["blender", "--background", "--python", "scripts/generate_house.py", "--", "--input", "input/sample_house_layout.json", "--output", "output/generated_house.glb"]
+# Expose worker API port
+EXPOSE 5001
+
+# Run HTTP worker microservice
+CMD ["python3", "worker_server.py"]
+
