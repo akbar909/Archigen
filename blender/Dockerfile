@@ -11,7 +11,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV BLENDER_MAJOR=3.6
 ENV BLENDER_VERSION=3.6.14
-ENV BLENDER_TAR_URL=https://download.blender.org/release/Blender${BLENDER_MAJOR}/blender-${BLENDER_VERSION}-linux-x64.tar.xz
+ENV BLENDER_TAR_URL=https://ftp.nluug.nl/pub/graphics/blender/release/Blender${BLENDER_MAJOR}/blender-${BLENDER_VERSION}-linux-x64.tar.xz
 
 # Install essential system dependencies and software rendering libs (Mesa/OpenGL/X11)
 RUN apt-get update && apt-get install -y --no-install-recommends \
