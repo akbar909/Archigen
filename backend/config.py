@@ -28,3 +28,16 @@ GEMINI_API_BASE_URL = os.getenv(
 	"GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/models"
 )
 
+# Blender Worker microservice config
+BLENDER_SERVICE_URL = os.getenv("BLENDER_SERVICE_URL", "http://localhost:5001")
+BLENDER_ENABLED = os.getenv("BLENDER_ENABLED", "true").lower() == "true"
+BLENDER_TIMEOUT_SECONDS = int(os.getenv("BLENDER_TIMEOUT_SECONDS", "180"))
+
+# AWS S3 Storage config
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "archigen-storage")
+AWS_S3_PUBLIC_BASE_URL = os.getenv("AWS_S3_PUBLIC_BASE_URL", "")
+
+

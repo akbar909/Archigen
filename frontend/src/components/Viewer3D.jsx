@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Environment, Html, OrbitControls } from '@react-three/drei'
+import { Environment, Html, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import {
   Bath,
@@ -18,11 +18,13 @@ import {
   MousePointer,
   RotateCcw,
   Sofa,
+  Sparkles,
   Sun,
   Tag,
   UtensilsCrossed,
   Waves,
 } from 'lucide-react'
+
 import { buildFurniture, makeFloorTexture } from '../utils/furnitureBuilder'
 
 const ROOM_THEMES = {
@@ -753,11 +755,40 @@ function CameraController({ controlsRef, targetPos, targetCamPos, viewMode }) {
   return null
 }
 
+// ── Blender Headless GLB Model Component ─────────────────────────────
+function BlenderHouseModel({ url }) {
+  const { scene } = useGLTF(url)
+  const clonedScene = useMemo(() => {
+    if (!scene) return null
+    const clone = scene.clone(true)
+    clone.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true
+        child.receiveShadow = true
+      }
+    })
+    return clone
+  }, [scene])
+
+  if (!clonedScene) return null
+  return <primitive object={clonedScene} position={[0, 0, 0]} />
+}
+
 // ── Main Professional Viewer3D Component ─────────────────────────────
 export default function Viewer3D({ design }) {
+  const glbUrl = design?.glb_url || design?.model_url || null
+  const [viewSource, setViewSource] = useState(glbUrl ? 'blender' : 'procedural')
+
+  useEffect(() => {
+    if (glbUrl) {
+      setViewSource('blender')
+    }
+  }, [glbUrl])
+
   const [viewMode, setViewMode] = useState('dollhouse')
   const [isNightMode, setIsNightMode] = useState(false)
   const [selectedRoomId, setSelectedRoomId] = useState('overview')
+
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showInfoPopover, setShowInfoPopover] = useState(false)
   const [showCallouts, setShowCallouts] = useState(true)
@@ -1164,33 +1195,68 @@ export default function Viewer3D({ design }) {
           isNightMode={isNightMode}
         />
 
-        {/* ── Contiguous Architectural Rooms ── */}
-        {rooms.map((room, idx) => (
-          <RoomVolume
-            key={room.id || `room-${idx}`}
-            room={room}
-            viewMode={viewMode}
-            isSelected={selectedRoomId === room.id}
-            isNightMode={isNightMode}
-          />
-        ))}
+        {/* ── Architectural House Model: Blender GLB or Procedural CAD ── */}
+        {viewSource === 'blender' && glbUrl ? (
+          <Suspense
+            fallback={
+              <Html center>
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.92)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    backdropFilter: 'blur(12px)',
+                    borderRadius: 12,
+                    padding: '14px 22px',
+                    color: '#38bdf8',
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                    boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Sparkles size={16} className="animate-spin" />
+                  <span>Loading Photorealistic 3D Model...</span>
+                </div>
+              </Html>
+            }
+          >
+            <BlenderHouseModel url={glbUrl} />
+          </Suspense>
+        ) : (
+          <>
+            {/* Contiguous Architectural Rooms */}
+            {rooms.map((room, idx) => (
+              <RoomVolume
+                key={room.id || `room-${idx}`}
+                room={room}
+                viewMode={viewMode}
+                isSelected={selectedRoomId === room.id}
+                isNightMode={isNightMode}
+              />
+            ))}
 
-        {/* ── Floating Architectural Callout Pins (Matching Reference Image) ── */}
-        {showCallouts && viewMode !== 'walkthrough' && rooms.map((room) => (
-          <RoomCalloutTag
-            key={`tag-${room.id || room.type}`}
-            room={room}
-            isSelected={selectedRoomId === room.id}
-            onClick={() => handleSelectRoom(room)}
-          />
-        ))}
+            {/* Floating Architectural Callout Pins */}
+            {showCallouts && viewMode !== 'walkthrough' && rooms.map((room) => (
+              <RoomCalloutTag
+                key={`tag-${room.id || room.type}`}
+                room={room}
+                isSelected={selectedRoomId === room.id}
+                onClick={() => handleSelectRoom(room)}
+              />
+            ))}
 
-        {doors.map((door, idx) => (
-          <OpeningMarker key={door.id || `door-${idx}`} item={door} kind="door" />
-        ))}
-        {windows.map((win, idx) => (
-          <OpeningMarker key={win.id || `win-${idx}`} item={win} kind="window" />
-        ))}
+            {doors.map((door, idx) => (
+              <OpeningMarker key={door.id || `door-${idx}`} item={door} kind="door" />
+            ))}
+            {windows.map((win, idx) => (
+              <OpeningMarker key={win.id || `win-${idx}`} item={win} kind="window" />
+            ))}
+          </>
+        )}
+
 
         {/* Walkthrough Avatar (Hidden in first-person walkthrough to avoid blocking camera) */}
         <CharacterAvatar
@@ -1214,56 +1280,103 @@ export default function Viewer3D({ design }) {
         <Environment preset={isNightMode ? 'night' : 'city'} />
       </Canvas>
 
-      {/* ── Top Left: Viewport Mode Switcher (Lucide Icons) ── */}
+      {/* ── Top Left: Viewport Mode Switcher & Source Toggle ── */}
       <div
         style={{
           position: 'absolute',
           top: 12,
           left: 14,
           display: 'flex',
-          gap: 4,
-          background: 'rgba(15, 23, 42, 0.85)',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: 999,
-          padding: 3,
+          gap: 6,
+          alignItems: 'center',
           zIndex: 10,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
         }}
       >
-        {[
-          { id: 'dollhouse', icon: Home, label: 'Dollhouse 3D' },
-          { id: 'walkthrough', icon: Footprints, label: 'Walkthrough' },
-          { id: 'plan', icon: Grid3X3, label: 'Floor Plan' },
-        ].map((mode) => {
-          const IconComp = mode.icon
-          const isActive = viewMode === mode.id
-          return (
+        <div
+          style={{
+            display: 'flex',
+            gap: 4,
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 999,
+            padding: 3,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          }}
+        >
+          {[
+            { id: 'dollhouse', icon: Home, label: 'Dollhouse 3D' },
+            { id: 'walkthrough', icon: Footprints, label: 'Walkthrough' },
+            { id: 'plan', icon: Grid3X3, label: 'Floor Plan' },
+          ].map((mode) => {
+            const IconComp = mode.icon
+            const isActive = viewMode === mode.id
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => handleModeChange(mode.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 12px',
+                  borderRadius: 999,
+                  border: 'none',
+                  background: isActive ? 'var(--accent)' : 'transparent',
+                  color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <IconComp size={14} />
+                <span>{mode.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Blender Photorealistic 3D Model Switcher */}
+        {glbUrl && (
+          <div
+            style={{
+              display: 'flex',
+              background: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: 999,
+              padding: 3,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            }}
+          >
             <button
-              key={mode.id}
               type="button"
-              onClick={() => handleModeChange(mode.id)}
+              onClick={() => setViewSource(viewSource === 'blender' ? 'procedural' : 'blender')}
+              title="Toggle between Blender Photorealistic 3D Model and CAD Floor Plan"
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
                 padding: '5px 12px',
                 borderRadius: 999,
                 border: 'none',
-                background: isActive ? 'var(--accent)' : 'transparent',
-                color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                background: viewSource === 'blender' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                color: viewSource === 'blender' ? '#38bdf8' : 'var(--text-secondary)',
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
             >
-              <IconComp size={14} />
-              <span>{mode.label}</span>
+              <Sparkles size={13} />
+              <span>{viewSource === 'blender' ? 'Blender 3D' : 'CAD View'}</span>
             </button>
-          )
-        })}
+          </div>
+        )}
       </div>
+
 
       {/* ── Top Right: Stats Details in ! Icon + Day/Night + Tools ── */}
       <div

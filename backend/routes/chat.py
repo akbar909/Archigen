@@ -6,6 +6,7 @@ from bson import ObjectId
 from flask import Blueprint, jsonify, request
 
 from utils.db import designs_collection, projects_collection, versions_collection
+from utils.blender_service import generate_3d_house_model
 from utils.gemini import (
     GeminiSchemaValidationError,
     GeminiTemporaryUnavailableError,
@@ -14,6 +15,7 @@ from utils.gemini import (
     validate_architectural_prompt,
 )
 from utils.middleware import require_auth
+
 
 
 chat_bp = Blueprint("chat", __name__)
@@ -42,8 +44,10 @@ def _serialize_version(doc):
         "prompt":      doc.get("prompt", ""),
         "style":       doc.get("style", "modern"),
         "design":      doc.get("design"),
+        "glb_url":     doc.get("glb_url") or (doc.get("design") or {}).get("glb_url"),
         "created_at":  doc["created_at"].isoformat() if doc.get("created_at") else None,
     }
+
 
 
 # ─── PROJECTS ─────────────────────────────────────────────────────────────────
@@ -256,6 +260,12 @@ def generate_version(project_id: str):
     next_num = (last["version_num"] + 1) if last else 1
 
     now = dt.datetime.utcnow()
+
+    # Trigger Blender 3D procedural generation in background worker
+    glb_url = generate_3d_house_model(design, project_id=str(proj_id), version_num=next_num)
+    if glb_url:
+        design["glb_url"] = glb_url
+
     ver_doc = {
         "project_id": proj_id,
         "user_id":    request.user["_id"],
@@ -264,9 +274,11 @@ def generate_version(project_id: str):
         "prompt":     prompt,
         "style":      style,
         "design":     design,
+        "glb_url":     glb_url,
         "created_at": now,
     }
     ver_result = versions_collection().insert_one(ver_doc)
+
 
     # Update project metadata
     projects_collection().update_one(
@@ -439,3 +451,46 @@ def get_design_legacy(design_id: str):
         })
     except Exception:
         return jsonify({"error": "Failed to load design"}), 500
+
+
+@chat_bp.post("/projects/<project_id>/versions/<version_id>/generate-3d")
+@require_auth
+def generate_3d_for_version(project_id: str, version_id: str):
+    """Triggers or retries Headless Blender 3D generation for a specific version."""
+    try:
+        ver_obj_id = ObjectId(version_id)
+        proj_obj_id = ObjectId(project_id)
+    except Exception:
+        return jsonify({"error": "Invalid project or version id"}), 400
+
+    ver = versions_collection().find_one({
+        "_id": ver_obj_id,
+        "project_id": proj_obj_id,
+        "user_id": request.user["_id"],
+    })
+    if not ver or not ver.get("design"):
+        return jsonify({"error": "Version or architectural design not found"}), 404
+
+    glb_url = generate_3d_house_model(
+        ver["design"],
+        project_id=project_id,
+        version_num=ver.get("version_num", 1)
+    )
+
+    if not glb_url:
+        return jsonify({"success": False, "error": "Blender 3D generation failed or timed out"}), 502
+
+    versions_collection().update_one(
+        {"_id": ver_obj_id},
+        {"$set": {"glb_url": glb_url, "design.glb_url": glb_url}}
+    )
+    ver["glb_url"] = glb_url
+    if "design" in ver and isinstance(ver["design"], dict):
+        ver["design"]["glb_url"] = glb_url
+
+    return jsonify({
+        "success": True,
+        "glb_url": glb_url,
+        "version": _serialize_version(ver),
+    })
+
