@@ -1,0 +1,26 @@
+{
+  "id": "desk_001",
+  "name": "Modern Executive Study Desk",
+  "category": "desk",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.4,
+  "depth": 0.7,
+  "height": 0.76,
+  "model_file": "assets/furniture/bedroom/desk_001.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "desk",
+    "study desk",
+    "workstation",
+    "office desk",
+    "table"
+  ]
+}

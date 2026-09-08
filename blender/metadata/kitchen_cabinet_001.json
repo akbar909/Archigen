@@ -1,0 +1,26 @@
+{
+  "id": "kitchen_cabinet_001",
+  "name": "Modular Overhead Kitchen Cabinet",
+  "category": "cabinet",
+  "room": "kitchen",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.2,
+  "depth": 0.4,
+  "height": 0.8,
+  "model_file": "assets/furniture/kitchen/cabinet_001.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "cabinet",
+    "kitchen cabinet",
+    "pantry",
+    "wall cabinet",
+    "kitchen"
+  ]
+}

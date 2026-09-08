@@ -1,5 +1,7 @@
 import datetime as dt
 import json
+import logging
+import threading
 
 # pyrefly: ignore [missing-import]
 from bson import ObjectId
@@ -7,6 +9,7 @@ from flask import Blueprint, jsonify, request
 
 from utils.db import designs_collection, projects_collection, versions_collection
 from utils.blender_service import generate_3d_house_model
+from utils.s3_storage import resolve_s3_url_to_presigned
 from utils.gemini import (
     GeminiSchemaValidationError,
     GeminiTemporaryUnavailableError,
@@ -36,6 +39,13 @@ def _serialize_project(doc, latest_version=None):
 
 
 def _serialize_version(doc):
+    raw_glb = doc.get("glb_url") or (doc.get("design") or {}).get("glb_url")
+    resolved_glb = resolve_s3_url_to_presigned(raw_glb)
+    design = doc.get("design")
+    if isinstance(design, dict) and resolved_glb:
+        design = dict(design)
+        design["glb_url"] = resolved_glb
+
     return {
         "id":          str(doc["_id"]),
         "project_id":  str(doc.get("project_id", "")),
@@ -43,8 +53,8 @@ def _serialize_version(doc):
         "version_num": doc.get("version_num", 1),
         "prompt":      doc.get("prompt", ""),
         "style":       doc.get("style", "modern"),
-        "design":      doc.get("design"),
-        "glb_url":     doc.get("glb_url") or (doc.get("design") or {}).get("glb_url"),
+        "design":      design,
+        "glb_url":     resolved_glb,
         "created_at":  doc["created_at"].isoformat() if doc.get("created_at") else None,
     }
 
@@ -258,13 +268,7 @@ def generate_version(project_id: str):
         projection={"version_num": 1}
     )
     next_num = (last["version_num"] + 1) if last else 1
-
     now = dt.datetime.utcnow()
-
-    # Trigger Blender 3D procedural generation in background worker
-    glb_url = generate_3d_house_model(design, project_id=str(proj_id), version_num=next_num)
-    if glb_url:
-        design["glb_url"] = glb_url
 
     ver_doc = {
         "project_id": proj_id,
@@ -274,11 +278,12 @@ def generate_version(project_id: str):
         "prompt":     prompt,
         "style":      style,
         "design":     design,
-        "glb_url":     glb_url,
+        "glb_url":     None,
         "created_at": now,
     }
     ver_result = versions_collection().insert_one(ver_doc)
-
+    ver_id = ver_result.inserted_id
+    ver_doc["_id"] = ver_id
 
     # Update project metadata
     projects_collection().update_one(
@@ -290,7 +295,24 @@ def generate_version(project_id: str):
         }}
     )
 
-    ver_doc["_id"] = ver_result.inserted_id
+    # Launch Blender 3D procedural generation in background thread
+    def _bg_generate_blender(d_copy, p_id_str, v_obj_id, v_num):
+        try:
+            g_url = generate_3d_house_model(d_copy, project_id=p_id_str, version_num=v_num)
+            if g_url:
+                versions_collection().update_one(
+                    {"_id": v_obj_id},
+                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
+                )
+        except Exception as e:
+            logging.error(f"[BLENDER] Background generation error: {e}")
+
+    threading.Thread(
+        target=_bg_generate_blender,
+        args=(design, str(proj_id), ver_id, next_num),
+        daemon=True,
+    ).start()
+
     return jsonify({
         "success": True,
         "version": _serialize_version(ver_doc),
@@ -353,26 +375,51 @@ def generate_design_legacy():
         "prompt":      prompt,
         "style":       style,
         "design":      design,
+        "glb_url":     None,
         "created_at":  now,
     }
     ver_result = versions_collection().insert_one(ver_doc)
+    ver_id = ver_result.inserted_id
 
     # Also write to legacy designs collection for any old consumers
     designs_collection().insert_one({
         "user_id":    request.user["_id"],
         "project_id": proj_id,
-        "version_id": ver_result.inserted_id,
+        "version_id": ver_id,
         "prompt":     prompt,
         "design":     design,
         "created_at": now,
     })
 
+    # Launch Blender 3D procedural generation in background thread
+    def _bg_generate_blender_legacy(d_copy, p_id_str, v_obj_id):
+        try:
+            g_url = generate_3d_house_model(d_copy, project_id=p_id_str, version_num=1)
+            if g_url:
+                versions_collection().update_one(
+                    {"_id": v_obj_id},
+                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
+                )
+                designs_collection().update_one(
+                    {"version_id": v_obj_id},
+                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
+                )
+        except Exception as e:
+            logging.error(f"[BLENDER] Legacy background generation error: {e}")
+
+    threading.Thread(
+        target=_bg_generate_blender_legacy,
+        args=(design, str(proj_id), ver_id),
+        daemon=True,
+    ).start()
+
     return jsonify({
         "success":    True,
         "design":     design,
-        "design_id":  str(ver_result.inserted_id),
+        "design_id":  str(ver_id),
         "project_id": str(proj_id),
         "version_num": 1,
+        "glb_url":    None,
     }), 200
 
 
@@ -429,10 +476,16 @@ def get_design_legacy(design_id: str):
             sort=[("version_num", -1)]
         )
         if doc:
+            design = doc.get("design")
+            resolved_glb = resolve_s3_url_to_presigned(doc.get("glb_url") or (design or {}).get("glb_url"))
+            if isinstance(design, dict) and resolved_glb:
+                design = dict(design)
+                design["glb_url"] = resolved_glb
             return jsonify({
-                "design":      doc.get("design"),
+                "design":      design,
                 "prompt":      doc.get("prompt"),
                 "version_num": doc.get("version_num", 1),
+                "glb_url":     resolved_glb,
                 "created_at":  doc["created_at"].isoformat() if doc.get("created_at") else None,
             })
 
@@ -443,10 +496,17 @@ def get_design_legacy(design_id: str):
         if not doc:
             return jsonify({"error": "Design not found"}), 404
 
+        design = doc.get("design")
+        resolved_glb = resolve_s3_url_to_presigned(doc.get("glb_url") or (design or {}).get("glb_url"))
+        if isinstance(design, dict) and resolved_glb:
+            design = dict(design)
+            design["glb_url"] = resolved_glb
+
         created = doc.get("created_at")
         return jsonify({
-            "design":     doc.get("design"),
+            "design":     design,
             "prompt":     doc.get("prompt"),
+            "glb_url":    resolved_glb,
             "created_at": created.isoformat() if created else None,
         })
     except Exception:

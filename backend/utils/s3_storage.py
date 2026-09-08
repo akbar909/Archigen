@@ -6,6 +6,7 @@ AWS S3 storage utility for uploading and generating URLs for 3D models.
 
 import os
 from typing import Optional
+from urllib.parse import urlparse
 
 try:
     import boto3
@@ -78,8 +79,8 @@ def upload_file_to_s3(
         return None
 
 
-def generate_presigned_url(s3_key: str, expires_in: int = 3600, bucket: Optional[str] = None) -> Optional[str]:
-    """Generates a temporary presigned URL for private S3 objects."""
+def generate_presigned_url(s3_key: str, expires_in: int = 86400, bucket: Optional[str] = None) -> Optional[str]:
+    """Generates a temporary presigned URL for private S3 objects (default 24h)."""
     client = get_s3_client()
     target_bucket = bucket or AWS_S3_BUCKET
 
@@ -95,3 +96,80 @@ def generate_presigned_url(s3_key: str, expires_in: int = 3600, bucket: Optional
     except Exception as e:
         print(f"[ERROR] Presigned URL generation failed: {e}")
         return None
+
+
+def resolve_s3_url_to_presigned(url_or_key: Optional[str], expires_in: int = 86400) -> Optional[str]:
+    """
+    Takes an S3 URL or object key and returns a valid presigned URL.
+    This resolves HTTP 403 Forbidden errors when fetching models from private S3 buckets.
+    """
+    if not url_or_key:
+        return None
+
+    s = str(url_or_key).strip()
+    if not s:
+        return None
+
+    s3_key = None
+    target_bucket = AWS_S3_BUCKET
+
+    if "amazonaws.com" in s:
+        parsed = urlparse(s)
+        path = parsed.path.lstrip("/")
+        host = parsed.netloc
+
+        if host.startswith(f"{AWS_S3_BUCKET}.s3"):
+            s3_key = path
+        elif host.startswith("s3."):
+            parts = path.split("/", 1)
+            if len(parts) == 2:
+                target_bucket = parts[0]
+                s3_key = parts[1]
+            else:
+                s3_key = path
+        else:
+            parts = path.split("/", 1)
+            if len(parts) == 2 and parts[0] == AWS_S3_BUCKET:
+                s3_key = parts[1]
+            else:
+                s3_key = path
+    elif s.startswith("outputs/") or s.endswith(".glb"):
+        s3_key = s.lstrip("/")
+
+    if s3_key:
+        # Strip any query parameters (like previous expired signatures)
+        s3_key = s3_key.split("?")[0]
+        presigned = generate_presigned_url(s3_key, expires_in=expires_in, bucket=target_bucket)
+        if presigned:
+            return presigned
+    return s
+
+
+def configure_bucket_cors(bucket: Optional[str] = None) -> bool:
+    """Ensures S3 bucket has CORS enabled so web browsers can fetch GLB models without CORS errors."""
+    client = get_s3_client()
+    target_bucket = bucket or AWS_S3_BUCKET
+    if not client or not target_bucket:
+        return False
+    try:
+        client.put_bucket_cors(
+            Bucket=target_bucket,
+            CORSConfiguration={
+                'CORSRules': [
+                    {
+                        'AllowedHeaders': ['*'],
+                        'AllowedMethods': ['GET', 'HEAD'],
+                        'AllowedOrigins': ['*'],
+                        'ExposeHeaders': ['ETag', 'Content-Range'],
+                        'MaxAgeSeconds': 3000,
+                    }
+                ]
+            }
+        )
+        print(f"[S3] Successfully applied CORS rules to S3 bucket '{target_bucket}'.")
+        return True
+    except Exception as e:
+        print(f"[WARN] S3 put_bucket_cors failed: {e}")
+        return False
+
+

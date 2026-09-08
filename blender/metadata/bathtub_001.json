@@ -1,0 +1,26 @@
+{
+  "id": "bathtub_001",
+  "name": "Modern Free-Standing Bathtub",
+  "category": "bathtub",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.75,
+  "depth": 0.85,
+  "height": 0.65,
+  "model_file": "assets/furniture/bathroom/bathtub_001.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "bathtub",
+    "bath",
+    "bathroom",
+    "soaking tub",
+    "modern"
+  ]
+}

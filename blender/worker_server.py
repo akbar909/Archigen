@@ -142,6 +142,7 @@ def generate_house_endpoint():
     cmd = [
         BLENDER_BIN,
         "--background",
+        "--python-exit-code", "1",
         "--python", GENERATE_SCRIPT,
         "--",
         "--input", input_file,
@@ -168,7 +169,11 @@ def generate_house_endpoint():
         return jsonify({"error": f"Failed to execute Blender: {str(e)}"}), 500
 
     if not os.path.exists(output_file):
-        return jsonify({"error": "Output GLB file was not created by Blender"}), 500
+        return jsonify({
+            "error": "Output GLB file was not created by Blender",
+            "stdout": proc.stdout[-1500:],
+            "stderr": proc.stderr[-1500:]
+        }), 500
 
     file_size_bytes = os.path.getsize(output_file)
 

@@ -353,8 +353,14 @@ function buildPatioTable(item) {
 
 const BUILDERS = {
 	sofa: buildSofa,
+	sofa_3seater: buildSofa,
+	sofa_sectional: buildSofa,
 	armchair: buildArmchair,
 	coffee_table: buildCoffeeTable,
+	bed: buildBed,
+	king_bed: buildBed,
+	queen_bed: buildBed,
+	single_bed: buildBed,
 	bed_single: buildBed,
 	bed_double: buildBed,
 	wardrobe: buildWardrobe,
@@ -362,24 +368,41 @@ const BUILDERS = {
 	desk: buildDesk,
 	bookshelf: buildBookshelf,
 	tv_unit: buildTvUnit,
+	tv_stand: buildTvUnit,
 	floor_lamp: buildFloorLamp,
 	pendant_light: buildPendantLight,
 	rug: buildRug,
 	plant: buildPlant,
 	dining_table: buildDiningTable,
 	dining_chair: buildDiningChair,
+	office_chair: buildDiningChair,
 	kitchen_counter: buildKitchenCounter,
 	kitchen_island: buildKitchenIsland,
 	refrigerator: buildRefrigerator,
 	oven: buildOven,
 	bathtub: buildBathtub,
+	shower: buildBathtub,
 	toilet: buildToilet,
 	sink: buildSink,
+	bathroom_vanity: buildSink,
+	nightstand: buildCoffeeTable,
 	staircase: buildStaircase,
 	stairs: buildStaircase,
 	pool_lounger: buildPoolLounger,
 	outdoor_sofa: buildOutdoorSofa,
 	patio_table: buildPatioTable,
+}
+
+const ASSET_PREVIEW_SIZES = {
+	sofa: { dims: { w: 2.2, h: 0.85, d: 0.9 }, color: '#4A6FA5' },
+	bed: { dims: { w: 2.0, h: 0.7, d: 1.8 }, color: '#8B7355' },
+	table: { dims: { w: 1.6, h: 0.75, d: 0.9 }, color: '#8C6239' },
+	chair: { dims: { w: 0.5, h: 0.9, d: 0.5 }, color: '#5D4037' },
+	counter: { dims: { w: 2.0, h: 0.9, d: 0.65 }, color: '#475569' },
+	wardrobe: { dims: { w: 1.5, h: 2.1, d: 0.6 }, color: '#7C5C3D' },
+	tv: { dims: { w: 1.8, h: 0.5, d: 0.4 }, color: '#3D2B10' },
+	bath: { dims: { w: 1.7, h: 0.6, d: 0.8 }, color: '#f8fafc' },
+	toilet: { dims: { w: 0.5, h: 0.75, d: 0.68 }, color: '#f1f5f9' },
 }
 
 function buildCompositeFurnitureFromParts(item) {
@@ -443,18 +466,21 @@ export function buildFurniture(furnitureArray = []) {
 		if (item.parts && typeof item.parts === 'object' && Object.keys(item.parts).length > 0) {
 			piece = buildCompositeFurnitureFromParts(item)
 		} else {
-			const builder = BUILDERS[String(item.type || '').toLowerCase()]
+			const key = String(item.asset || item.type || item.category || '').toLowerCase()
+			const baseKey = key.split('_')[0]
+			const builder = BUILDERS[key] || BUILDERS[baseKey]
 			if (builder) {
 				piece = builder(item)
 			} else {
-				const dims = item.dimensions || { w: 1, h: 0.8, d: 1 }
+				const preset = ASSET_PREVIEW_SIZES[key] || ASSET_PREVIEW_SIZES[baseKey]
+				const dims = item.dimensions || preset?.dims || { w: 1, h: 0.8, d: 1 }
 				piece = new THREE.Group()
 				addBox(
 					piece,
 					Number(dims.w) || 1,
 					Number(dims.h) || 0.8,
 					Number(dims.d) || 1,
-					pbr(item.color || '#8B7355', item.roughness ?? 0.7, item.metalness ?? 0.05),
+					pbr(item.color || preset?.color || '#8B7355', item.roughness ?? 0.7, item.metalness ?? 0.05),
 					0,
 					(Number(dims.h) || 0.8) / 2,
 					0
@@ -473,123 +499,4 @@ export function buildFurniture(furnitureArray = []) {
 	return group
 }
 
-export function makeFloorTexture(pattern) {
-	const canvas = document.createElement('canvas')
-	canvas.width = 256
-	canvas.height = 256
-	const ctx = canvas.getContext('2d')
-
-	ctx.fillStyle = '#b8b0a3'
-	ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-	if (pattern === 'diamond_tile') {
-		ctx.fillStyle = '#2A1A5E'
-		ctx.fillRect(0, 0, 256, 256)
-		ctx.strokeStyle = '#5A3FA0'
-		ctx.lineWidth = 2
-		const step = 32
-		for (let x = -256; x <= 512; x += step) {
-			ctx.beginPath()
-			ctx.moveTo(x, 0)
-			ctx.lineTo(x + 256, 256)
-			ctx.stroke()
-
-			ctx.beginPath()
-			ctx.moveTo(x, 256)
-			ctx.lineTo(x + 256, 0)
-			ctx.stroke()
-		}
-	} else if (pattern === 'wood_planks') {
-		ctx.fillStyle = '#7A4E2D'
-		ctx.fillRect(0, 0, 256, 256)
-		for (let i = 0; i < 8; i += 1) {
-			const x = i * 32
-			ctx.fillStyle = i % 2 === 0 ? '#8B5E3C' : '#6F4325'
-			ctx.fillRect(x, 0, 28, 256)
-			ctx.fillStyle = 'rgba(255,255,255,0.06)'
-			ctx.fillRect(x + 2, 0, 2, 256)
-		}
-	} else if (pattern === 'marble_tile') {
-		ctx.fillStyle = '#e8e0d0'
-		ctx.fillRect(0, 0, 256, 256)
-		ctx.strokeStyle = 'rgba(140,130,110,0.22)'
-		ctx.lineWidth = 2
-		for (let i = 0; i < 10; i += 1) {
-			ctx.beginPath()
-			ctx.moveTo(Math.random() * 256, 0)
-			for (let j = 0; j < 5; j += 1) {
-				ctx.bezierCurveTo(Math.random() * 256, j * 48, Math.random() * 256, j * 48 + 24, Math.random() * 256, (j + 1) * 48)
-			}
-			ctx.stroke()
-		}
-		ctx.strokeStyle = 'rgba(255,255,255,0.4)'
-		for (let i = 0; i < 4; i += 1) {
-			const offset = i * 64
-			ctx.strokeRect(offset, offset, 64, 64)
-		}
-	} else if (pattern === 'hex_tile') {
-		ctx.fillStyle = '#d9e2dc'
-		ctx.fillRect(0, 0, 256, 256)
-		ctx.strokeStyle = '#83948a'
-		ctx.lineWidth = 2
-		const radius = 20
-		const stepX = radius * 1.5
-		const stepY = Math.sqrt(3) * radius
-		for (let row = -1; row < 10; row += 1) {
-			for (let col = -1; col < 10; col += 1) {
-				const cx = col * stepX + (row % 2 === 0 ? 0 : stepX / 2) + 30
-				const cy = row * stepY + 30
-				ctx.beginPath()
-				for (let i = 0; i < 6; i += 1) {
-					const angle = (Math.PI / 3) * i + Math.PI / 6
-					const px = cx + radius * Math.cos(angle)
-					const py = cy + radius * Math.sin(angle)
-					if (i === 0) {
-						ctx.moveTo(px, py)
-					} else {
-						ctx.lineTo(px, py)
-					}
-				}
-				ctx.closePath()
-				ctx.stroke()
-			}
-		}
-	} else if (pattern === 'checker_tile') {
-		ctx.fillStyle = '#f4f4f0'
-		ctx.fillRect(0, 0, 256, 256)
-		ctx.fillStyle = '#363636'
-		for (let y = 0; y < 4; y += 1) {
-			for (let x = 0; x < 4; x += 1) {
-				if ((x + y) % 2 === 0) {
-					ctx.fillRect(x * 64, y * 64, 64, 64)
-				}
-			}
-		}
-	} else if (pattern === 'carpet') {
-		ctx.fillStyle = '#6B4080'
-		ctx.fillRect(0, 0, 256, 256)
-		for (let i = 0; i < 1800; i += 1) {
-			const variation = (Math.random() - 0.5) * 30
-			ctx.fillStyle = `rgba(${110 + variation},${80 + variation},${120 + variation},0.8)`
-			ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2)
-		}
-	} else if (pattern === 'concrete') {
-		ctx.fillStyle = '#a9aeb6'
-		ctx.fillRect(0, 0, 256, 256)
-		for (let i = 0; i < 3200; i += 1) {
-			const shade = 120 + Math.random() * 80
-			ctx.fillStyle = `rgba(${shade},${shade},${shade},0.16)`
-			ctx.fillRect(Math.random() * 256, Math.random() * 256, 1, 1)
-		}
-		ctx.strokeStyle = 'rgba(70, 70, 70, 0.16)'
-		ctx.lineWidth = 2
-		ctx.strokeRect(4, 4, 248, 248)
-	}
-
-	const texture = new THREE.CanvasTexture(canvas)
-	texture.wrapS = THREE.RepeatWrapping
-	texture.wrapT = THREE.RepeatWrapping
-	texture.repeat.set(4, 4)
-	texture.needsUpdate = true
-	return texture
-}
+export { makeFloorTexture } from './floorTextures'

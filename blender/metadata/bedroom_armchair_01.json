@@ -1,0 +1,26 @@
+{
+  "id": "bedroom_armchair_01",
+  "name": "Cozy Accent Armchair",
+  "category": "armchair",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.85,
+  "depth": 0.85,
+  "height": 0.82,
+  "model_file": "assets/furniture/bedroom/ArmChair_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "armchair",
+    "chair",
+    "accent chair",
+    "lounge chair",
+    "bedroom"
+  ]
+}

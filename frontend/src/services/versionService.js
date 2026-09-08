@@ -21,3 +21,9 @@ export async function generateDesign(payload) {
   const { data } = await apiClient.post('/chat', payload)
   return data
 }
+
+export async function generate3D(projectId, versionId) {
+  const { data } = await apiClient.post(`/projects/${projectId}/versions/${versionId}/generate-3d`)
+  return data
+}
+

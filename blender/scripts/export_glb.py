@@ -60,6 +60,17 @@ def export_scene_to_glb(
         "export_draco_mesh_compression_enable": use_draco,
     }
 
+    # Clean up boolean cutters and temporary construction helpers before export
+    objs_to_remove = [
+        obj for obj in bpy.data.objects
+        if obj.name.startswith(("_", "cutter", "baseboard", "cap"))
+    ]
+    for obj in objs_to_remove:
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:
+            pass
+
     try:
         bpy.ops.export_scene.gltf(**export_kwargs)
         file_size_mb = os.path.getsize(output_path) / (1024 * 1024)

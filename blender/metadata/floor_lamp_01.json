@@ -1,0 +1,26 @@
+{
+  "id": "floor_lamp_01",
+  "name": "Contemporary Arch Floor Lamp",
+  "category": "lamp",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.5,
+  "depth": 0.5,
+  "height": 1.85,
+  "model_file": "assets/furniture/living_room/floor_lamp.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "lamp",
+    "floor lamp",
+    "standing lamp",
+    "lighting",
+    "living room"
+  ]
+}

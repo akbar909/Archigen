@@ -1,0 +1,27 @@
+{
+  "id": "bed_02",
+  "name": "Modern Platform Double Bed",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.1,
+  "depth": 2.2,
+  "height": 1.1,
+  "model_file": "assets/furniture/bedroom/bed_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "bed",
+    "double bed",
+    "queen bed",
+    "king bed",
+    "platform bed",
+    "bedroom"
+  ]
+}

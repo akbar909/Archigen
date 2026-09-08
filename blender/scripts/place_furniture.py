@@ -30,6 +30,11 @@ try:
 except ImportError:
     import_asset = None
 
+try:
+    import s3_asset_resolver
+except ImportError:
+    s3_asset_resolver = None
+
 
 class FurnitureCatalog:
     """Manages index of available furniture assets and their metadata."""
@@ -58,18 +63,81 @@ class FurnitureCatalog:
                     print(f"[WARN] Failed to parse metadata file {fname}: {e}")
 
     def find_asset(self, category: str, room: Optional[str] = None, preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Finds matching furniture metadata based on query criteria."""
+        """Finds matching furniture metadata based on query criteria with synonym normalization."""
         if preferred_id and preferred_id in self.catalog:
             return self.catalog[preferred_id]
 
+        cat_clean = str(category or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+        # Synonyms dictionary
+        synonyms = {
+            "double_bed": "bed",
+            "single_bed": "bed",
+            "king_bed": "bed",
+            "queen_bed": "bed",
+            "couch": "sofa",
+            "sectional": "sofa",
+            "lounge_chair": "armchair",
+            "accent_chair": "armchair",
+            "side_chair": "chair",
+            "dining_chair": "chair",
+            "desk_chair": "chair",
+            "center_table": "coffee_table",
+            "tea_table": "coffee_table",
+            "table": "coffee_table",
+            "dinner_table": "dining_table",
+            "study_desk": "desk",
+            "workstation": "desk",
+            "office_desk": "desk",
+            "bedside_table": "nightstand",
+            "end_table": "nightstand",
+            "dresser": "wardrobe",
+            "closet": "wardrobe",
+            "tv_unit": "cabinet",
+            "media_console": "cabinet",
+            "credenza": "cabinet",
+            "sideboard": "cabinet",
+            "kitchen_cabinet": "cabinet",
+            "fridge": "refrigerator",
+            "freezer": "refrigerator",
+            "kitchen_sink": "sink",
+            "bathroom_sink": "sink",
+            "washbasin": "sink",
+            "vanity": "sink",
+            "island": "kitchen_counter",
+            "kitchen_island": "kitchen_counter",
+            "counter": "kitchen_counter",
+            "breakfast_bar": "kitchen_counter",
+            "oven": "stove",
+            "microwave": "stove",
+            "tub": "bathtub",
+            "bath": "bathtub",
+            "commode": "toilet",
+            "wc": "toilet",
+            "floor_lamp": "lamp",
+            "standing_lamp": "lamp",
+        }
+
+        normalized_cat = synonyms.get(cat_clean, cat_clean)
+
+        # 1. Exact match on category + room
         for item_id, meta in self.catalog.items():
-            if meta.get("category") == category:
-                if room is None or meta.get("room") == room or meta.get("room") == "general":
+            m_cat = meta.get("category", "")
+            m_room = meta.get("room", "")
+            if (m_cat == normalized_cat or m_cat == cat_clean):
+                if room is None or m_room == room or m_room == "general":
                     return meta
 
-        # Fallback: any asset matching category
+        # 2. Match on category alone (any room)
         for item_id, meta in self.catalog.items():
-            if meta.get("category") == category:
+            m_cat = meta.get("category", "")
+            if m_cat == normalized_cat or m_cat == cat_clean:
+                return meta
+
+        # 3. Match against tags
+        for item_id, meta in self.catalog.items():
+            tags = [str(t).lower() for t in meta.get("tags", [])]
+            if normalized_cat in tags or cat_clean in tags:
                 return meta
 
         return None
@@ -101,6 +169,12 @@ def place_furniture_item(
         abs_model_path = os.path.join(base_blender_dir, rel_model_path)
     else:
         abs_model_path = rel_model_path
+
+    # Try downloading from S3 if missing locally
+    if not os.path.exists(abs_model_path) and s3_asset_resolver is not None:
+        downloaded = s3_asset_resolver.download_asset_if_missing(rel_model_path, base_blender_dir=base_blender_dir)
+        if downloaded and os.path.exists(downloaded):
+            abs_model_path = downloaded
 
     if not os.path.exists(abs_model_path):
         print(f"[WARN] 3D Model file not found: {abs_model_path}. Creating a placeholder cube.")

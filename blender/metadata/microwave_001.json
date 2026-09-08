@@ -1,0 +1,26 @@
+{
+  "id": "microwave_001",
+  "name": "Retro Countertop Microwave Oven",
+  "category": "stove",
+  "room": "kitchen",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.55,
+  "depth": 0.42,
+  "height": 0.35,
+  "model_file": "assets/furniture/kitchen/vintage_microwave_1.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://polyhaven.com",
+  "tags": [
+    "microwave",
+    "oven",
+    "vintage microwave",
+    "appliance",
+    "kitchen"
+  ]
+}

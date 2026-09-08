@@ -27,6 +27,29 @@ except ImportError:
     boto3 = None
 
 
+def _load_env():
+    """Attempts to load AWS credentials from backend/gem_api.env if present."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    possible_paths = [
+        os.path.join(script_dir, "..", "..", "backend", "gem_api.env"),
+        os.path.join(script_dir, "..", "gem_api.env"),
+    ]
+    for p in possible_paths:
+        if os.path.isfile(p):
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip().strip('"').strip("'")
+                        if k and v and k not in os.environ:
+                            os.environ[k] = v
+            break
+
+
+_load_env()
+
+
 def get_s3_client(
     aws_access_key: Optional[str] = None,
     aws_secret_key: Optional[str] = None,
@@ -64,6 +87,7 @@ def upload_assets(
     folders_to_upload = [
         (os.path.join(blender_dir, "assets", "furniture"), f"{s3_prefix}furniture/"),
         (os.path.join(blender_dir, "metadata"), f"{s3_prefix}metadata/"),
+        (os.path.join(blender_dir, "scripts"), f"{s3_prefix}scripts/"),
     ]
 
     for local_folder, remote_prefix in folders_to_upload:
@@ -73,7 +97,7 @@ def upload_assets(
 
         for root, _, files in os.walk(local_folder):
             for file in files:
-                if file == ".gitkeep" or file.endswith(".tmp"):
+                if file == ".gitkeep" or file.endswith(".tmp") or file.endswith(".pyc") or "__pycache__" in root:
                     continue
 
                 abs_path = os.path.join(root, file)
@@ -82,6 +106,7 @@ def upload_assets(
 
                 content_type = "model/gltf-binary" if file.endswith(".glb") else \
                                "application/json" if file.endswith(".json") else \
+                               "text/x-python" if file.endswith(".py") else \
                                "application/octet-stream"
 
                 print(f"[UPLOAD] {abs_path} -> s3://{bucket_name}/{s3_key}")
@@ -131,6 +156,8 @@ def download_assets(
                     local_path = os.path.join(blender_dir, rel_key)
                 elif rel_key.startswith("furniture/"):
                     local_path = os.path.join(blender_dir, "assets", rel_key)
+                elif rel_key.startswith("scripts/"):
+                    local_path = os.path.join(blender_dir, rel_key)
                 else:
                     local_path = os.path.join(blender_dir, "assets", rel_key)
 

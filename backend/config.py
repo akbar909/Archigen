@@ -4,6 +4,26 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+# Load all key=value pairs from gem_api.env into environment variables
+def _load_env_file(filepath):
+    """Reads a simple KEY=VALUE env file and sets them as environment variables."""
+    if not os.path.isfile(filepath):
+        return
+    with open(filepath, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key, value = key.strip(), value.strip().strip('"').strip("'")
+                if key and value:
+                    os.environ[key] = value
+
+
+_load_env_file(os.path.join(BASE_DIR, "gem_api.env"))
+
+
 # Flask server config
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "7860"))

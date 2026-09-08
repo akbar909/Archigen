@@ -6,6 +6,7 @@ import {
   fetchProjects as apiFetchProjects,
   fetchVersion as apiFetchVersion,
   fetchVersions as apiFetchVersions,
+  generate3D as apiGenerate3D,
   generateDesign as apiGenerateDesign,
   generateVersion as apiGenerateVersion,
   getApiErrorMessage,
@@ -22,6 +23,7 @@ export const useProjectStore = create((set, get) => ({
 
   // UI State
   loading: false,
+  isGenerating3D: false,
   sidebarLoading: false,
   projectAction: { type: null, projectId: null },
   sidebarOpen: false,
@@ -198,6 +200,35 @@ export const useProjectStore = create((set, get) => ({
     }
   },
 
+  regenerate3D: async (projectId, versionId) => {
+    const pId = projectId || get().activeProjectId
+    const vId = versionId || get().activeVersionId
+    if (!pId || !vId) {
+      toast.error('Cannot generate 3D: No active project/version')
+      return null
+    }
+
+    set({ isGenerating3D: true })
+    try {
+      const data = await apiGenerate3D(pId, vId)
+      if (data.success && data.glb_url) {
+        set((state) => ({
+          design: state.design ? { ...state.design, glb_url: data.glb_url } : state.design,
+        }))
+        toast.success('Blender 3D model generated successfully! ✨')
+        await get().loadProjectsList({ showLoader: false })
+        return data.glb_url
+      } else {
+        toast.error(data.error || 'Failed to generate 3D model')
+      }
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to generate Blender 3D model'))
+    } finally {
+      set({ isGenerating3D: false })
+    }
+    return null
+  },
+
   reset: () => {
     set({
       projects: [],
@@ -205,6 +236,7 @@ export const useProjectStore = create((set, get) => ({
       activeProjectId: null,
       activeVersionId: null,
       loading: false,
+      isGenerating3D: false,
       sidebarLoading: false,
       projectAction: { type: null, projectId: null },
       sidebarOpen: false,
