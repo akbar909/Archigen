@@ -194,16 +194,26 @@ def place_furniture_item(
 
     # Import the actual 3D model
     obj = import_asset.load_model(abs_model_path, name_prefix=asset_meta.get("id"))
-    
+
+    # Scale model accurately to match metadata target dimensions (e.g. standard bed 2.1m x 2.2m x 1.1m)
+    target_w = float(asset_meta.get("width") or 0.0)
+    target_d = float(asset_meta.get("depth") or 0.0)
+    target_h = float(asset_meta.get("height") or 0.0)
+
+    if target_w > 0 and target_d > 0 and target_h > 0:
+        cur_w, cur_d, cur_h = import_asset.get_bounding_dimensions(obj)
+        if cur_w > 0.01 and cur_d > 0.01 and cur_h > 0.01:
+            sx = target_w / cur_w
+            sy = target_d / cur_d
+            sz = target_h / cur_h
+            obj.scale = (obj.scale.x * sx, obj.scale.y * sy, obj.scale.z * sz)
+
     # Set coordinates and rotation
     obj.location = (position[0], position[1], position[2])
     obj.rotation_euler = (0.0, 0.0, math.radians(rotation_deg))
 
     # Attach metadata
     import_asset.attach_metadata_properties(obj, asset_meta)
-
-    # TODO: Implement clearance check and collision resolution
-    # check_clearance(obj, min_clearance_meters=0.5)
 
     return obj
 

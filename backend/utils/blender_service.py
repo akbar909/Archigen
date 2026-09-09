@@ -116,6 +116,14 @@ def adapt_gemini_to_blender_layout(
                 "rotation_deg": rot,
             })
 
+        # Smart adaptive furniture cap: 2 for small rooms (<6m²), 4 for large rooms (>=16m²), 3 for standard rooms
+        room_area = bw * bd
+        max_furn = 2 if room_area < 6.0 else (4 if room_area >= 16.0 else 3)
+        if len(furniture_reqs) > max_furn:
+            priority_cats = {"bed", "sofa", "dining_table", "kitchen_island", "kitchen_cabinet", "bathtub", "toilet", "desk"}
+            furniture_reqs.sort(key=lambda item: 0 if item["category"] in priority_cats else 1)
+            furniture_reqs = furniture_reqs[:max_furn]
+
         # Doors inside room
         for d_item in r.get("doors", []):
             dpos = d_item.get("position", {})
@@ -128,6 +136,7 @@ def adapt_gemini_to_blender_layout(
                 "position": [round(bx + (bw / 2.0) + dx, 2), round(by + (bd / 2.0) + dz, 2), 0.0],
                 "width": float(dim.get("w", d_item.get("width", 0.9))),
                 "height": float(dim.get("h", d_item.get("height", 2.1))),
+                "wall": d_item.get("wall", "front"),
             })
 
         # Windows inside room
@@ -141,6 +150,7 @@ def adapt_gemini_to_blender_layout(
                 "position": [round(bx + (bw / 2.0) + wx, 2), round(by + (bd / 2.0) + wz, 2), 1.0],
                 "width": float(dim.get("w", w_item.get("width", 1.5))),
                 "height": float(dim.get("h", w_item.get("height", 1.4))),
+                "wall": w_item.get("wall", "front"),
             })
 
         adapted_rooms.append({
@@ -178,6 +188,7 @@ def adapt_gemini_to_blender_layout(
                 "position": [round(dx, 2), round(dz, 2), 0.0],
                 "width": float(dim.get("w", d_item.get("width", 0.95))),
                 "height": float(dim.get("h", d_item.get("height", 2.1))),
+                "wall": d_item.get("wall", "front"),
             })
             if d_id:
                 seen_door_ids.add(d_id)
@@ -197,6 +208,7 @@ def adapt_gemini_to_blender_layout(
                 "position": [round(wx, 2), round(wz, 2), 1.0],
                 "width": float(dim.get("w", w_item.get("width", 1.4))),
                 "height": float(dim.get("h", w_item.get("height", 1.2))),
+                "wall": w_item.get("wall", "front"),
             })
             if w_id:
                 seen_win_ids.add(w_id)

@@ -104,7 +104,7 @@ export default function ViewerOverlay({
           })}
         </div>
 
-        {/* View Mode Switcher: Cloud Blender vs CAD Interactive (Always visible) */}
+        {/* Cloud Blender 3D Model Status Indicator & Trigger */}
         <div
           style={{
             display: 'flex',
@@ -114,47 +114,33 @@ export default function ViewerOverlay({
             borderRadius: 999,
             padding: 3,
             boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-            gap: 2,
             alignItems: 'center',
           }}
         >
-          {/* Blender 3D Toggle */}
           <button
             type="button"
             onClick={() => {
-              if (glbUrl) {
-                onViewSourceChange('blender')
-              } else if (!isGenerating3D && onRegenerate3D) {
+              if (!isGenerating3D && onRegenerate3D) {
                 onRegenerate3D()
               }
             }}
             disabled={isGenerating3D}
             title={
               glbUrl
-                ? 'Switch to Photorealistic Cloud Blender 3D Model'
+                ? 'Photorealistic Cloud Blender 3D Model is loaded (Click to regenerate)'
                 : isGenerating3D
-                ? 'Blender 3D is generating...'
-                : 'Blender 3D not generated yet. Click to generate now!'
+                ? 'Blender 3D is synthesizing in cloud...'
+                : 'Click to synthesize Photorealistic Cloud Blender 3D Model!'
             }
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 5,
-              padding: '5px 12px',
+              gap: 6,
+              padding: '5px 14px',
               borderRadius: 999,
               border: 'none',
-              background:
-                viewSource === 'blender' && glbUrl
-                  ? 'rgba(56, 189, 248, 0.25)'
-                  : isGenerating3D
-                  ? 'rgba(234, 179, 8, 0.15)'
-                  : 'transparent',
-              color:
-                viewSource === 'blender' && glbUrl
-                  ? '#38bdf8'
-                  : isGenerating3D
-                  ? '#eab308'
-                  : 'var(--text-secondary)',
+              background: glbUrl ? 'rgba(56, 189, 248, 0.2)' : isGenerating3D ? 'rgba(234, 179, 8, 0.2)' : 'rgba(56, 189, 248, 0.35)',
+              color: glbUrl ? '#38bdf8' : isGenerating3D ? '#eab308' : '#ffffff',
               fontSize: '0.78rem',
               fontWeight: 600,
               cursor: isGenerating3D ? 'wait' : 'pointer',
@@ -166,71 +152,47 @@ export default function ViewerOverlay({
             ) : (
               <Sparkles size={13} />
             )}
-            <span>Blender 3D</span>
+            <span>Blender 3D Cloud</span>
             {glbUrl ? (
               <span
                 style={{
                   fontSize: '0.65rem',
-                  padding: '1px 5px',
+                  padding: '1px 6px',
                   borderRadius: 999,
-                  background: 'rgba(56, 189, 248, 0.2)',
+                  background: 'rgba(56, 189, 248, 0.3)',
                   color: '#38bdf8',
-                  marginLeft: 2,
+                  marginLeft: 3,
                 }}
               >
-                Ready ✓
+                HD ✓
               </span>
             ) : isGenerating3D ? (
               <span
                 style={{
                   fontSize: '0.65rem',
-                  padding: '1px 5px',
+                  padding: '1px 6px',
                   borderRadius: 999,
-                  background: 'rgba(234, 179, 8, 0.2)',
+                  background: 'rgba(234, 179, 8, 0.3)',
                   color: '#eab308',
-                  marginLeft: 2,
+                  marginLeft: 3,
                 }}
               >
-                Building…
+                Rendering…
               </span>
             ) : (
               <span
                 style={{
                   fontSize: '0.65rem',
-                  padding: '1px 5px',
+                  padding: '1px 6px',
                   borderRadius: 999,
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  color: 'var(--text-muted)',
-                  marginLeft: 2,
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  marginLeft: 3,
                 }}
               >
                 Generate ⚡
               </span>
             )}
-          </button>
-
-          {/* CAD View Toggle */}
-          <button
-            type="button"
-            onClick={() => onViewSourceChange('procedural')}
-            title="Show Interactive CAD Model with Furnished Rooms & Cutaway Walls"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 12px',
-              borderRadius: 999,
-              border: 'none',
-              background: viewSource === 'procedural' ? 'var(--accent)' : 'transparent',
-              color: viewSource === 'procedural' ? '#ffffff' : 'var(--text-secondary)',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Home size={13} />
-            <span>CAD View</span>
           </button>
         </div>
       </div>
@@ -248,7 +210,7 @@ export default function ViewerOverlay({
         }}
       >
         {/* Toggle Floating Room Tags */}
-        {viewMode !== 'walkthrough' && (
+        {/* {viewMode !== 'walkthrough' && (
           <button
             type="button"
             onClick={onToggleCallouts}
@@ -273,7 +235,7 @@ export default function ViewerOverlay({
             <Tag size={13} />
             <span>Tags</span>
           </button>
-        )}
+        )} */}
 
         {/* Mouse Look Direction Toggle Button for Walkthrough */}
         {viewMode === 'walkthrough' && (
@@ -327,14 +289,14 @@ export default function ViewerOverlay({
             }}
           >
             <Info size={14} />
-            <span>{rooms.length}</span>
+            {/* <span>{rooms.length}</span>
             <span>Rooms</span>
             <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
             <span>{doors.length} Doors</span>
             <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
             <span>{windows.length} Windows</span>
             <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
-            <span style={{ textTransform: 'capitalize', color: '#fbbf24' }}>{design?.style || 'Modern'}</span>
+            <span style={{ textTransform: 'capitalize', color: '#fbbf24' }}>{design?.style || 'Modern'}</span> */}
           </button>
 
           {/* Floating Details Popover Card */}

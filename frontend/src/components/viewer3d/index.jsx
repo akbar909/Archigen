@@ -2,21 +2,12 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { Environment, Html, OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { Sparkles } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
 
 import { useProjectStore } from '../../store'
-import RoomVolume from './RoomVolume'
-import {
-  LandscapeGround,
-  ArchitecturalPodium,
-  PatioDeck,
-  SwimmingPool,
-} from './EnvironmentElements'
 import {
   CharacterAvatar,
   CameraController,
-  OpeningMarker,
-  RoomCalloutTag,
 } from './CharacterAvatar'
 import { BlenderErrorBoundary, BlenderHouseModel, BlenderLoadingFallback } from './BlenderModel'
 import ViewerOverlay from './ViewerOverlay'
@@ -26,12 +17,11 @@ export default function Viewer3D({ design }) {
   const { regenerate3D, isGenerating3D, activeProjectId, activeVersionId } = useProjectStore()
 
   const glbUrl = design?.glb_url || design?.model_url || null
-  // Default to interactive procedural CAD view for guaranteed instant rendering
-  const [viewSource, setViewSource] = useState('procedural')
+  // Exclusively use Cloud Blender 3D photorealistic model
+  const [viewSource, setViewSource] = useState('blender')
 
   const handleBlenderError = (err) => {
-    console.warn('[Viewer3D] Switching viewSource to procedural due to model load error:', err)
-    setViewSource('procedural')
+    console.warn('[Viewer3D] Model load error:', err)
   }
 
   const [viewMode, setViewMode] = useState('dollhouse')
@@ -50,21 +40,103 @@ export default function Viewer3D({ design }) {
   const doors = useMemo(() => (Array.isArray(design?.doors) ? design.doors : []), [design?.doors])
   const windows = useMemo(() => (Array.isArray(design?.windows) ? design.windows : []), [design?.windows])
 
+  // Real 3D detected room floor slabs from loaded GLB
+  const [detectedRooms, setDetectedRooms] = useState([])
+
+  // Helper to get true 3D room position and bounds (from real GLB meshes if available)
+  const getRoom3DPosition = (room) => {
+    if (!room) return { x: 0, y: 0.1, z: 0, w: 8, l: 8 }
+    // 1. Match by room id
+    let match = detectedRooms.find((d) => d.meshId === room.id || d.name === `floor_${room.id}`)
+    // 2. Match by clean type name
+    if (!match && room.type) {
+      const cleanType = String(room.type).toLowerCase().replace(/[\s_]+/g, '')
+      match = detectedRooms.find((d) => d.name.toLowerCase().replace(/[\s_]+/g, '').includes(cleanType))
+    }
+    // 3. Match by index in rooms array
+    if (!match) {
+      const roomIdx = rooms.findIndex((r) => r.id === room.id || r.type === room.type)
+      if (roomIdx >= 0 && roomIdx < detectedRooms.length) {
+        match = detectedRooms[roomIdx]
+      }
+    }
+    // 4. Match by horizontal X alignment
+    if (!match && room.position) {
+      const rx = Number(room.position.x) || 0
+      match = detectedRooms.find((d) => Math.abs(d.center.x - rx) < 1.0)
+    }
+
+    if (match) {
+      return {
+        x: match.center.x,
+        y: match.center.y,
+        z: match.center.z,
+        w: match.size.x,
+        l: match.size.z,
+      }
+    }
+
+    return {
+      x: Number(room.position?.x) || 0,
+      y: Number(room.position?.y) || 0,
+      z: Number(room.position?.z) || 0,
+      w: Number(room.width) || 8,
+      l: Number(room.length) || 8,
+    }
+  }
+
+  // Collect all doors across design (top-level + per-room) for doorway passage detection
+  const allDoors = useMemo(() => {
+    const list = [...doors]
+    rooms.forEach((r) => {
+      if (Array.isArray(r.doors)) {
+        r.doors.forEach((d) => {
+          const pos = getRoom3DPosition(r)
+          const rx = pos.x
+          const rz = pos.z
+          const dpos = d.position || {}
+          const dx = Number(dpos.x !== undefined ? dpos.x : (dpos[0] || 0))
+          const dz = Number(dpos.z !== undefined ? dpos.z : (dpos[1] || 0))
+          list.push({
+            ...d,
+            worldX: rx + dx,
+            worldZ: rz + dz,
+            width: Number(d.dimensions?.w || d.width || 1.0),
+          })
+        })
+      }
+    })
+    return list
+  }, [doors, rooms, detectedRooms])
+
   // House bounding box for initial & overview framing
   const houseBounds = useMemo(() => {
-    if (rooms.length === 0) return { cx: 0, cz: 0, w: 24, l: 24, maxDim: 22, maxZ: 6 }
+    if (rooms.length === 0 && detectedRooms.length === 0) {
+      return { cx: 0, cz: 0, w: 24, l: 24, maxDim: 22, maxZ: 6 }
+    }
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
 
-    rooms.forEach((r) => {
-      const rx = Number(r.position?.x) || 0
-      const rz = Number(r.position?.z) || 0
-      const rw = (Number(r.width) || 8) / 2
-      const rl = (Number(r.length) || 8) / 2
-      minX = Math.min(minX, rx - rw)
-      maxX = Math.max(maxX, rx + rw)
-      minZ = Math.min(minZ, rz - rl)
-      maxZ = Math.max(maxZ, rz + rl)
-    })
+    if (detectedRooms.length > 0) {
+      detectedRooms.forEach((d) => {
+        const hw = d.size.x / 2
+        const hl = d.size.z / 2
+        minX = Math.min(minX, d.center.x - hw)
+        maxX = Math.max(maxX, d.center.x + hw)
+        minZ = Math.min(minZ, d.center.z - hl)
+        maxZ = Math.max(maxZ, d.center.z + hl)
+      })
+    } else {
+      rooms.forEach((r) => {
+        const rx = Number(r.position?.x) || 0
+        const rz = Number(r.position?.z) || 0
+        const rw = (Number(r.width) || 8) / 2
+        const rl = (Number(r.length) || 8) / 2
+        minX = Math.min(minX, rx - rw)
+        maxX = Math.max(maxX, rx + rw)
+        minZ = Math.min(minZ, rz - rl)
+        maxZ = Math.max(maxZ, rz + rl)
+      })
+    }
 
     const w = maxX - minX
     const l = maxZ - minZ
@@ -72,7 +144,7 @@ export default function Viewer3D({ design }) {
     const cz = (minZ + maxZ) / 2
     const maxDim = Math.max(w, l + 12, 24)
     return { cx, cz, w, l, maxDim, minX, maxX, minZ, maxZ }
-  }, [rooms])
+  }, [rooms, detectedRooms])
 
   // Find active room bounds
   const currentRoom = useMemo(() => {
@@ -232,15 +304,29 @@ export default function Viewer3D({ design }) {
             const nextCamX = curCamX + move.x
             const nextCamZ = curCamZ + move.z
 
-            const targetRoom = rooms.find((r) => {
-              const rx = Number(r.position?.x) || 0
-              const rz = Number(r.position?.z) || 0
-              const rw = (Number(r.width) || 8) / 2 - 0.35
-              const rl = (Number(r.length) || 8) / 2 - 0.35
-              return nextCamX >= rx - rw && nextCamX <= rx + rw && nextCamZ >= rz - rl && nextCamZ <= rz + rl
-            })
+            // Collision check: inside room with 0.15m clearance OR passing through doorway threshold
+            const isWalkable = (nx, nz, pad = 0.15) => {
+              const inRoom = (rooms.length > 0 ? rooms : detectedRooms).some((r) => {
+                const pos = getRoom3DPosition(r)
+                const rx = pos.x
+                const rz = pos.z
+                const rw = pos.w / 2 - pad
+                const rl = pos.l / 2 - pad
+                return nx >= rx - rw && nx <= rx + rw && nz >= rz - rl && nz <= rz + rl
+              })
+              if (inRoom) return true
 
-            if (targetRoom || rooms.length === 0) {
+              const nearDoor = allDoors.some((d) => {
+                const dx = d.worldX !== undefined ? d.worldX : (Number(d.position?.x) || 0)
+                const dz = d.worldZ !== undefined ? d.worldZ : (Number(d.position?.z) || 0)
+                const dw = Math.max(Number(d.width) || 1.0, 0.9)
+                const dist = Math.hypot(nx - dx, nz - dz)
+                return dist <= dw * 0.8 + 0.35
+              })
+              return nearDoor || rooms.length === 0
+            }
+
+            if (isWalkable(nextCamX, nextCamZ, 0.15)) {
               cam.position.add(move)
               controlsRef.current.target.add(move)
               targetCamPos.current.copy(cam.position)
@@ -265,15 +351,24 @@ export default function Viewer3D({ design }) {
               const nextX = prev.x + moveX
               const nextZ = prev.z + moveZ
 
-              const targetRoom = rooms.find((r) => {
-                const rx = Number(r.position?.x) || 0
-                const rz = Number(r.position?.z) || 0
-                const rw = (Number(r.width) || 8) / 2 - 0.45
-                const rl = (Number(r.length) || 8) / 2 - 0.45
+              // Check walkable bounds with 0.15m padding or doorway corridor
+              const inRoom = (rooms.length > 0 ? rooms : detectedRooms).some((r) => {
+                const pos = getRoom3DPosition(r)
+                const rx = pos.x
+                const rz = pos.z
+                const rw = pos.w / 2 - 0.15
+                const rl = pos.l / 2 - 0.15
                 return nextX >= rx - rw && nextX <= rx + rw && nextZ >= rz - rl && nextZ <= rz + rl
               })
+              const nearDoor = allDoors.some((d) => {
+                const dx = d.worldX !== undefined ? d.worldX : (Number(d.position?.x) || 0)
+                const dz = d.worldZ !== undefined ? d.worldZ : (Number(d.position?.z) || 0)
+                const dw = Math.max(Number(d.width) || 1.0, 0.9)
+                const dist = Math.hypot(nextX - dx, nextZ - dz)
+                return dist <= dw * 0.8 + 0.35
+              })
 
-              if (targetRoom || rooms.length === 0) {
+              if (inRoom || nearDoor || rooms.length === 0) {
                 targetPos.current.set(nextX, 1.0, nextZ)
                 return { x: nextX, y: 0.1, z: nextZ }
               }
@@ -290,14 +385,15 @@ export default function Viewer3D({ design }) {
 
     animId = requestAnimationFrame(update)
     return () => cancelAnimationFrame(animId)
-  }, [rooms, viewMode, currentRoom])
+  }, [rooms, allDoors, viewMode, currentRoom, detectedRooms])
 
-  // Select room camera jump
+  // Select room camera jump (jumps directly into the true 3D room center)
   const handleSelectRoom = (room) => {
     setSelectedRoomId(room.id)
-    const rx = Number(room.position?.x) || 0
-    const ry = Number(room.position?.y) || 0
-    const rz = Number(room.position?.z) || 0
+    const pos = getRoom3DPosition(room)
+    const rx = pos.x
+    const ry = pos.y
+    const rz = pos.z
     setCharPos({ x: rx, y: ry + 0.1, z: rz })
 
     if (viewMode === 'walkthrough') {
@@ -344,9 +440,10 @@ export default function Viewer3D({ design }) {
       yawRef.current = 0
       pitchRef.current = 0
       const cur = currentRoom || rooms[0]
-      const rx = Number(cur?.position?.x) || charPos.x
-      const ry = Number(cur?.position?.y) || 0
-      const rz = Number(cur?.position?.z) || charPos.z
+      const pos = getRoom3DPosition(cur)
+      const rx = pos.x
+      const ry = pos.y
+      const rz = pos.z
       setCharPos({ x: rx, y: ry + 0.1, z: rz })
 
       targetCamPos.current.set(rx, ry + 1.65, rz + 0.2)
@@ -400,7 +497,12 @@ export default function Viewer3D({ design }) {
         shadows
         dpr={[1, 1.75]}
         camera={{ position: [22, 22, 28], fov: 44, near: 0.1, far: 350 }}
-        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+        gl={{
+          antialias: true,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.1,
+          outputColorSpace: THREE.SRGBColorSpace,
+        }}
       >
         <color attach="background" args={[isNightMode ? '#060911' : '#0a0e17']} />
 
@@ -426,75 +528,119 @@ export default function Viewer3D({ design }) {
           shadow-normalBias={0.03}
         />
 
-        {/* ── Architectural Landscape Grounds (Villa staging for multi-room homes in 3D views) ── */}
-        {viewMode !== 'plan' && (
-          <>
-            <ArchitecturalPodium bounds={houseBounds} />
-            {rooms.length > 1 && (
-              <>
-                <LandscapeGround bounds={houseBounds} />
-                <PatioDeck
-                  position={[0, 0.0, (houseBounds.maxZ || 4.0) + 2.5]}
-                  width={Math.max(houseBounds.w || 14, 15)}
-                  length={4.5}
-                />
-                <SwimmingPool
-                  position={[2.5, -0.15, (houseBounds.maxZ || 4.0) + 7.8]}
-                  width={10.5}
-                  length={4.8}
-                  depth={1.5}
-                  isNightMode={isNightMode}
-                />
-              </>
-            )}
-          </>
-        )}
-
-        {/* ── Architectural House Model: Blender GLB or Procedural CAD ── */}
-        {viewSource === 'blender' && glbUrl ? (
-          <BlenderErrorBoundary key={glbUrl} onError={handleBlenderError}>
-            <Suspense fallback={<BlenderLoadingFallback onFallbackToCad={() => setViewSource('procedural')} />}>
-              <BlenderHouseModel url={glbUrl} />
+        {/* ── Photorealistic Architectural House Model: Cloud Blender GLB ── */}
+        {glbUrl ? (
+          <BlenderErrorBoundary
+            key={glbUrl}
+            onError={handleBlenderError}
+            onRetry={() => regenerate3D(activeProjectId, activeVersionId)}
+          >
+            <Suspense fallback={<BlenderLoadingFallback />}>
+              <BlenderHouseModel url={glbUrl} onRoomsDetected={setDetectedRooms} />
             </Suspense>
           </BlenderErrorBoundary>
         ) : (
-          <>
-            {/* Contiguous Architectural Rooms */}
-            {rooms.map((room, idx) => {
-              const topLevelFurniture = Array.isArray(design?.furniture)
-                ? design.furniture.filter((f) => f.roomId === room.id)
-                : []
-              const roomFurniture = topLevelFurniture.length > 0 ? topLevelFurniture : room.furniture
-
-              return (
-                <RoomVolume
-                  key={room.id || `room-${idx}`}
-                  room={room}
-                  furniture={roomFurniture}
-                  viewMode={viewMode}
-                  isSelected={selectedRoomId === room.id}
-                  isNightMode={isNightMode}
-                />
-              )
-            })}
-
-            {/* Floating Architectural Callout Pins */}
-            {showCallouts && viewMode !== 'walkthrough' && rooms.map((room) => (
-              <RoomCalloutTag
-                key={`tag-${room.id || room.type}`}
-                room={room}
-                isSelected={selectedRoomId === room.id}
-                onClick={() => handleSelectRoom(room)}
-              />
-            ))}
-
-            {doors.map((door, idx) => (
-              <OpeningMarker key={door.id || `door-${idx}`} item={door} kind="door" />
-            ))}
-            {windows.map((win, idx) => (
-              <OpeningMarker key={win.id || `win-${idx}`} item={win} kind="window" />
-            ))}
-          </>
+          <Html center>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center',
+                padding: '28px 32px',
+                background: 'rgba(15, 23, 42, 0.95)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                borderRadius: 20,
+                boxShadow: '0 25px 60px rgba(0,0,0,0.7)',
+                backdropFilter: 'blur(28px)',
+                width: 350,
+                color: 'white',
+                pointerEvents: 'auto',
+              }}
+            >
+              {isGenerating3D ? (
+                <>
+                  <div
+                    style={{
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 64,
+                      height: 64,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: '50%',
+                        border: '2px dashed rgba(56, 189, 248, 0.5)',
+                        animation: 'spin 6s linear infinite',
+                      }}
+                    />
+                    <Loader2 size={32} color="#38bdf8" style={{ animation: 'spin 1.2s linear infinite' }} />
+                  </div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 8, color: '#f8fafc' }}>
+                    Synthesizing 3D Model…
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.5, marginBottom: 16 }}>
+                    Cloud Blender is constructing walls, applying PBR textures, and placing 3D furniture.
+                  </div>
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 12px',
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      borderRadius: 999,
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      fontSize: '0.75rem',
+                      color: '#38bdf8',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', animation: 'pulse 1.5s infinite' }} />
+                    EC2 Headless Blender Worker
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏛️</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 8 }}>
+                    3D Model Ready to Synthesize
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.72)', lineHeight: 1.5, marginBottom: 18 }}>
+                    Architectural layout generated. Click below to synthesize the high-resolution 3D GLB model in Blender.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => regenerate3D(activeProjectId, activeVersionId)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '11px 22px',
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                      border: '1px solid rgba(56, 189, 248, 0.5)',
+                      borderRadius: 10,
+                      color: '#ffffff',
+                      fontSize: '0.88rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 16px rgba(2, 132, 199, 0.5)',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <Sparkles size={16} />
+                    <span>Generate Blender 3D</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </Html>
         )}
 
         {/* Walkthrough Avatar (Hidden in first-person walkthrough to avoid blocking camera) */}

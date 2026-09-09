@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store'
 
 export default function AuthPage() {
@@ -10,13 +10,16 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false)
 
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectParam = searchParams.get('redirect')
+  const redirectTarget = redirectParam ? decodeURIComponent(redirectParam) : '/app'
   const { isAuthed, login, register } = useAuthStore()
 
   useEffect(() => {
     if (isAuthed) {
-      navigate('/app', { replace: true })
+      navigate(redirectTarget, { replace: true })
     }
-  }, [isAuthed, navigate])
+  }, [isAuthed, navigate, redirectTarget])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -28,7 +31,8 @@ export default function AuthPage() {
 
       const result = isRegister ? await register(payload) : await login(payload)
       if (result.success) {
-        navigate('/app')
+        const target = isRegister ? '/app' : redirectTarget
+        navigate(target, { replace: true })
       }
     } finally {
       setLoading(false)

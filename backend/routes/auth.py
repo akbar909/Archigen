@@ -1,3 +1,4 @@
+import datetime as dt
 from flask import Blueprint, jsonify, request
 from utils.db import users_collection
 from utils.auth import hash_password, verify_password, generate_token
@@ -9,6 +10,7 @@ def register():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
     password = data.get("password")
+    name = (data.get("name") or "").strip()
 
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password are required"}), 400
@@ -19,15 +21,26 @@ def register():
         return jsonify({"success": False, "error": "User already exists with this email"}), 409
 
     hashed_pw = hash_password(password)
+    now = dt.datetime.utcnow()
     
     user_doc = {
+        "name": name,
         "email": email,
-        "password_hash": hashed_pw
+        "password_hash": hashed_pw,
+        "created_at": now
     }
     result = users_collection().insert_one(user_doc)
     
-    token = generate_token(result.inserted_id, email)
-    return jsonify({"success": True, "token": token}), 201
+    token = generate_token(result.inserted_id, email, name=name)
+    return jsonify({
+        "success": True,
+        "token": token,
+        "user": {
+            "id": str(result.inserted_id),
+            "email": email,
+            "name": name
+        }
+    }), 201
 
 @auth_bp.post("/auth/login")
 def login():
@@ -47,5 +60,14 @@ def login():
     if not verify_password(password, user["password_hash"]):
         return jsonify({"success": False, "error": "Invalid credentials"}), 401
 
-    token = generate_token(user["_id"], email)
-    return jsonify({"success": True, "token": token}), 200
+    name = user.get("name", "")
+    token = generate_token(user["_id"], email, name=name)
+    return jsonify({
+        "success": True,
+        "token": token,
+        "user": {
+            "id": str(user["_id"]),
+            "email": email,
+            "name": name
+        }
+    }), 200

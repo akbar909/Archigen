@@ -146,6 +146,9 @@ DESIGN DECISIONS, not constructing 3D geometry.
 4. DOORS & WINDOWS:
    - Doors connect adjacent rooms or lead to exterior.
    - Windows go on exterior walls only.
+   - For all doors and windows, the "wall" field is REQUIRED: use "front" | "back" | "left" | "right".
+     * "front" / "back" walls run along the X-axis (width of house).
+     * "left" / "right" walls run along the Z-axis (depth of house).
    - Each room should have at least one door.
 
 5. MULTI-FLOOR:
@@ -216,7 +219,33 @@ HOME_DESIGN_SCHEMA: dict[str, Any] = {
                 },
             },
         },
-        "doors": {"type": "array"},
-        "windows": {"type": "array"},
+        "doors": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "roomId": {"type": "string"},
+                    "wall": {"type": "string", "enum": ["front", "back", "left", "right"]},
+                    "position": {"type": "object"},
+                    "width": {"type": "number"},
+                    "height": {"type": "number"},
+                },
+            },
+        },
+        "windows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "roomId": {"type": "string"},
+                    "wall": {"type": "string", "enum": ["front", "back", "left", "right"]},
+                    "position": {"type": "object"},
+                    "width": {"type": "number"},
+                    "height": {"type": "number"},
+                },
+            },
+        },
     },
 }

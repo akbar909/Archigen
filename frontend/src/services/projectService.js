@@ -5,6 +5,11 @@ export async function fetchProjects() {
   return data // { projects: [...] }
 }
 
+export async function fetchProject(projectId) {
+  const { data } = await apiClient.get(`/projects/${projectId}`)
+  return data // { project, versions }
+}
+
 export async function createProject(payload) {
   // payload: { name, style }
   const { data } = await apiClient.post('/projects', payload)

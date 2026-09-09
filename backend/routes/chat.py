@@ -5,6 +5,7 @@ import threading
 
 # pyrefly: ignore [missing-import]
 from bson import ObjectId
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 
 from utils.db import designs_collection, projects_collection, versions_collection
@@ -101,6 +102,12 @@ def create_project():
     """Create a new empty project."""
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "Untitled Project").strip()
+    if not name:
+        name = "Untitled Project"
+    if len(name) < 2:
+        return jsonify({"error": "Project name must be at least 2 characters"}), 400
+    if len(name) > 30:
+        return jsonify({"error": "Project name cannot exceed 30 characters"}), 400
 
     now = dt.datetime.utcnow()
     doc = {
@@ -116,7 +123,34 @@ def create_project():
     return jsonify({"success": True, "project": _serialize_project(doc)}), 201
 
 
-@chat_bp.patch("/projects/<project_id>")
+@chat_bp.get("/projects/<project_id>")
+@require_auth
+def get_project(project_id: str):
+    """Return a single project and its versions list."""
+    try:
+        obj_id = ObjectId(project_id)
+    except Exception:
+        return jsonify({"error": "Invalid project id"}), 400
+
+    doc = projects_collection().find_one(
+        {"_id": obj_id, "user_id": request.user["_id"]}
+    )
+    if not doc:
+        return jsonify({"error": "Project not found"}), 404
+
+    cursor = versions_collection().find(
+        {"project_id": obj_id, "user_id": request.user["_id"]},
+        projection={"design": 0}
+    ).sort("version_num", -1)
+    versions = [_serialize_version(v) for v in cursor]
+
+    return jsonify({
+        "project": _serialize_project(doc),
+        "versions": versions
+    })
+
+
+@chat_bp.route("/projects/<project_id>", methods=["PATCH", "PUT"])
 @require_auth
 def rename_project(project_id: str):
     """Rename a project."""
@@ -127,8 +161,10 @@ def rename_project(project_id: str):
 
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
+    if not name or len(name) < 2:
+        return jsonify({"error": "Project name must be at least 2 characters"}), 400
+    if len(name) > 30:
+        return jsonify({"error": "Project name cannot exceed 30 characters"}), 400
 
     projects_collection().update_one(
         {"_id": obj_id, "user_id": request.user["_id"]},
@@ -355,8 +391,8 @@ def generate_design_legacy():
 
     now = dt.datetime.utcnow()
 
-    # Auto-create a project from the prompt title
-    project_name = (prompt[:48] + "…") if len(prompt) > 48 else prompt
+    # Auto-create a project from the prompt title (max 30 characters to match project name limit)
+    project_name = (prompt[:27] + "…") if len(prompt) > 27 else prompt
     proj_doc = {
         "user_id":       request.user["_id"],
         "name":          project_name,

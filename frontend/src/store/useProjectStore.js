@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast'
 import {
   createProject as apiCreateProject,
   deleteProject as apiDeleteProject,
+  fetchProject as apiFetchProject,
   fetchProjects as apiFetchProjects,
   fetchVersion as apiFetchVersion,
   fetchVersions as apiFetchVersions,
@@ -60,6 +61,15 @@ export const useProjectStore = create((set, get) => ({
   },
 
   selectVersion: async (projectId, versionId) => {
+    if (get().projectAction?.type === 'deleting') {
+      return null
+    }
+
+    // If version is already loaded with design, skip refetching
+    if (get().activeProjectId === projectId && get().activeVersionId === versionId && get().design) {
+      return get().design
+    }
+
     set({
       activeProjectId: projectId,
       activeVersionId: versionId,
@@ -68,16 +78,78 @@ export const useProjectStore = create((set, get) => ({
     })
     try {
       const data = await apiFetchVersion(versionId)
-      set({ design: data.version.design })
+      const ver = data.version
+      const designData = ver?.design
+        ? { ...ver.design, glb_url: ver.glb_url || ver.design.glb_url }
+        : null
+      set({ design: designData })
+
+      // If version has no 3D glb model, poll briefly in case it is finishing in background
+      if (designData && !designData.glb_url) {
+        get().pollForGlbModel(versionId, 10, 3000)
+      }
+      return data.version
     } catch (err) {
-      toast.error(getApiErrorMessage(err, 'Failed to load design version'))
+      set({ activeVersionId: null, design: null })
+      if (get().projectAction?.type !== 'deleting') {
+        if (err?.response?.status === 404) {
+          toast.error('Design version not found')
+        } else {
+          toast.error(getApiErrorMessage(err, 'Failed to load design version'))
+        }
+      }
+      return null
+    }
+  },
+
+  selectProject: async (projectId) => {
+    set({ activeProjectId: projectId, activeTab: 'viewer' })
+    const { projects, selectVersion } = get()
+    let project = projects.find((p) => p.id === projectId)
+
+    if (!project) {
+      try {
+        const pData = await apiFetchProject(projectId)
+        if (pData?.project) {
+          project = { ...pData.project, versions: pData.versions || [] }
+          set((state) => ({
+            projects: state.projects.some((p) => p.id === projectId)
+              ? state.projects
+              : [project, ...state.projects],
+          }))
+        }
+      } catch {
+        // Handled below
+      }
+    }
+
+    const latestVersion = project?.versions?.[0] || null
+    if (latestVersion?.id) {
+      await selectVersion(projectId, latestVersion.id)
+      return { project, version: latestVersion }
+    } else {
+      set({ activeVersionId: null, design: null })
+      return { project, version: null }
     }
   },
 
   createProject: async (projectName) => {
     const { projects, loadProjectsList } = get()
-    const name = projectName || window.prompt('Enter Project Name', `New Project ${projects.length + 1}`)
-    if (!name) return false
+    const defaultName = `New Project ${projects.length + 1}`
+    const raw = projectName !== undefined && projectName !== null
+      ? projectName
+      : window.prompt('Enter Project Name (2 - 30 characters)', defaultName)
+    if (raw === null) return null
+    const name = (raw || '').trim()
+
+    if (!name || name.length < 2) {
+      toast.error('Project name must be at least 2 characters')
+      return null
+    }
+    if (name.length > 30) {
+      toast.error('Project name cannot exceed 30 characters')
+      return null
+    }
 
     set({ loading: true })
     try {
@@ -92,14 +164,14 @@ export const useProjectStore = create((set, get) => ({
         })
         toast.success('New project created. Describe your space to generate Version 1!')
         await loadProjectsList({ showLoader: false })
-        return true
+        return data.project
       }
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to create project'))
     } finally {
       set({ loading: false, sidebarOpen: false })
     }
-    return false
+    return null
   },
 
   createNewVersion: async (projectId) => {
@@ -129,9 +201,19 @@ export const useProjectStore = create((set, get) => ({
   },
 
   renameProject: async (projectId, newName) => {
+    const trimmed = (newName || '').trim()
+    if (!trimmed || trimmed.length < 2) {
+      toast.error('Project name must be at least 2 characters')
+      return
+    }
+    if (trimmed.length > 30) {
+      toast.error('Project name cannot exceed 30 characters')
+      return
+    }
+
     set({ projectAction: { type: 'renaming', projectId } })
     try {
-      await apiRenameProject(projectId, newName)
+      await apiRenameProject(projectId, trimmed)
       await get().loadProjectsList({ showLoader: false })
       toast.success('Project renamed')
     } catch (err) {
@@ -143,13 +225,14 @@ export const useProjectStore = create((set, get) => ({
 
   deleteProject: async (projectId) => {
     if (!window.confirm('Are you sure? This will delete all versions of this project.')) {
-      return
+      return { success: false, cancelled: true }
     }
 
     set({ projectAction: { type: 'deleting', projectId } })
     try {
       await apiDeleteProject(projectId)
-      if (get().activeProjectId === projectId) {
+      const wasActive = get().activeProjectId === projectId
+      if (wasActive) {
         set({
           design: null,
           activeProjectId: null,
@@ -158,8 +241,10 @@ export const useProjectStore = create((set, get) => ({
       }
       await get().loadProjectsList({ showLoader: false })
       toast.success('Project deleted')
+      return { success: true, wasActive }
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to delete project'))
+      return { success: false }
     } finally {
       set({ projectAction: { type: null, projectId: null } })
     }
@@ -171,21 +256,33 @@ export const useProjectStore = create((set, get) => ({
 
     try {
       let data
+      let resultProjectId = activeProjectId
+      let resultVersionId = null
+
       if (activeProjectId) {
         data = await apiGenerateVersion(activeProjectId, {
           prompt,
           style,
           base_version_id: activeVersionId || undefined,
         })
+        resultVersionId = data.version.id
+        const designData = data.version.design
+          ? { ...data.version.design, glb_url: data.version.glb_url || data.version.design.glb_url }
+          : null
         set({
-          design: data.version.design,
+          design: designData,
           activeVersionId: data.version.id,
         })
         toast.success(`Version ${data.version.version_num} generated! ✨`)
       } else {
         data = await apiGenerateDesign({ prompt, style })
+        resultProjectId = data.project_id
+        resultVersionId = data.design_id
+        const designData = data.design
+          ? { ...data.design, glb_url: data.glb_url || data.design.glb_url }
+          : null
         set({
-          design: data.design,
+          design: designData,
           activeProjectId: data.project_id,
           activeVersionId: data.design_id,
         })
@@ -193,11 +290,55 @@ export const useProjectStore = create((set, get) => ({
       }
 
       await loadProjectsList({ showLoader: false })
+
+      // Automatically poll for Cloud Blender 3D synthesis
+      if (resultVersionId) {
+        get().pollForGlbModel(resultVersionId)
+      }
+
+      return { projectId: resultProjectId, versionId: resultVersionId }
     } catch (err) {
       toast.error(getGenerationErrorMessage(err))
+      return null
     } finally {
       set({ loading: false })
     }
+  },
+
+  pollForGlbModel: async (versionId, maxAttempts = 40, intervalMs = 2500) => {
+    if (!versionId) return null
+    set({ isGenerating3D: true })
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+
+      // If user switched away from this version while polling, stop
+      if (get().activeVersionId !== versionId) {
+        set({ isGenerating3D: false })
+        return null
+      }
+
+      try {
+        const data = await apiFetchVersion(versionId)
+        const glbUrl = data?.version?.glb_url || data?.version?.design?.glb_url
+        if (glbUrl) {
+          set((state) => ({
+            design: state.design
+              ? { ...state.design, glb_url: glbUrl }
+              : (data.version.design ? { ...data.version.design, glb_url: glbUrl } : null),
+            isGenerating3D: false,
+          }))
+          toast.success('Cloud Blender 3D Model ready! 🏡✨')
+          await get().loadProjectsList({ showLoader: false })
+          return glbUrl
+        }
+      } catch {
+        // Silently continue polling
+      }
+    }
+
+    set({ isGenerating3D: false })
+    return null
   },
 
   regenerate3D: async (projectId, versionId) => {

@@ -188,10 +188,10 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
             living_rooms.append(r)
         elif any(k in rtype for k in ["kitchen", "dining", "pantry"]):
             kitchens.append(r)
-        elif any(k in rtype for k in ["bed", "guest", "master"]):
-            bedrooms.append(r)
         elif any(k in rtype for k in ["bath", "wash", "toilet", "powder", "restroom"]):
             bathrooms.append(r)
+        elif any(k in rtype for k in ["bed", "guest", "master"]):
+            bedrooms.append(r)
         else:
             other_rooms.append(r)
 
@@ -242,7 +242,7 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
         }
         ground_bath["floor"] = 0
 
-    # 4. Upper Floor Rooms (Two-Story House Layout)
+    # 4. Master Bedroom Suite: Placed contiguous flush behind Living Room (-Z)
     upper_rooms = []
     if len(bedrooms) > 1:
         master_bed = bedrooms[1]
@@ -250,9 +250,12 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
         ml = float(master_bed.get("length") or 7.0)
         master_bed["width"] = mw
         master_bed["length"] = ml
-        master_bed["position"] = {"x": 0.0, "y": 3.2, "z": -0.5}
-        master_bed["floor"] = 1
-        upper_rooms.append(master_bed)
+        master_bed["position"] = {
+            "x": 0.0,
+            "y": 0.0,
+            "z": round(-(ll / 2.0 + ml / 2.0), 2),
+        }
+        master_bed["floor"] = 0
 
         if len(bathrooms) > 1:
             master_bath = bathrooms[1]
@@ -262,13 +265,12 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
             master_bath["length"] = mbl
             master_bath["position"] = {
                 "x": round(mw / 2.0 + mbw / 2.0, 2),
-                "y": 3.2,
-                "z": -0.5,
+                "y": 0.0,
+                "z": master_bed["position"]["z"],
             }
-            master_bath["floor"] = 1
-            upper_rooms.append(master_bath)
+            master_bath["floor"] = 0
 
-    # 5. Third Bedroom (if present)
+    # 5. Third Bedroom (if present, placed contiguous on rear wing next to Master Bedroom)
     if len(bedrooms) > 2:
         bed3 = bedrooms[2]
         b3w = float(bed3.get("width") or 6.5)
@@ -276,9 +278,12 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
         bed3["width"] = b3w
         bed3["length"] = b3l
         mw = float(bedrooms[1].get("width") or 8.0)
-        bed3["position"] = {"x": round(-(mw / 2.0 + b3w / 2.0), 2), "y": 3.2, "z": -0.5}
-        bed3["floor"] = 1
-        upper_rooms.append(bed3)
+        bed3["position"] = {
+            "x": round(-(mw / 2.0 + b3w / 2.0), 2),
+            "y": 0.0,
+            "z": round(-(ll / 2.0 + b3l / 2.0), 2),
+        }
+        bed3["floor"] = 0
 
         if len(bathrooms) > 2:
             bath3 = bathrooms[2]
@@ -288,11 +293,10 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
             bath3["length"] = b3bl
             bath3["position"] = {
                 "x": bed3["position"]["x"],
-                "y": 3.2,
-                "z": round(-0.5 - (b3l / 2.0 + b3bl / 2.0), 2),
+                "y": 0.0,
+                "z": round(bed3["position"]["z"] - (b3l / 2.0 + b3bl / 2.0), 2),
             }
-            bath3["floor"] = 1
-            upper_rooms.append(bath3)
+            bath3["floor"] = 0
 
     # Handle any remaining other rooms (e.g. Office, Dining)
     for idx, o in enumerate(other_rooms):
@@ -342,6 +346,123 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
                     "color": "#7c5335",
                 })
 
+    # Generate clean, accurate doors and windows placed on snapped room wall boundaries
+    snapped_doors = []
+    snapped_windows = []
+
+    # 1. Main entrance door on Living Room front wall
+    snapped_doors.append({
+        "id": "door_main_entrance",
+        "roomId": living.get("id", "living_01"),
+        "wall": "front",
+        "position": {"x": round(living["position"]["x"], 2), "y": 1.05, "z": round(living["position"]["z"] - ll / 2.0, 2)},
+        "width": 1.0,
+        "height": 2.1,
+    })
+
+    # 2. Living -> Kitchen connecting passage
+    if kitchens:
+        snapped_doors.append({
+            "id": "door_living_kitchen",
+            "roomId": living.get("id", "living_01"),
+            "wall": "right",
+            "position": {"x": round(lw / 2.0, 2), "y": 1.05, "z": 0.0},
+            "width": 1.2,
+            "height": 2.1,
+        })
+        k_pos = kitchens[0]["position"]
+        k_w = float(kitchens[0]["width"])
+        snapped_windows.append({
+            "id": "window_kitchen_ext",
+            "roomId": kitchens[0].get("id", "kitchen_01"),
+            "wall": "right",
+            "position": {"x": round(k_pos["x"] + k_w / 2.0, 2), "y": 1.5, "z": round(k_pos["z"], 2)},
+            "width": 1.8,
+            "height": 1.4,
+        })
+
+    # 3. Living -> Ground Bedroom connecting door & bedroom window
+    if ground_bed:
+        snapped_doors.append({
+            "id": "door_living_bedroom",
+            "roomId": living.get("id", "living_01"),
+            "wall": "left",
+            "position": {"x": round(-lw / 2.0, 2), "y": 1.05, "z": 0.0},
+            "width": 0.9,
+            "height": 2.1,
+        })
+        gb_pos = ground_bed["position"]
+        gb_w = float(ground_bed["width"])
+        snapped_windows.append({
+            "id": "window_bedroom_left",
+            "roomId": ground_bed.get("id", "bedroom_01"),
+            "wall": "left",
+            "position": {"x": round(gb_pos["x"] - gb_w / 2.0, 2), "y": 1.5, "z": round(gb_pos["z"], 2)},
+            "width": 2.0,
+            "height": 1.5,
+        })
+        if bathrooms:
+            snapped_doors.append({
+                "id": "door_bed_bath_01",
+                "roomId": ground_bed.get("id", "bedroom_01"),
+                "wall": "back",
+                "position": {"x": round(gb_pos["x"], 2), "y": 1.05, "z": round(gb_pos["z"] - float(ground_bed["length"]) / 2.0, 2)},
+                "width": 0.85,
+                "height": 2.1,
+            })
+
+    # 4. Panoramic living room front windows
+    snapped_windows.append({
+        "id": "window_living_front_01",
+        "roomId": living.get("id", "living_01"),
+        "wall": "front",
+        "position": {"x": round(living["position"]["x"] + lw / 3.2, 2), "y": 1.5, "z": round(living["position"]["z"] - ll / 2.0, 2)},
+        "width": 2.2,
+        "height": 1.6,
+    })
+    snapped_windows.append({
+        "id": "window_living_front_02",
+        "roomId": living.get("id", "living_01"),
+        "wall": "front",
+        "position": {"x": round(living["position"]["x"] - lw / 3.2, 2), "y": 1.5, "z": round(living["position"]["z"] - ll / 2.0, 2)},
+        "width": 2.2,
+        "height": 1.6,
+    })
+
+    # 5. Master Suite connecting doors and windows
+    if len(bedrooms) > 1:
+        snapped_doors.append({
+            "id": "door_living_master_bed",
+            "roomId": living.get("id", "living_01"),
+            "wall": "back",
+            "position": {"x": round(living["position"]["x"], 2), "y": 1.05, "z": round(living["position"]["z"] - ll / 2.0, 2)},
+            "width": 1.0,
+            "height": 2.1,
+        })
+        m_pos = bedrooms[1]["position"]
+        m_l = float(bedrooms[1]["length"])
+        snapped_windows.append({
+            "id": "window_master_bedroom_back",
+            "roomId": bedrooms[1].get("id", "bedroom_02"),
+            "wall": "back",
+            "position": {"x": round(m_pos["x"], 2), "y": 1.5, "z": round(m_pos["z"] - m_l / 2.0, 2)},
+            "width": 2.2,
+            "height": 1.5,
+        })
+        if len(bathrooms) > 1:
+            mb_w = float(bedrooms[1]["width"])
+            snapped_doors.append({
+                "id": "door_master_bed_bath",
+                "roomId": bedrooms[1].get("id", "bedroom_02"),
+                "wall": "right",
+                "position": {"x": round(m_pos["x"] + mb_w / 2.0, 2), "y": 1.05, "z": round(m_pos["z"], 2)},
+                "width": 0.85,
+                "height": 2.1,
+            })
+
+    design["doors"] = snapped_doors
+    design["windows"] = snapped_windows
+
     # Exterior elements metadata for 3D renderer
     design["exterior"] = {
         "pool": {
@@ -370,8 +491,30 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
 
     design.setdefault("style", "modern")
     # Support new format house metadata
-    if "house" not in design:
+    if "house" not in design or not isinstance(design["house"], dict):
         design["house"] = {"style": design.get("style", "modern"), "floors": 1, "floorHeight": 3.0}
+    else:
+        house = design["house"]
+        try:
+            if "width" in house:
+                house["width"] = max(2.0, float(house["width"]))
+        except (ValueError, TypeError):
+            house["width"] = 12.0
+        try:
+            if "length" in house:
+                house["length"] = max(2.0, float(house["length"]))
+        except (ValueError, TypeError):
+            house["length"] = 12.0
+        try:
+            if "floorHeight" in house:
+                house["floorHeight"] = max(2.0, min(6.0, float(house["floorHeight"])))
+        except (ValueError, TypeError):
+            house["floorHeight"] = 3.0
+        try:
+            if "floors" in house:
+                house["floors"] = max(1, min(4, int(house["floors"])))
+        except (ValueError, TypeError):
+            house["floors"] = 1
 
     rooms = design.get("rooms", [])
     if not isinstance(rooms, list):
@@ -389,9 +532,26 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
 
         room.setdefault("id", f"room_{idx}")
         room.setdefault("type", "Room")
-        room.setdefault("width", 8.0)
-        room.setdefault("length", 8.0)
-        room.setdefault("height", 3.2)
+
+        try:
+            room["width"] = max(1.5, float(room.get("width", 8.0)))
+        except (ValueError, TypeError):
+            room["width"] = 8.0
+
+        try:
+            room["length"] = max(1.5, float(room.get("length", 8.0)))
+        except (ValueError, TypeError):
+            room["length"] = 8.0
+
+        try:
+            room["height"] = max(2.0, min(6.0, float(room.get("height", 3.2))))
+        except (ValueError, TypeError):
+            room["height"] = 3.2
+
+        try:
+            room["floor"] = max(0, min(3, int(room.get("floor", 0))))
+        except (ValueError, TypeError):
+            room["floor"] = 0
 
         pos = room.setdefault("position", {})
         pos.setdefault("x", float(idx * 9.0))
@@ -482,6 +642,23 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
                     f_id = f.get("id")
                     if f_id and not any(tf.get("id") == f_id for tf in all_furniture):
                         all_furniture.append(f)
+
+    for f in all_furniture:
+        if isinstance(f, dict):
+            try:
+                if "scale" in f:
+                    f["scale"] = max(0.1, min(5.0, float(f["scale"])))
+                else:
+                    f["scale"] = 1.0
+            except (ValueError, TypeError):
+                f["scale"] = 1.0
+            try:
+                if "rotation" in f:
+                    f["rotation"] = float(f["rotation"])
+                else:
+                    f["rotation"] = 0.0
+            except (ValueError, TypeError):
+                f["rotation"] = 0.0
 
     design["doors"] = all_doors
     design["windows"] = all_windows

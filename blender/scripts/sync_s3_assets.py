@@ -75,10 +75,14 @@ def upload_assets(
     s3_client=None
 ) -> int:
     """
-    Uploads local furniture models and metadata to S3.
+    Uploads local furniture, doors, windows, textures, metadata, and scripts to S3.
     Target directories:
       - blender/assets/furniture/ -> s3://bucket/assets/furniture/
+      - blender/assets/doors/     -> s3://bucket/assets/doors/
+      - blender/assets/windows/   -> s3://bucket/assets/windows/
+      - blender/assets/textures/  -> s3://bucket/assets/textures/
       - blender/metadata/         -> s3://bucket/assets/metadata/
+      - blender/scripts/          -> s3://bucket/assets/scripts/
     """
     if s3_client is None:
         s3_client = get_s3_client()
@@ -86,6 +90,9 @@ def upload_assets(
     upload_count = 0
     folders_to_upload = [
         (os.path.join(blender_dir, "assets", "furniture"), f"{s3_prefix}furniture/"),
+        (os.path.join(blender_dir, "assets", "doors"), f"{s3_prefix}doors/"),
+        (os.path.join(blender_dir, "assets", "windows"), f"{s3_prefix}windows/"),
+        (os.path.join(blender_dir, "assets", "textures"), f"{s3_prefix}textures/"),
         (os.path.join(blender_dir, "metadata"), f"{s3_prefix}metadata/"),
         (os.path.join(blender_dir, "scripts"), f"{s3_prefix}scripts/"),
     ]
@@ -104,10 +111,15 @@ def upload_assets(
                 rel_path = os.path.relpath(abs_path, local_folder).replace("\\", "/")
                 s3_key = f"{remote_prefix}{rel_path}"
 
-                content_type = "model/gltf-binary" if file.endswith(".glb") else \
-                               "application/json" if file.endswith(".json") else \
-                               "text/x-python" if file.endswith(".py") else \
-                               "application/octet-stream"
+                content_type = (
+                    "model/gltf-binary" if file.endswith(".glb") else
+                    "model/gltf+json" if file.endswith(".gltf") else
+                    "image/jpeg" if file.lower().endswith((".jpg", ".jpeg")) else
+                    "image/png" if file.lower().endswith(".png") else
+                    "application/json" if file.endswith(".json") else
+                    "text/x-python" if file.endswith(".py") else
+                    "application/octet-stream"
+                )
 
                 print(f"[UPLOAD] {abs_path} -> s3://{bucket_name}/{s3_key}")
                 if not dry_run:
