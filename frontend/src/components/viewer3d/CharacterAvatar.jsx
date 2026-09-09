@@ -95,7 +95,7 @@ export function CharacterAvatar({ position, rotation, isMoving, walkCycle, isVis
   const bob = isMoving ? Math.abs(Math.sin(walkCycle * 2)) * 0.04 : 0
 
   return (
-    <group position={[position.x, position.y + bob, position.z]} rotation={[0, rotation, 0]}>
+    <group position={[position.x, position.y + bob, position.z]} rotation={[0, rotation, 0]} scale={[0.85, 0.85, 0.85]}>
       <mesh position={[0, 1.76, 0]} castShadow>
         <boxGeometry args={[0.34, 0.34, 0.32]} />
         <meshStandardMaterial color="#fcd34d" roughness={0.7} />

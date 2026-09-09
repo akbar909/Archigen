@@ -115,11 +115,27 @@ def adjust_origin_to_bottom(obj: Any) -> None:
 
 def get_bounding_dimensions(obj: Any) -> Tuple[float, float, float]:
     """
-    Calculates the world-space bounding box dimensions (width_x, depth_y, height_z) in meters.
+    Calculates the world-space bounding box dimensions (width_x, depth_y, height_z) in meters,
+    correctly traversing all child meshes in the hierarchy.
     """
     ensure_bpy()
-    # TODO: Traverse child hierarchies if the model contains multiple sub-meshes
-    return (obj.dimensions.x, obj.dimensions.y, obj.dimensions.z)
+    mesh_objs = [o for o in [obj] + list(obj.children_recursive) if o.type == 'MESH']
+    if not mesh_objs:
+        return (max(obj.dimensions.x, 0.001), max(obj.dimensions.y, 0.001), max(obj.dimensions.z, 0.001))
+
+    min_coords = [float("inf"), float("inf"), float("inf")]
+    max_coords = [float("-inf"), float("-inf"), float("-inf")]
+    for o in mesh_objs:
+        for corner in o.bound_box:
+            world_corner = o.matrix_world @ mathutils.Vector(corner)
+            for i in range(3):
+                min_coords[i] = min(min_coords[i], world_corner[i])
+                max_coords[i] = max(max_coords[i], world_corner[i])
+
+    wx = max(max_coords[0] - min_coords[0], 0.001)
+    wy = max(max_coords[1] - min_coords[1], 0.001)
+    wz = max(max_coords[2] - min_coords[2], 0.001)
+    return (wx, wy, wz)
 
 
 def attach_metadata_properties(obj: Any, metadata: Dict[str, Any]) -> None:

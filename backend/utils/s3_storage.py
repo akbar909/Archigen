@@ -71,7 +71,10 @@ def upload_file_to_s3(
             local_path,
             target_bucket,
             s3_key,
-            ExtraArgs={"ContentType": content_type}
+            ExtraArgs={
+                "ContentType": content_type,
+                "CacheControl": "public, max-age=31536000, immutable",
+            }
         )
         return get_public_s3_url(s3_key, target_bucket)
     except (ClientError, NoCredentialsError) as err:

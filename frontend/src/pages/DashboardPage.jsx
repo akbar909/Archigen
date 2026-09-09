@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import TopBar from '../components/TopBar'
 import Viewer3D from '../components/Viewer3D'
@@ -8,14 +9,19 @@ import JsonViewer from '../components/JsonViewer'
 import { useAuthStore, useProjectStore } from '../store'
 
 export default function DashboardPage() {
+  const { projectId, versionId } = useParams()
+  const navigate = useNavigate()
   const { isAuthed } = useAuthStore()
   const {
     projects,
     activeProjectId,
+    activeVersionId,
     design,
     loading,
     activeTab,
     loadProjectsList,
+    selectProject,
+    selectVersion,
     generate,
   } = useProjectStore()
 
@@ -25,6 +31,37 @@ export default function DashboardPage() {
     }
   }, [isAuthed, loadProjectsList])
 
+  // Sync route parameters with project store
+  useEffect(() => {
+    if (!isAuthed) return
+
+    const { projectAction } = useProjectStore.getState()
+    if (projectAction?.type === 'deleting') return
+
+    if (projectId && versionId) {
+      if (activeProjectId !== projectId || activeVersionId !== versionId) {
+        selectVersion(projectId, versionId).then((res) => {
+          if (!res) {
+            navigate(projectId ? `/app/projects/${projectId}` : '/app', { replace: true })
+          }
+        })
+      }
+    } else if (projectId) {
+      if (activeProjectId !== projectId) {
+        selectProject(projectId).then((res) => {
+          if (res?.version?.id) {
+            navigate(`/app/projects/${projectId}/versions/${res.version.id}`, { replace: true })
+          } else if (!res?.project) {
+            navigate('/app', { replace: true })
+          }
+        })
+      }
+    } else if (!projectId && !versionId && activeProjectId) {
+      // User navigated to /app root
+      useProjectStore.setState({ activeProjectId: null, activeVersionId: null, design: null })
+    }
+  }, [projectId, versionId, isAuthed, activeProjectId, activeVersionId, selectProject, selectVersion, navigate])
+
   const activeProject = useMemo(() => {
     return projects.find((p) => p.id === activeProjectId)
   }, [projects, activeProjectId])
@@ -33,6 +70,13 @@ export default function DashboardPage() {
     if (design) return true
     return projects.some((project) => Array.isArray(project.versions) && project.versions.length > 0)
   }, [design, projects])
+
+  const handleGenerate = async (params) => {
+    const result = await generate(params)
+    if (result?.projectId && result?.versionId) {
+      navigate(`/app/projects/${result.projectId}/versions/${result.versionId}`)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -115,7 +159,7 @@ export default function DashboardPage() {
 
         {/* Fixed Bottom Input */}
         <ChatInput
-          onSend={generate}
+          onSend={handleGenerate}
           loading={loading}
           disabled={false}
           showQuickPrompts={!hasGeneratedAnyDesign}

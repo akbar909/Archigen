@@ -20,11 +20,12 @@ def verify_password(password: str, password_hash: bytes) -> bool:
         return False
 
 
-def generate_token(user_id: ObjectId, email: str) -> str:
+def generate_token(user_id: ObjectId, email: str, name: str = "") -> str:
     exp = dt.datetime.utcnow() + dt.timedelta(hours=JWT_EXPIRE_HOURS)
     payload: Dict[str, Any] = {
         "sub": str(user_id),
         "email": email,
+        "name": name,
         "exp": exp,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

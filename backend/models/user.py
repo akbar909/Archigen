@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict
 
+# pyrefly: ignore [missing-import]
 from bson import ObjectId
 
 

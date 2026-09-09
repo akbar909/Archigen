@@ -68,6 +68,49 @@ def hex_to_rgb(hex_str: str) -> List[float]:
     return [0.85, 0.85, 0.85]
 
 
+def _attach_image_texture(mat, bsdf, img_rel_path: str, scale_uv: float = 2.0):
+    """Helper to attach an image texture node to Principled BSDF with UV tiling."""
+    if bpy is None or not img_rel_path:
+        return
+
+    # Resolve local path
+    if not os.path.isabs(img_rel_path):
+        img_abs_path = os.path.join(BLENDER_ROOT, "assets", img_rel_path.replace("\\", "/").lstrip("/"))
+    else:
+        img_abs_path = img_rel_path
+
+    # Fallback: check if resolver can download it
+    if not os.path.isfile(img_abs_path) or os.path.getsize(img_abs_path) == 0:
+        try:
+            import s3_asset_resolver
+            res_path = s3_asset_resolver.download_asset_if_missing(img_rel_path, base_blender_dir=BLENDER_ROOT)
+            if res_path and os.path.isfile(res_path):
+                img_abs_path = res_path
+        except Exception:
+            pass
+
+    if not os.path.isfile(img_abs_path):
+        return
+
+    try:
+        img = bpy.data.images.load(img_abs_path, check_existing=True)
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+
+        tex_node = nodes.new(type='ShaderNodeTexImage')
+        tex_node.image = img
+
+        coord_node = nodes.new(type='ShaderNodeTexCoord')
+        map_node = nodes.new(type='ShaderNodeMapping')
+        map_node.inputs['Scale'].default_value = (scale_uv, scale_uv, scale_uv)
+
+        links.new(coord_node.outputs['Generated'], map_node.inputs['Vector'])
+        links.new(map_node.outputs['Vector'], tex_node.inputs['Vector'])
+        links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+    except Exception as e:
+        print(f"[WARN] Failed to attach texture {img_rel_path}: {e}")
+
+
 def create_pbr_material(
     name: str,
     mat_type: str = "wall",
@@ -76,8 +119,8 @@ def create_pbr_material(
     metalness: float = 0.0
 ) -> Any:
     """
-    Creates physically based Principled BSDF materials with realistic shader parameters.
-    Supported mat_types: 'wood', 'tile', 'marble', 'wall', 'glass', 'metal', 'deck', 'concrete', 'trim'
+    Creates physically based Principled BSDF materials with realistic PBR texture maps.
+    Supported mat_types: 'wood', 'tile', 'marble', 'wall', 'glass', 'metal', 'deck', 'concrete', 'grass', 'trim'
     """
     if bpy is None:
         return None
@@ -94,7 +137,7 @@ def create_pbr_material(
     if not bsdf:
         return mat
 
-    c = color_rgb if color_rgb and len(color_rgb) >= 3 else [0.85, 0.85, 0.85]
+    c = color_rgb if color_rgb and len(color_rgb) >= 3 else [0.90, 0.88, 0.84]
 
     if mat_type == "glass":
         # Architectural double-glazed glass
@@ -109,14 +152,16 @@ def create_pbr_material(
         mat.shadow_method = 'NONE'
 
     elif mat_type == "wood":
-        # Warm architectural oak / walnut
+        # Warm architectural oak / walnut with PBR diffuse texture
         wood_color = (c[0] * 0.9, c[1] * 0.85, c[2] * 0.75, 1.0)
         bsdf.inputs["Base Color"].default_value = wood_color
         bsdf.inputs["Roughness"].default_value = 0.42
-        bsdf.inputs["Specular"].default_value = 0.45 if "Specular" in bsdf.inputs else 0.5
+        if "Specular" in bsdf.inputs:
+            bsdf.inputs["Specular"].default_value = 0.45
+        _attach_image_texture(mat, bsdf, "textures/floors/dark_wooden_planks_diff_2k.jpg", scale_uv=3.0)
 
     elif mat_type in ["marble", "tile"]:
-        # Polished stone / porcelain tile with high specularity
+        # Polished stone / porcelain tile with high specularity & PBR diffuse
         tile_color = (c[0], c[1], c[2], 1.0)
         bsdf.inputs["Base Color"].default_value = tile_color
         bsdf.inputs["Roughness"].default_value = 0.18
@@ -124,6 +169,7 @@ def create_pbr_material(
             bsdf.inputs["Clearcoat"].default_value = 0.6
         elif "Coat Weight" in bsdf.inputs:
             bsdf.inputs["Coat Weight"].default_value = 0.6
+        _attach_image_texture(mat, bsdf, "textures/floors/marble_01_diff_2k.jpg", scale_uv=2.5)
 
     elif mat_type == "metal":
         # Powder-coated architectural aluminum (matte dark casing)
@@ -140,19 +186,27 @@ def create_pbr_material(
         # Slatted outdoor teak patio deck
         bsdf.inputs["Base Color"].default_value = (0.45, 0.25, 0.16, 1.0)
         bsdf.inputs["Roughness"].default_value = 0.65
+        _attach_image_texture(mat, bsdf, "textures/floors/dark_wooden_planks_diff_2k.jpg", scale_uv=3.2)
 
     elif mat_type == "concrete":
-        # Contemporary dark architectural foundation stone
-        bsdf.inputs["Base Color"].default_value = (0.18, 0.22, 0.28, 1.0)
+        # Contemporary dark architectural pavers / foundation stone
+        bsdf.inputs["Base Color"].default_value = (0.28, 0.30, 0.34, 1.0)
         bsdf.inputs["Roughness"].default_value = 0.85
+        _attach_image_texture(mat, bsdf, "textures/grounds/concrete_pavers_diff_2k.jpg", scale_uv=4.0)
+
+    elif mat_type == "grass":
+        # Lush outdoor landscape lawn
+        bsdf.inputs["Base Color"].default_value = (0.12, 0.32, 0.15, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.95
+        _attach_image_texture(mat, bsdf, "textures/grounds/leafy_grass_diff_1k.jpg", scale_uv=6.0)
 
     else:
-        # High-end tactile matte drywall / plaster
+        # High-end tactile matte drywall / plaster with warm tone
         wall_color = (c[0], c[1], c[2], 1.0)
         bsdf.inputs["Base Color"].default_value = wall_color
-        bsdf.inputs["Roughness"].default_value = 0.85
+        bsdf.inputs["Roughness"].default_value = 0.82
         if "Specular" in bsdf.inputs:
-            bsdf.inputs["Specular"].default_value = 0.2
+            bsdf.inputs["Specular"].default_value = 0.25
 
     return mat
 
@@ -161,8 +215,8 @@ def create_pbr_material(
 
 def build_foundation_and_patio(rooms: List[Dict[str, Any]]) -> List[Any]:
     """
-    Creates a dual-tier beveled concrete podium and an outdoor teak patio deck
-    framing the house for an elevated architectural appearance.
+    Creates a dual-tier beveled concrete podium, an outdoor teak patio deck,
+    and lush surrounding grass grounds framing the house.
     """
     if bpy is None or not rooms:
         return []
@@ -187,6 +241,18 @@ def build_foundation_and_patio(rooms: List[Dict[str, Any]]) -> List[Any]:
 
     concrete_mat = create_pbr_material("mat_foundation_podium", "concrete")
     deck_mat = create_pbr_material("mat_patio_deck", "deck")
+    grass_mat = create_pbr_material("mat_landscape_grass", "grass")
+
+    # 0. Surrounding Lush Garden Lawn
+    lawn_w = max(hw * 2.2, 50.0)
+    lawn_d = max(hd * 2.2, 50.0)
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(cx, cy, -0.36))
+    lawn = bpy.context.active_object
+    lawn.name = "Lush_Garden_Ground"
+    lawn.scale = (lawn_w, lawn_d, 0.15)
+    if grass_mat:
+        lawn.data.materials.append(grass_mat)
+    created_objs.append(lawn)
 
     # 1. Main Foundation Slab (sub-base)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(cx, cy, -0.22))
@@ -258,7 +324,7 @@ def build_floor_slab(rooms: List[Dict[str, Any]], slab_thickness: float = 0.2) -
 
 def build_walls(
     rooms: List[Dict[str, Any]],
-    wall_height: float = 1.45,
+    wall_height: float = 2.8,
     wall_thickness: float = 0.20,
     add_baseboards: bool = False
 ) -> List[Any]:
@@ -270,7 +336,7 @@ def build_walls(
         return []
 
     wall_objects = []
-    wall_mat = create_pbr_material("mat_architectural_wall", "wall", [0.94, 0.94, 0.92], roughness=0.85)
+    wall_mat = create_pbr_material("mat_architectural_wall", "wall", [0.93, 0.91, 0.88], roughness=0.82)
 
     # Collect all proposed wall segments
     raw_wall_segments = []
@@ -306,7 +372,7 @@ def build_walls(
         if not is_duplicate:
             deduped_segments.append((wx, wy, sx, sy, sidx, room_id))
 
-    # Construct clean single partition walls with no exploding parented trim
+    # Construct clean single partition walls
     for wx, wy, sx, sy, sidx, room_id in deduped_segments:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, wall_height / 2.0))
         wall = bpy.context.active_object
@@ -347,14 +413,113 @@ def _safe_opening_coords(item: Dict[str, Any], default_z: float = 0.0) -> Tuple[
     return x, y, z, w, h
 
 
+def _is_opening_vertical(ox: float, oy: float, wall_hint: Optional[str], wall_objects: List[Any]) -> bool:
+    """
+    Determines if an opening sits on a vertical wall (runs along Y axis) or horizontal wall (runs along X axis).
+    Uses explicit wall orientation hint first, then resolves using closest wall geometry based on perpendicular distance.
+    """
+    if wall_hint and isinstance(wall_hint, str):
+        hint = wall_hint.lower().strip()
+        if hint in ("left", "right", "west", "east"):
+            return True
+        if hint in ("front", "back", "north", "south"):
+            return False
+
+    closest_wall = None
+    min_dist = float("inf")
+    for wall in wall_objects:
+        # Distance from opening (ox, oy) to the wall's rectangular bounding box
+        half_sx = wall.scale.x / 2.0
+        half_sy = wall.scale.y / 2.0
+        dx = max(wall.location.x - half_sx - ox, 0.0, ox - (wall.location.x + half_sx))
+        dy = max(wall.location.y - half_sy - oy, 0.0, oy - (wall.location.y + half_sy))
+        dist = math.hypot(dx, dy)
+        if dist < min_dist:
+            min_dist = dist
+            closest_wall = wall
+
+    if closest_wall:
+        # If wall length along Y is greater than along X, it is a vertical wall
+        return closest_wall.scale.y > closest_wall.scale.x
+    return False
+
+
+def _try_import_door_model(
+    dx: float, dy: float, dz: float, dw: float, dh: float, idx: int, is_vertical: bool = False
+) -> Optional[Any]:
+    """Attempts to import a real 3D door GLB model into the opening cutout, rotated and scaled to match wall."""
+    door_candidates = [
+        os.path.join(BLENDER_ROOT, "assets", "doors", "door_standard.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "doors", "door_standard_02.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "doors", "door_standard_03.glb"),
+    ]
+    for p in door_candidates:
+        if os.path.isfile(p):
+            try:
+                door_obj = import_asset.load_model(p, name_prefix=f"door_asset_{idx}")
+                cur_w, cur_d, cur_h = import_asset.get_bounding_dimensions(door_obj)
+                cur_w = max(cur_w, 0.5)
+                cur_d = max(cur_d, 0.05)
+                cur_h = max(cur_h, 1.0)
+
+                target_h = min(dh, 2.3)
+                wall_t = 0.20
+
+                door_obj.location = (dx, dy, 0.0)
+                if is_vertical:
+                    door_obj.rotation_euler = (0.0, 0.0, math.radians(90))
+                    door_obj.scale = (wall_t / cur_d, dw / cur_w, target_h / cur_h)
+                else:
+                    door_obj.rotation_euler = (0.0, 0.0, 0.0)
+                    door_obj.scale = (dw / cur_w, wall_t / cur_d, target_h / cur_h)
+                return door_obj
+            except Exception as e:
+                print(f"[WARN] Could not load door model {p}: {e}")
+    return None
+
+
+def _try_import_window_model(
+    wx: float, wy: float, wz: float, ww: float, wh: float, idx: int, is_vertical: bool = False
+) -> Optional[Any]:
+    """Attempts to import a real 3D window GLB model into the opening cutout, rotated and scaled to match wall."""
+    win_candidates = [
+        os.path.join(BLENDER_ROOT, "assets", "windows", "window_standard_01.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "windows", "window_standard_02.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "windows", "window_standard_03.glb"),
+    ]
+    for p in win_candidates:
+        if os.path.isfile(p):
+            try:
+                win_obj = import_asset.load_model(p, name_prefix=f"win_asset_{idx}")
+                cur_w, cur_d, cur_h = import_asset.get_bounding_dimensions(win_obj)
+                cur_w = max(cur_w, 0.5)
+                cur_d = max(cur_d, 0.05)
+                cur_h = max(cur_h, 0.5)
+
+                wall_t = 0.20
+
+                win_obj.location = (wx, wy, wz - wh / 2.0)
+                if is_vertical:
+                    win_obj.rotation_euler = (0.0, 0.0, math.radians(90))
+                    win_obj.scale = (wall_t / cur_d, ww / cur_w, wh / cur_h)
+                else:
+                    win_obj.rotation_euler = (0.0, 0.0, 0.0)
+                    win_obj.scale = (ww / cur_w, wall_t / cur_d, wh / cur_h)
+                return win_obj
+            except Exception as e:
+                print(f"[WARN] Could not load window model {p}: {e}")
+    return None
+
+
 def apply_openings(
     openings: Dict[str, Any],
     wall_objects: List[Any],
-    wall_height: float = 1.45
+    wall_height: float = 2.8
 ) -> List[Any]:
     """
     Carves clean boolean openings for doors and windows through walls,
-    and inserts architectural frames and glass panes.
+    correctly oriented along horizontal (X) or vertical (Y) walls,
+    and inserts 3D door/window models or architectural frames and glass panes.
     """
     if bpy is None or not wall_objects:
         return []
@@ -372,12 +537,16 @@ def apply_openings(
         try:
             dx, dy, _, dw, raw_dh = _safe_opening_coords(d_item, default_z=0.0)
             dh = min(raw_dh, wall_height)
+            is_vert = _is_opening_vertical(dx, dy, d_item.get("wall"), wall_objects)
 
-            # Create Boolean Cutter Box
+            # Create Boolean Cutter Box (oriented to slice through wall cleanly)
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, dh / 2.0))
             cutter = bpy.context.active_object
             cutter.name = f"_boolean_cutter_door_{idx}"
-            cutter.scale = (dw, 0.60, dh + 0.02)  # Extra depth to cleanly slice wall
+            if is_vert:
+                cutter.scale = (0.60, dw, dh + 0.02)
+            else:
+                cutter.scale = (dw, 0.60, dh + 0.02)
 
             # Apply Boolean Difference to all intersecting walls
             for wall in wall_objects:
@@ -391,27 +560,40 @@ def apply_openings(
             cutter.display_type = 'WIRE'
             cutter.hide_render = True
 
-            # Insert Architectural Door Frame
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, dh / 2.0))
-            frame = bpy.context.active_object
-            frame.name = f"door_frame_{idx}"
-            frame.scale = (dw + 0.08, 0.22, dh + 0.04)
-            if door_mat:
-                frame.data.materials.append(door_mat)
+            # Try to place 3D door model
+            door_asset = _try_import_door_model(dx, dy, 0.0, dw, dh, idx, is_vertical=is_vert)
+            if door_asset:
+                created_frames.append(door_asset)
+            else:
+                # Fallback: Insert Architectural Door Frame
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, dh / 2.0))
+                frame = bpy.context.active_object
+                frame.name = f"door_frame_{idx}"
+                if is_vert:
+                    frame.scale = (0.22, dw + 0.08, dh + 0.04)
+                else:
+                    frame.scale = (dw + 0.08, 0.22, dh + 0.04)
 
-            # Hollow interior of frame
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, (dh - 0.04) / 2.0))
-            frame_cutter = bpy.context.active_object
-            frame_cutter.name = f"_frame_cutter_{idx}"
-            frame_cutter.scale = (dw - 0.06, 0.30, dh - 0.04)
-            mod = frame.modifiers.new(name="FrameHollow", type='BOOLEAN')
-            mod.operation = 'DIFFERENCE'
-            mod.object = frame_cutter
-            mod.solver = 'FAST'
-            frame_cutter.hide_render = True
-            frame_cutter.display_type = 'WIRE'
+                if door_mat:
+                    frame.data.materials.append(door_mat)
 
-            created_frames.append(frame)
+                # Hollow interior of frame
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, (dh - 0.04) / 2.0))
+                frame_cutter = bpy.context.active_object
+                frame_cutter.name = f"_frame_cutter_{idx}"
+                if is_vert:
+                    frame_cutter.scale = (0.30, dw - 0.06, dh - 0.04)
+                else:
+                    frame_cutter.scale = (dw - 0.06, 0.30, dh - 0.04)
+
+                mod = frame.modifiers.new(name="FrameHollow", type='BOOLEAN')
+                mod.operation = 'DIFFERENCE'
+                mod.object = frame_cutter
+                mod.solver = 'FAST'
+                frame_cutter.hide_render = True
+                frame_cutter.display_type = 'WIRE'
+
+                created_frames.append(frame)
         except Exception as e:
             print(f"[WARN] Failed to process door {idx}: {e}")
 
@@ -420,12 +602,16 @@ def apply_openings(
         try:
             wx, wy, wz, ww, wh = _safe_opening_coords(w_item, default_z=1.0)
             actual_z = min(wz + (wh / 2.0), wall_height - (wh / 2.0))
+            is_vert = _is_opening_vertical(wx, wy, w_item.get("wall"), wall_objects)
 
             # Create Boolean Cutter Box
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
             cutter = bpy.context.active_object
             cutter.name = f"_boolean_cutter_win_{idx}"
-            cutter.scale = (ww, 0.60, wh)
+            if is_vert:
+                cutter.scale = (0.60, ww, wh)
+            else:
+                cutter.scale = (ww, 0.60, wh)
 
             for wall in wall_objects:
                 dist = math.hypot(wall.location.x - wx, wall.location.y - wy)
@@ -438,37 +624,54 @@ def apply_openings(
             cutter.display_type = 'WIRE'
             cutter.hide_render = True
 
-            # Insert Modern Aluminum Window Frame
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
-            win_frame = bpy.context.active_object
-            win_frame.name = f"window_frame_{idx}"
-            win_frame.scale = (ww + 0.06, 0.22, wh + 0.06)
-            if metal_mat:
-                win_frame.data.materials.append(metal_mat)
+            # Try to place 3D window model
+            win_asset = _try_import_window_model(wx, wy, actual_z, ww, wh, idx, is_vertical=is_vert)
+            if win_asset:
+                created_frames.append(win_asset)
+            else:
+                # Fallback: Insert Modern Aluminum Window Frame + Double Glazing
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
+                win_frame = bpy.context.active_object
+                win_frame.name = f"window_frame_{idx}"
+                if is_vert:
+                    win_frame.scale = (0.22, ww + 0.06, wh + 0.06)
+                else:
+                    win_frame.scale = (ww + 0.06, 0.22, wh + 0.06)
 
-            # Hollow window frame
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
-            wcutter = bpy.context.active_object
-            wcutter.name = f"_wframe_cutter_{idx}"
-            wcutter.scale = (ww - 0.08, 0.30, wh - 0.08)
-            wmod = win_frame.modifiers.new(name="WinHollow", type='BOOLEAN')
-            wmod.operation = 'DIFFERENCE'
-            wmod.object = wcutter
-            wmod.solver = 'FAST'
-            wcutter.hide_render = True
-            wcutter.display_type = 'WIRE'
+                if metal_mat:
+                    win_frame.data.materials.append(metal_mat)
 
-            created_frames.append(win_frame)
+                # Hollow window frame
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
+                wcutter = bpy.context.active_object
+                wcutter.name = f"_wframe_cutter_{idx}"
+                if is_vert:
+                    wcutter.scale = (0.30, ww - 0.08, wh - 0.08)
+                else:
+                    wcutter.scale = (ww - 0.08, 0.30, wh - 0.08)
 
-            # Insert Double-Glazed Glass Pane
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
-            glass = bpy.context.active_object
-            glass.name = f"window_glass_{idx}"
-            glass.scale = (ww - 0.08, 0.02, wh - 0.08)
-            if glass_mat:
-                glass.data.materials.append(glass_mat)
-            glass.parent = win_frame
-            created_frames.append(glass)
+                wmod = win_frame.modifiers.new(name="WinHollow", type='BOOLEAN')
+                wmod.operation = 'DIFFERENCE'
+                wmod.object = wcutter
+                wmod.solver = 'FAST'
+                wcutter.hide_render = True
+                wcutter.display_type = 'WIRE'
+
+                created_frames.append(win_frame)
+
+                # Insert Double-Glazed Glass Pane
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
+                glass = bpy.context.active_object
+                glass.name = f"window_glass_{idx}"
+                if is_vert:
+                    glass.scale = (0.02, ww - 0.08, wh - 0.08)
+                else:
+                    glass.scale = (ww - 0.08, 0.02, wh - 0.08)
+
+                if glass_mat:
+                    glass.data.materials.append(glass_mat)
+                glass.parent = win_frame
+                created_frames.append(glass)
         except Exception as e:
             print(f"[WARN] Failed to process window {idx}: {e}")
 
@@ -505,7 +708,7 @@ def generate_house_from_layout(
     layout_data: Dict[str, Any],
     output_glb_path: str,
     blender_root: str,
-    dollhouse_mode: bool = True
+    dollhouse_mode: bool = False
 ) -> str:
     """Main hyperrealistic generator pipeline."""
     print(f"[ARCHGEN] Generating Hyperrealistic 3D Architecture: {layout_data.get('project_name', 'House')}")
@@ -515,7 +718,7 @@ def generate_house_from_layout(
 
     # 2. Extract architectural specs
     bldg = layout_data.get("building", {})
-    # Use dollhouse cutaway wall height (1.45m) so interior furniture and rooms are visible
+    # Default to realistic full-height 2.8m walls unless dollhouse cutaway mode is explicitly requested
     wall_h = 1.45 if dollhouse_mode else float(bldg.get("wall_height", 2.8))
     wall_t = float(bldg.get("wall_thickness", 0.20))
     slab_t = float(bldg.get("slab_thickness", 0.22))
@@ -565,8 +768,10 @@ def parse_cli_args():
                         help="Path to the house layout JSON input file.")
     parser.add_argument("--output", type=str, default="output/generated_house.glb",
                         help="Target output GLB file path.")
+    parser.add_argument("--dollhouse", action="store_true",
+                        help="Use 1.45m dollhouse cutaways instead of full-height 2.8m walls.")
     parser.add_argument("--full-height", action="store_true",
-                        help="Use full 2.8m walls instead of 1.45m dollhouse cutaways.")
+                        help="Use full 2.8m walls (default). Kept for backward compatibility.")
 
     if "--" in sys.argv:
         args_idx = sys.argv.index("--") + 1
@@ -590,7 +795,7 @@ def main():
         layout_data=layout_data,
         output_glb_path=output_path,
         blender_root=BLENDER_ROOT,
-        dollhouse_mode=not args.full_height
+        dollhouse_mode=bool(args.dollhouse)
     )
 
 

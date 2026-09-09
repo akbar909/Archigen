@@ -77,7 +77,8 @@ def upload_glb_to_s3(local_path: str, s3_key: str, bucket: str) -> Optional[str]
             bucket,
             s3_key,
             ExtraArgs={
-                "ContentType": "model/gltf-binary"
+                "ContentType": "model/gltf-binary",
+                "CacheControl": "public, max-age=31536000, immutable"
             }
         )
         if AWS_S3_PUBLIC_BASE_URL:

@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -11,7 +12,7 @@ from utils.s3_storage import configure_bucket_cors
 
 def create_app() -> Flask:
 	app = Flask(__name__)
-	CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+	CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True, methods=["GET", "HEAD", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"])
 
 	@app.after_request
 	def add_cors_headers(response):
@@ -19,7 +20,7 @@ def create_app() -> Flask:
 		response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
 		response.headers["Access-Control-Allow-Credentials"] = "true"
 		response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Requested-With"
-		response.headers["Access-Control-Allow-Methods"] = "GET,PUT,POST,DELETE,OPTIONS"
+		response.headers["Access-Control-Allow-Methods"] = "GET,PUT,POST,PATCH,DELETE,OPTIONS"
 		return response
 
 	# Register blueprints
@@ -52,7 +53,7 @@ def create_app() -> Flask:
 			"message": "ArchiGen API is running",
 			"endpoints": ["/health", "/api/auth/login", "/api/auth/register",
 					"/api/chat", "/api/history",
-					"/api/projects", "/api/projects/<id>/generate",
+					"/api/projects", "/api/projects/<id>", "/api/projects/<id>/generate",
 					"/api/projects/<id>/versions", "/api/versions/<id>"],
 		}), 200
 

@@ -1,7 +1,19 @@
 import { Toaster } from 'react-hot-toast'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store'
 import { AuthPage, DashboardPage, LandingPage, ModelGalleryPage } from './pages'
+
+function ProtectedRoute({ children }) {
+  const isAuthed = useAuthStore((state) => state.isAuthed)
+  const location = useLocation()
+
+  if (!isAuthed) {
+    const returnPath = location.pathname + location.search
+    return <Navigate to={`/auth?redirect=${encodeURIComponent(returnPath)}`} replace />
+  }
+
+  return children
+}
 
 function App() {
   const isAuthed = useAuthStore((state) => state.isAuthed)
@@ -32,16 +44,51 @@ function App() {
         {/* 3D Model gallery inspection */}
         <Route path="/models" element={<ModelGalleryPage />} />
 
-        {/* Auth page — redirects to /app if already signed in */}
-        <Route
-          path="/auth"
-          element={isAuthed ? <Navigate to="/app" replace /> : <AuthPage />}
-        />
+        {/* Auth page */}
+        <Route path="/auth" element={<AuthPage />} />
 
         {/* Main application workspace — requires authentication */}
         <Route
           path="/app"
-          element={isAuthed ? <DashboardPage /> : <Navigate to="/auth" replace />}
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/projects/:projectId"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/projects/:projectId/versions/:versionId"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Direct project URL aliases */}
+        <Route
+          path="/projects/:projectId"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId/versions/:versionId"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
         />
 
         {/* Catch-all fallback */}

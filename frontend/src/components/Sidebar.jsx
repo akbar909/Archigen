@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import { useAuthStore, useProjectStore } from '../store'
 
 // ── Icons ──────────────────────────────────────────────────────────
@@ -40,7 +42,7 @@ const ChevronIcon = ({ open }) => (
 )
 const EditIcon = () => (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+    <path d="M11 4H4a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
   </svg>
 )
@@ -66,6 +68,7 @@ function ProjectRow({
   project,
   activeProjectId,
   activeVersionId,
+  onSelectProject,
   onSelectVersion,
   onNewVersion,
   onRename,
@@ -89,12 +92,29 @@ function ProjectRow({
     setExpandedId(isExpanded ? null : project.id)
   }
 
+  const handleRowClick = (e) => {
+    e.stopPropagation()
+    setExpandedId(project.id)
+    if (onSelectProject) {
+      onSelectProject(project.id)
+    }
+  }
+
   const handleRename = async (e) => {
     e.stopPropagation()
-    const nextName = window.prompt('Rename project', project.name)
-    if (!nextName) return
-    const trimmed = nextName.trim()
-    if (!trimmed || trimmed === project.name) return
+    const nextName = window.prompt('Rename project (2 - 30 characters)', project.name)
+    if (nextName === null) return // User cancelled
+    const trimmed = (nextName || '').trim()
+    if (trimmed === project.name) return
+
+    if (!trimmed || trimmed.length < 2) {
+      toast.error('Project name must be at least 2 characters')
+      return
+    }
+    if (trimmed.length > 30) {
+      toast.error('Project name cannot exceed 30 characters')
+      return
+    }
     await onRename(project.id, trimmed)
   }
 
@@ -109,10 +129,14 @@ function ProjectRow({
       <div
         className={`sidebar-item ${isActive ? 'active' : ''}`}
         style={{ padding: '7px 8px', cursor: 'pointer' }}
-        onClick={toggle}
+        onClick={handleRowClick}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-          <span style={{ flexShrink: 0, color: 'var(--text-muted)' }}>
+          <span
+            style={{ flexShrink: 0, color: 'var(--text-muted)', padding: '2px 4px' }}
+            onClick={toggle}
+            title={isExpanded ? 'Collapse versions' : 'Expand versions'}
+          >
             <ChevronIcon open={isExpanded} />
           </span>
 
@@ -296,8 +320,8 @@ function ProjectRow({
   )
 }
 
-// ── Main Sidebar ──────────────────────────────────────────────────────
 export default function Sidebar(props) {
+  const navigate = useNavigate()
   const store = useProjectStore()
   const authStore = useAuthStore()
 
@@ -327,6 +351,30 @@ export default function Sidebar(props) {
     (p) => !search || p.name.toLowerCase().includes(search.toLowerCase())
   )
 
+  const handleSelectVersion = (pid, vid) => {
+    navigate(`/app/projects/${pid}/versions/${vid}`)
+    if (onClose) onClose()
+  }
+
+  const handleSelectProject = (pid) => {
+    navigate(`/app/projects/${pid}`)
+  }
+
+  const handleNewProject = async () => {
+    const project = await onNewProject()
+    if (project?.id) {
+      navigate(`/app/projects/${project.id}`)
+    }
+  }
+
+  const handleDeleteProject = async (pid) => {
+    const wasActive = activeProjectId === pid
+    if (wasActive) {
+      navigate('/app', { replace: true })
+    }
+    await onDeleteProject(pid)
+  }
+
   return (
     <>
       {/* Mobile overlay */}
@@ -335,7 +383,7 @@ export default function Sidebar(props) {
       <aside className={`sidebar ${isOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
         {/* Header */}
         <div className="sidebar-header">
-          <div className="sidebar-logo">
+          <div className="sidebar-logo" onClick={() => navigate('/app')} style={{ cursor: 'pointer' }}>
             Archi<span>Gen</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -349,7 +397,7 @@ export default function Sidebar(props) {
               <PanelToggleIcon />
             </button>
             <button
-              onClick={onNewProject}
+              onClick={handleNewProject}
               className="menu-toggle"
               title="New Project"
               type="button"
@@ -360,7 +408,7 @@ export default function Sidebar(props) {
         </div>
 
         {/* New Project CTA */}
-        <button onClick={onNewProject} className="sidebar-new-btn" type="button">
+        <button onClick={handleNewProject} className="sidebar-new-btn" type="button">
           <PlusIcon />
           <span>New Project</span>
         </button>
@@ -426,13 +474,14 @@ export default function Sidebar(props) {
                 project={project}
                 activeProjectId={activeProjectId}
                 activeVersionId={activeVersionId}
-                onSelectVersion={(pid, vid, vnum) => {
-                  onSelectVersion(pid, vid, vnum)
-                  if (onClose) onClose()
+                onSelectProject={handleSelectProject}
+                onSelectVersion={handleSelectVersion}
+                onNewVersion={(pid, style) => {
+                  onNewVersion(pid, style)
+                  navigate(`/app/projects/${pid}`)
                 }}
-                onNewVersion={onNewVersion}
                 onRename={onRenameProject}
-                onDelete={onDeleteProject}
+                onDelete={handleDeleteProject}
                 expandedId={expandedId}
                 setExpandedId={setExpandedId}
                 actionType={actionType}
