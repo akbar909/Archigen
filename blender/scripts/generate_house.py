@@ -200,6 +200,36 @@ def create_pbr_material(
         bsdf.inputs["Roughness"].default_value = 0.95
         _attach_image_texture(mat, bsdf, "textures/grounds/leafy_grass_diff_1k.jpg", scale_uv=6.0)
 
+    elif mat_type in ["wall_brick", "brick"]:
+        # Exposed architectural brick wall
+        wall_color = (c[0], c[1], c[2], 1.0)
+        bsdf.inputs["Base Color"].default_value = wall_color
+        bsdf.inputs["Roughness"].default_value = 0.85
+        for candidate in ["textures/walls/brick_wall_diff_2k.jpg", "textures/walls/brick_wall_001_diffuse_2k.jpg"]:
+            if os.path.isfile(os.path.join(BLENDER_ROOT, "assets", candidate)):
+                _attach_image_texture(mat, bsdf, candidate, scale_uv=2.5)
+                break
+
+    elif mat_type in ["wall_wood", "wood_panel"]:
+        # Modern wood slats / paneling accent wall
+        wall_color = (c[0], c[1], c[2], 1.0)
+        bsdf.inputs["Base Color"].default_value = wall_color
+        bsdf.inputs["Roughness"].default_value = 0.50
+        for candidate in ["textures/walls/wood_panel_diff_2k.jpg", "textures/walls/wood_planks_grey_diff_2k.jpg", "textures/walls/dark_wood_diff_2k.jpg"]:
+            if os.path.isfile(os.path.join(BLENDER_ROOT, "assets", candidate)):
+                _attach_image_texture(mat, bsdf, candidate, scale_uv=2.0)
+                break
+
+    elif mat_type in ["wall_concrete", "concrete_wall"]:
+        # Architectural concrete / industrial feature wall
+        wall_color = (c[0], c[1], c[2], 1.0)
+        bsdf.inputs["Base Color"].default_value = wall_color
+        bsdf.inputs["Roughness"].default_value = 0.88
+        for candidate in ["textures/walls/concrete_wall_diff_2k.jpg", "textures/walls/concrete_wall_003_diff_2k.jpg"]:
+            if os.path.isfile(os.path.join(BLENDER_ROOT, "assets", candidate)):
+                _attach_image_texture(mat, bsdf, candidate, scale_uv=3.0)
+                break
+
     else:
         # High-end tactile matte drywall / plaster with warm tone
         wall_color = (c[0], c[1], c[2], 1.0)
@@ -207,6 +237,10 @@ def create_pbr_material(
         bsdf.inputs["Roughness"].default_value = 0.82
         if "Specular" in bsdf.inputs:
             bsdf.inputs["Specular"].default_value = 0.25
+        for candidate in ["textures/walls/plaster_wall_diff_2k.jpg", "textures/walls/painted_plaster_wall_diff_2k.jpg"]:
+            if os.path.isfile(os.path.join(BLENDER_ROOT, "assets", candidate)):
+                _attach_image_texture(mat, bsdf, candidate, scale_uv=3.0)
+                break
 
     return mat
 
@@ -372,6 +406,8 @@ def build_walls(
         if not is_duplicate:
             deduped_segments.append((wx, wy, sx, sy, sidx, room_id))
 
+    room_map = {r.get("id"): r for r in rooms}
+
     # Construct clean single partition walls
     for wx, wy, sx, sy, sidx, room_id in deduped_segments:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, wall_height / 2.0))
@@ -379,8 +415,25 @@ def build_walls(
         wall.name = f"wall_{room_id}_{sidx}"
         wall.scale = (sx, sy, wall_height)
 
-        if wall_mat:
-            wall.data.materials.append(wall_mat)
+        # Check if target room specifies a wall pattern
+        target_room = room_map.get(room_id, {})
+        wall_cfg = target_room.get("walls", {})
+        pattern = str(wall_cfg.get("pattern", "")).lower()
+        w_color = wall_cfg.get("color")
+
+        if "brick" in pattern:
+            r_wall_mat = create_pbr_material(f"mat_wall_brick_{room_id}", "wall_brick", w_color)
+        elif "wood" in pattern or "slat" in pattern:
+            r_wall_mat = create_pbr_material(f"mat_wall_wood_{room_id}", "wall_wood", w_color)
+        elif "concrete" in pattern:
+            r_wall_mat = create_pbr_material(f"mat_wall_concrete_{room_id}", "wall_concrete", w_color)
+        elif w_color:
+            r_wall_mat = create_pbr_material(f"mat_wall_{room_id}", "wall", w_color)
+        else:
+            r_wall_mat = wall_mat
+
+        if r_wall_mat:
+            wall.data.materials.append(r_wall_mat)
 
         wall_objects.append(wall)
 
