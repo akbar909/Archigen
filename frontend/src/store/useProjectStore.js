@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { toast } from 'react-hot-toast'
 import {
+  approveFloorPlan as apiApproveFloorPlan,
   createProject as apiCreateProject,
   deleteProject as apiDeleteProject,
+  fetchLayoutValidation as apiFetchLayoutValidation,
   fetchProject as apiFetchProject,
   fetchProjects as apiFetchProjects,
   fetchVersion as apiFetchVersion,
@@ -13,6 +15,7 @@ import {
   getApiErrorMessage,
   getGenerationErrorMessage,
   renameProject as apiRenameProject,
+  updateLayout as apiUpdateLayout,
 } from '../services'
 
 export const useProjectStore = create((set, get) => ({
@@ -25,17 +28,27 @@ export const useProjectStore = create((set, get) => ({
   // UI State
   loading: false,
   isGenerating3D: false,
+  isApprovingLayout: false,
   sidebarLoading: false,
   projectAction: { type: null, projectId: null },
   sidebarOpen: false,
   sidebarCollapsed: false,
   activeTab: 'viewer', // 'viewer' | 'json'
 
+  // Multi-floor & View Layers
+  showRoof: true,
+  activeFloorLevel: 0,
+  cutawayHeight: null,
+
   // Setters for UI
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   toggleSidebarCollapsed: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  setShowRoof: (showRoof) => set({ showRoof }),
+  toggleShowRoof: () => set((state) => ({ showRoof: !state.showRoof })),
+  setActiveFloorLevel: (activeFloorLevel) => set({ activeFloorLevel }),
+  setCutawayHeight: (cutawayHeight) => set({ cutawayHeight }),
 
   // Actions
   loadProjectsList: async ({ showLoader = true } = {}) => {
@@ -84,9 +97,9 @@ export const useProjectStore = create((set, get) => ({
         : null
       set({ design: designData })
 
-      // If version has no 3D glb model, poll briefly in case it is finishing in background
-      if (designData && !designData.glb_url) {
-        get().pollForGlbModel(versionId, 10, 3000)
+      // If version is approved but has no 3D glb model yet, poll in case it is finishing in background
+      if (designData && !designData.glb_url && designData.layout_approved) {
+        get().pollForGlbModel(versionId, 40, 3000)
       }
       return data.version
     } catch (err) {
@@ -305,7 +318,7 @@ export const useProjectStore = create((set, get) => ({
     }
   },
 
-  pollForGlbModel: async (versionId, maxAttempts = 40, intervalMs = 2500) => {
+  pollForGlbModel: async (versionId, maxAttempts = 80, intervalMs = 2500) => {
     if (!versionId) return null
     set({ isGenerating3D: true })
 
@@ -338,6 +351,7 @@ export const useProjectStore = create((set, get) => ({
     }
 
     set({ isGenerating3D: false })
+    toast.error('Blender 3D synthesis took longer than expected. Click "Synthesize 3D Model" to retry.', { duration: 6000 })
     return null
   },
 
@@ -370,6 +384,68 @@ export const useProjectStore = create((set, get) => ({
     return null
   },
 
+  approveFloorPlan: async (projectId, versionId) => {
+    const pId = projectId || get().activeProjectId
+    const vId = versionId || get().activeVersionId
+    if (!pId || !vId) {
+      toast.error('Cannot approve floor plan: No active project/version')
+      return null
+    }
+
+    set({ isApprovingLayout: true })
+    try {
+      const data = await apiApproveFloorPlan(pId, vId)
+      if (data.success) {
+        toast.success('Floor plan approved! 3D architectural synthesis started... 🏡🚀')
+        set((state) => ({
+          isApprovingLayout: false,
+          isGenerating3D: true,
+          design: state.design ? { ...state.design, layout_approved: true } : state.design,
+        }))
+        // Poll for Blender GLB model completion
+        get().pollForGlbModel(vId)
+        return data
+      } else {
+        toast.error(data.error || 'Failed to approve floor plan')
+      }
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to approve layout'))
+    } finally {
+      set({ isApprovingLayout: false })
+    }
+    return null
+  },
+
+  updateLayout: async (projectId, versionId, layoutData) => {
+    const pId = projectId || get().activeProjectId
+    const vId = versionId || get().activeVersionId
+    if (!pId || !vId) return null
+    try {
+      const data = await apiUpdateLayout(pId, vId, layoutData)
+      if (data.success && data.design) {
+        set({ design: data.design })
+        toast.success('Layout updated successfully!')
+        return data.design
+      }
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to update layout'))
+    }
+    return null
+  },
+
+  fetchValidation: async (projectId, versionId) => {
+    const pId = projectId || get().activeProjectId
+    const vId = versionId || get().activeVersionId
+    if (!pId || !vId) return null
+    try {
+      const data = await apiFetchLayoutValidation(pId, vId)
+      return data
+    } catch (err) {
+      console.warn('Failed to fetch validation:', err)
+      return null
+    }
+  },
+
   reset: () => {
     set({
       projects: [],
@@ -378,6 +454,10 @@ export const useProjectStore = create((set, get) => ({
       activeVersionId: null,
       loading: false,
       isGenerating3D: false,
+      isApprovingLayout: false,
+      showRoof: true,
+      activeFloorLevel: 0,
+      cutawayHeight: null,
       sidebarLoading: false,
       projectAction: { type: null, projectId: null },
       sidebarOpen: false,

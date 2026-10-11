@@ -7,13 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#0f172a',
+        ink: '#171717',
         mist: '#e2e8f0',
-        accent: '#3b82f6',
-        surface: '#0b1220',
+        accent: '#10a37f',
+        surface: '#0d0d0d',
       },
       boxShadow: {
-        soft: '0 10px 30px rgba(15, 23, 42, 0.18)',
+        soft: '0 10px 30px rgba(0, 0, 0, 0.25)',
       },
     },
   },

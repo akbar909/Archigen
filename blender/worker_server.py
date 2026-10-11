@@ -153,7 +153,7 @@ def generate_house_endpoint():
     print(f"[WORKER] Starting Blender generation for {house_id}...")
     start_time = time.time()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
         elapsed_ms = int((time.time() - start_time) * 1000)
 
         if proc.returncode != 0:
@@ -165,7 +165,7 @@ def generate_house_endpoint():
             }), 500
 
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "Blender generation timed out (limit: 180s)"}), 504
+        return jsonify({"error": "Blender generation timed out (limit: 240s)"}), 504
     except Exception as e:
         return jsonify({"error": f"Failed to execute Blender: {str(e)}"}), 500
 

@@ -51,7 +51,7 @@ GEMINI_API_BASE_URL = os.getenv(
 # Blender Worker microservice config
 BLENDER_SERVICE_URL = os.getenv("BLENDER_SERVICE_URL", "http://localhost:5001")
 BLENDER_ENABLED = os.getenv("BLENDER_ENABLED", "true").lower() == "true"
-BLENDER_TIMEOUT_SECONDS = int(os.getenv("BLENDER_TIMEOUT_SECONDS", "180"))
+BLENDER_TIMEOUT_SECONDS = int(os.getenv("BLENDER_TIMEOUT_SECONDS", "260"))
 
 # AWS S3 Storage config
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")

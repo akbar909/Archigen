@@ -27,3 +27,21 @@ export async function generate3D(projectId, versionId) {
   return data
 }
 
+export async function approveFloorPlan(projectId, versionId) {
+  const { data } = await apiClient.post(`/projects/${projectId}/versions/${versionId}/approve-layout`)
+  return data
+}
+
+export async function updateLayout(projectId, versionId, layoutData) {
+  const { data } = await apiClient.patch(`/projects/${projectId}/versions/${versionId}/layout`, {
+    design: layoutData,
+    layout: layoutData,
+  })
+  return data
+}
+
+export async function fetchLayoutValidation(projectId, versionId) {
+  const { data } = await apiClient.get(`/projects/${projectId}/versions/${versionId}/validation`)
+  return data
+}
+

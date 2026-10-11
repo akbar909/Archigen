@@ -19,6 +19,8 @@ from utils.gemini import (
     validate_architectural_prompt,
 )
 from utils.middleware import require_auth
+from utils.architectural_validator import ArchitecturalValidator
+from utils.architectural_schema_v3 import validate_schema_v3
 
 
 
@@ -588,5 +590,131 @@ def generate_3d_for_version(project_id: str, version_id: str):
         "success": True,
         "glb_url": glb_url,
         "version": _serialize_version(ver),
+    })
+
+
+@chat_bp.post("/projects/<project_id>/versions/<version_id>/approve-layout")
+@require_auth
+def approve_layout_for_version(project_id: str, version_id: str):
+    """User approval gate: marks floor plan layout approved and triggers 3D Blender synthesis."""
+    try:
+        ver_obj_id = ObjectId(version_id)
+        proj_obj_id = ObjectId(project_id)
+    except Exception:
+        return jsonify({"error": "Invalid project or version id"}), 400
+
+    ver = versions_collection().find_one({
+        "_id": ver_obj_id,
+        "project_id": proj_obj_id,
+        "user_id": request.user["_id"],
+    })
+    if not ver or not ver.get("design"):
+        return jsonify({"error": "Version or architectural design not found"}), 404
+
+    # Update design state to approved
+    design = ver["design"]
+    design["layout_approved"] = True
+    design["approved_at"] = dt.datetime.utcnow().isoformat()
+
+    versions_collection().update_one(
+        {"_id": ver_obj_id},
+        {"$set": {"design": design, "layout_approved": True}}
+    )
+
+    # Launch Blender 3D procedural generation in background thread
+    def _bg_generate_approved(d_copy, p_id_str, v_obj_id, v_num):
+        try:
+            g_url = generate_3d_house_model(d_copy, project_id=p_id_str, version_num=v_num)
+            if g_url:
+                versions_collection().update_one(
+                    {"_id": v_obj_id},
+                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
+                )
+        except Exception as e:
+            logging.error(f"[BLENDER] Approved generation error: {e}")
+
+    threading.Thread(
+        target=_bg_generate_approved,
+        args=(design, project_id, ver_obj_id, ver.get("version_num", 1)),
+        daemon=True,
+    ).start()
+
+    ver["design"] = design
+    return jsonify({
+        "success": True,
+        "message": "Floor plan approved! 3D house synthesis initiated.",
+        "version": _serialize_version(ver),
+    })
+
+
+@chat_bp.patch("/projects/<project_id>/versions/<version_id>/layout")
+@require_auth
+def update_layout_for_version(project_id: str, version_id: str):
+    """Allows user to tweak rooms or materials in the architectural JSON, re-running validation."""
+    try:
+        ver_obj_id = ObjectId(version_id)
+        proj_obj_id = ObjectId(project_id)
+    except Exception:
+        return jsonify({"error": "Invalid project or version id"}), 400
+
+    ver = versions_collection().find_one({
+        "_id": ver_obj_id,
+        "project_id": proj_obj_id,
+        "user_id": request.user["_id"],
+    })
+    if not ver:
+        return jsonify({"error": "Version not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    updated_design = data.get("design") or data.get("layout")
+    if not isinstance(updated_design, dict):
+        return jsonify({"error": "design or layout object is required"}), 400
+
+    # Run 20-point validation on updated design
+    validator = ArchitecturalValidator(updated_design)
+    is_valid, val_report = validator.validate()
+
+    now = dt.datetime.utcnow()
+    versions_collection().update_one(
+        {"_id": ver_obj_id},
+        {"$set": {
+            "design": updated_design,
+            "updated_at": now,
+        }}
+    )
+    ver["design"] = updated_design
+
+    return jsonify({
+        "success": True,
+        "validation": val_report,
+        "version": _serialize_version(ver),
+    })
+
+
+@chat_bp.get("/projects/<project_id>/versions/<version_id>/validation")
+@require_auth
+def get_layout_validation(project_id: str, version_id: str):
+    """Returns the 20-point architectural validation report for a specific version."""
+    try:
+        ver_obj_id = ObjectId(version_id)
+        proj_obj_id = ObjectId(project_id)
+    except Exception:
+        return jsonify({"error": "Invalid project or version id"}), 400
+
+    ver = versions_collection().find_one({
+        "_id": ver_obj_id,
+        "project_id": proj_obj_id,
+        "user_id": request.user["_id"],
+    })
+    if not ver or not ver.get("design"):
+        return jsonify({"error": "Version or design not found"}), 404
+
+    validator = ArchitecturalValidator(ver["design"])
+    is_valid, report = validator.validate()
+
+    return jsonify({
+        "success": True,
+        "is_valid": is_valid,
+        "report": report,
     })
 

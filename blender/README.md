@@ -18,29 +18,31 @@ This Blender subsystem:
 
 ## 2. Directory Structure
 
+> 💡 **Full 3D Model Catalog**: See [blender/assets/CATALOG.md](assets/CATALOG.md) for the complete list of 28 existing models, 96 asset folders, dimensions, and specifications for all rooms.
+
 ```
 blender/
-├── assets/
-│   └── furniture/              # Categorized 3D furniture models
-│       ├── living_room/        # Sofas, coffee tables, TV units, armchairs
-│       ├── bedroom/            # Beds, nightstands, wardrobes, dressers
-│       ├── dining_room/        # Dining tables, dining chairs, buffets
-│       ├── kitchen/            # Kitchen counters, cabinets, appliances
-│       ├── bathroom/           # Vanities, sinks, bathtubs, toilets
-│       └── outdoor/            # Patio sets, outdoor benches, planters
+├── assets/                     # 3D assets, materials, and decorations
+│   ├── architecture/           # Walls, ceiling designs, stairs, columns, doors, windows
+│   ├── furniture/              # Living room, kitchen, bathroom, bedroom, dining, office, etc.
+│   ├── decorations/            # Wall art, mirrors, curtains, rugs, plants, tabletop decor
+│   ├── lighting/               # Ceiling chandeliers, wall sconces, lamps, LED strip cove
+│   ├── appliances/             # Kitchen appliances, laundry units, televisions
+│   ├── fixtures/               # Plumbing faucets, shower heads, hardware, bath accessories
+│   ├── textures/               # Floors, walls, tiles, ceilings, fabrics, woods, marbles
+│   └── CATALOG.md              # Comprehensive 3D Model Catalog & Specifications
 │
 ├── scripts/                    # Headless Blender Python scripts
 │   ├── generate_house.py       # Main generator: walls, slabs, openings, assembly
 │   ├── place_furniture.py      # Furniture catalog lookup and room arrangement
 │   ├── import_asset.py         # 3D asset importer, pivot normalizer, metadata tagger
-│   └── export_glb.py           # Optimized glTF/GLB export for Three.js
+│   ├── export_glb.py           # Optimized glTF/GLB export for Three.js
+│   ├── generate_metadata.py    # Auto-generates JSON metadata for catalog
+│   └── sync_s3_assets.py       # Cloud asset sync utility (AWS S3)
 │
 ├── input/                      # Floorplan JSON specifications from backend
 ├── output/                     # Generated .glb models and test renders
 ├── metadata/                   # JSON schemas and asset metadata definitions
-│   ├── furniture.schema.json   # JSON Schema (Draft-07) for asset validation
-│   └── sample_sofa_001.json    # Example furniture metadata record
-│
 ├── Dockerfile                  # Headless Blender worker container
 └── README.md                   # System documentation & integration architecture
 ```

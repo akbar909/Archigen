@@ -7,6 +7,7 @@ import {
   Loader2,
   Minimize,
   Send,
+  Sparkles,
   Waves,
 } from 'lucide-react'
 
@@ -27,7 +28,7 @@ const QUICK_PROMPTS = [
   'Mediterranean villa with inner courtyard',
 ]
 
-export default function ChatInput({ onSend, loading, disabled, showQuickPrompts = true }) {
+export default function ChatInput({ onSend, onOpenWizard, loading, disabled, showQuickPrompts = true }) {
   const [prompt, setPrompt] = useState('')
   const [style, setStyle] = useState('modern')
   const textareaRef = useRef(null)
@@ -106,15 +107,29 @@ export default function ChatInput({ onSend, loading, disabled, showQuickPrompts 
             })}
           </div>
 
-          {/* Send button */}
-          <button
-            id="send-design-btn"
-            className="send-btn"
-            onClick={handleSubmit}
-            disabled={!prompt.trim() || loading || disabled}
-            title={loading ? 'Generating…' : 'Generate (Enter)'}
-            type="button"
-          >
+          {/* Action buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+            {onOpenWizard && (
+              <button
+                type="button"
+                onClick={onOpenWizard}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 hover:border-emerald-500/50 transition-all cursor-pointer"
+                title="Open interactive multi-step design wizard"
+              >
+                <Sparkles size={13} />
+                <span className="hidden sm:inline">Design</span> Wizard
+              </button>
+            )}
+
+            {/* Send button */}
+            <button
+              id="send-design-btn"
+              className="send-btn"
+              onClick={handleSubmit}
+              disabled={!prompt.trim() || loading || disabled}
+              title={loading ? 'Generating…' : 'Generate (Enter)'}
+              type="button"
+            >
             {loading ? (
               <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
             ) : (
@@ -123,6 +138,7 @@ export default function ChatInput({ onSend, loading, disabled, showQuickPrompts 
           </button>
         </div>
       </div>
+    </div>
     </div>
   )
 }

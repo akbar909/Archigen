@@ -212,6 +212,23 @@ def place_furniture_item(
     obj.location = (position[0], position[1], position[2])
     obj.rotation_euler = (0.0, 0.0, math.radians(rotation_deg))
 
+    # Ensure furniture sits exactly on top of the floor slab (position[2])
+    if bpy:
+        try:
+            bpy.context.view_layer.update()
+            mesh_objs = [o for o in [obj] + list(obj.children_recursive) if o.type == 'MESH']
+            if mesh_objs:
+                actual_min_z = min(
+                    (o.matrix_world @ mathutils.Vector(corner)).z
+                    for o in mesh_objs
+                    for corner in o.bound_box
+                )
+                z_diff = position[2] - actual_min_z
+                if abs(z_diff) > 0.005:
+                    obj.location.z += z_diff
+        except Exception as e:
+            print(f"[WARN] Failed to refine floor contact for {obj.name}: {e}")
+
     # Attach metadata
     import_asset.attach_metadata_properties(obj, asset_meta)
 
@@ -238,19 +255,33 @@ def populate_room_furniture(
     room_type = room_data.get("type", "general")
     reqs = room_data.get("furniture_requirements", [])
 
+    bounds = room_data.get("bounds", {})
+    rx = float(bounds.get("x", 0.0))
+    ry = float(bounds.get("y", 0.0))
+    rw = float(bounds.get("width", 4.0))
+    rd = float(bounds.get("depth", 4.0))
+
     for req in reqs:
         category = req.get("category")
         preferred_id = req.get("preferred_id")
-        pos = req.get("position", [0.0, 0.0, 0.0])
+        pos = list(req.get("position", [0.0, 0.0, 0.0]))
         rot = req.get("rotation_deg", 0.0)
 
         meta = catalog.find_asset(category=category, room=room_type, preferred_id=preferred_id)
         if meta:
+            # Deterministic clearance & boundary containment clamp
+            item_hw = float(meta.get("width", 0.8)) / 2.0 + 0.10
+            item_hd = float(meta.get("depth", 0.8)) / 2.0 + 0.10
+            if rw > (item_hw * 2.0) and rd > (item_hd * 2.0):
+                clamped_x = max(rx + item_hw, min(rx + rw - item_hw, pos[0]))
+                clamped_y = max(ry + item_hd, min(ry + rd - item_hd, pos[1]))
+                pos[0] = round(clamped_x, 2)
+                pos[1] = round(clamped_y, 2)
+
             obj = place_furniture_item(meta, position=pos, rotation_deg=rot, base_blender_dir=base_blender_dir)
             placed_objects.append(obj)
         else:
             print(f"[INFO] No asset found for category '{category}' in room '{room_type}'.")
-            # TODO: Generate procedural placeholder or skip
 
     return placed_objects
 

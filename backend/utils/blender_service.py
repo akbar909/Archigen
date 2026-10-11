@@ -61,28 +61,31 @@ def adapt_gemini_to_blender_layout(
         w = float(r.get("width") or 6.0)
         d = float(r.get("length") or r.get("depth") or 6.0)
 
-        # Handle either bounds or center-position format
-        if "bounds" in r:
-            bounds = r["bounds"]
+        # Handle bounds or position format accurately
+        pos = r.get("position", {})
+        bounds = r.get("bounds", {})
+        bw = float(r.get("dimensions", {}).get("width", r.get("width", w)))
+        bd = float(r.get("dimensions", {}).get("depth", r.get("length", d)))
+
+        if bounds:
             bx = float(bounds.get("x", 0.0))
             by = float(bounds.get("y", 0.0))
-            bw = float(bounds.get("width", w))
-            bd = float(bounds.get("depth", d))
+            bw = float(bounds.get("width", bw))
+            bd = float(bounds.get("depth", bd))
         else:
-            pos = r.get("position", {})
-            cx = float(pos.get("x", 0.0)) if isinstance(pos, dict) else 0.0
-            cz = float(pos.get("z", 0.0)) if isinstance(pos, dict) else 0.0
-            bx = cx - (w / 2.0)
-            by = cz - (d / 2.0)
-            bw = w
-            bd = d
+            bx = float(pos.get("x", 0.0))
+            by = float(pos.get("y", pos.get("z", 0.0)))
 
-        # Flooring material extraction (support both new "materials" and old "pbr_material")
+        # Flooring and Wall material extraction
         materials = r.get("materials", {})
         pbr = r.get("pbr_material", {})
         floor_info = materials.get("floor", pbr.get("floor", {}))
         floor_color = hex_to_rgb(floor_info.get("color", "#CCCCCC"))
         floor_pattern = floor_info.get("pattern", "wood_planks")
+
+        wall_info = materials.get("wall", pbr.get("wall", {}))
+        wall_color = hex_to_rgb(wall_info.get("color", "#F0EDE8"))
+        wall_pattern = wall_info.get("pattern", "plaster")
 
         # Furniture extraction: combine room-level (old) + top-level filtered by roomId (new)
         furniture_reqs = []
@@ -100,25 +103,37 @@ def adapt_gemini_to_blender_layout(
             cat = str(f.get("asset") or f.get("type", "sofa")).lower()
             fpos = f.get("position", {})
             fx = float(fpos.get("x", 0.0)) if isinstance(fpos, dict) else 0.0
-            fz = float(fpos.get("z", 0.0)) if isinstance(fpos, dict) else 0.0
-            fy = float(fpos.get("y", 0.0)) if isinstance(fpos, dict) else 0.0
+            fy_val = float(fpos.get("y", 0.0)) if isinstance(fpos, dict) else 0.0
+            fz_val = float(fpos.get("z", 0.0)) if isinstance(fpos, dict) else 0.0
+            elev = float(fpos.get("elevation", 0.0)) if isinstance(fpos, dict) else 0.0
             rot = float(f.get("rotation", f.get("rotation_y", 0.0)))
 
-            # Offset furniture by room's origin so coordinates are absolute in scene
-            abs_x = bx + (bw / 2.0) + fx
-            abs_y = by + (bd / 2.0) + fz
+            # If fx is already an absolute scene position within the room bounds:
+            if (bx - 0.5) <= fx <= (bx + bw + 0.5):
+                abs_x = fx
+                abs_y = fy_val if (by - 0.5) <= fy_val <= (by + bd + 0.5) else (fz_val if (by - 0.5) <= fz_val <= (by + bd + 0.5) else (by + bd / 2.0))
+            else:
+                # Relative to room origin
+                abs_x = bx + (bw / 2.0) + fx
+                abs_y = by + (bd / 2.0) + (fy_val if fy_val != 0 else fz_val)
+
+            # Target elevation: finished floor slab top (0.22m for ground floor, 3.22m for upper)
+            room_elev = float(r.get("position", {}).get("z", 0.0))
+            target_z = elev if elev > 0.05 else (fz_val if fz_val > 0.05 and abs(fz_val - abs_y) > 0.5 else room_elev + 0.22)
+            if target_z < 0.20:
+                target_z = 0.22
 
             furniture_reqs.append({
                 "category": cat,
                 "preferred_id": f.get("id"),
                 "placement_hint": "center",
-                "position": [round(abs_x, 2), round(abs_y, 2), round(fy, 2)],
+                "position": [round(abs_x, 2), round(abs_y, 2), round(target_z, 2)],
                 "rotation_deg": rot,
             })
 
-        # Smart adaptive furniture cap: 2 for small rooms (<6m²), 4 for large rooms (>=16m²), 3 for standard rooms
+        # Smart adaptive furniture cap: 3 for small rooms (<6m²), 6 for large rooms (>=16m²), 4 for standard rooms
         room_area = bw * bd
-        max_furn = 2 if room_area < 6.0 else (4 if room_area >= 16.0 else 3)
+        max_furn = 3 if room_area < 6.0 else (6 if room_area >= 16.0 else 4)
         if len(furniture_reqs) > max_furn:
             priority_cats = {"bed", "sofa", "dining_table", "kitchen_island", "kitchen_cabinet", "bathtub", "toilet", "desk"}
             furniture_reqs.sort(key=lambda item: 0 if item["category"] in priority_cats else 1)
@@ -127,8 +142,14 @@ def adapt_gemini_to_blender_layout(
         # Doors inside room
         for d_item in r.get("doors", []):
             dpos = d_item.get("position", {})
-            dx = float(dpos.get("x", 0.0)) if isinstance(dpos, dict) else (float(dpos[0]) if isinstance(dpos, (list, tuple)) and len(dpos) > 0 else 0.0)
-            dz = float(dpos.get("z", 0.0)) if isinstance(dpos, dict) else (float(dpos[1]) if isinstance(dpos, (list, tuple)) and len(dpos) > 1 else 0.0)
+            if isinstance(dpos, dict):
+                dx = float(dpos.get("x", 0.0))
+                dz = float(dpos.get("z", dpos.get("y", 0.0)))
+            elif isinstance(dpos, (list, tuple)):
+                dx = float(dpos[0]) if len(dpos) > 0 else 0.0
+                dz = float(dpos[1]) if len(dpos) > 1 else 0.0
+            else:
+                dx, dz = 0.0, 0.0
             dim = d_item.get("dimensions", {})
             collected_doors.append({
                 "id": d_item.get("id") or f"door_{len(collected_doors)+1}",
@@ -142,8 +163,14 @@ def adapt_gemini_to_blender_layout(
         # Windows inside room
         for w_item in r.get("windows", []):
             wpos = w_item.get("position", {})
-            wx = float(wpos.get("x", 0.0)) if isinstance(wpos, dict) else (float(wpos[0]) if isinstance(wpos, (list, tuple)) and len(wpos) > 0 else 0.0)
-            wz = float(wpos.get("z", 0.0)) if isinstance(wpos, dict) else (float(wpos[1]) if isinstance(wpos, (list, tuple)) and len(wpos) > 1 else 0.0)
+            if isinstance(wpos, dict):
+                wx = float(wpos.get("x", 0.0))
+                wz = float(wpos.get("z", wpos.get("y", 0.0)))
+            elif isinstance(wpos, (list, tuple)):
+                wx = float(wpos[0]) if len(wpos) > 0 else 0.0
+                wz = float(wpos[1]) if len(wpos) > 1 else 0.0
+            else:
+                wx, wz = 0.0, 0.0
             dim = w_item.get("dimensions", {})
             collected_windows.append({
                 "id": w_item.get("id") or f"win_{len(collected_windows)+1}",
@@ -168,6 +195,10 @@ def adapt_gemini_to_blender_layout(
                 "material": floor_pattern,
                 "color": floor_color,
             },
+            "walls": {
+                "pattern": wall_pattern,
+                "color": wall_color,
+            },
             "furniture_requirements": furniture_reqs,
         })
 
@@ -180,8 +211,14 @@ def adapt_gemini_to_blender_layout(
                 continue
             pos = d_item.get("position", {})
             dim = d_item.get("dimensions", {})
-            dx = float(pos.get("x", 0.0)) if isinstance(pos, dict) else (float(pos[0]) if isinstance(pos, (list, tuple)) and len(pos) > 0 else 0.0)
-            dz = float(pos.get("z", 0.0)) if isinstance(pos, dict) else (float(pos[1]) if isinstance(pos, (list, tuple)) and len(pos) > 1 else 0.0)
+            if isinstance(pos, dict):
+                dx = float(pos.get("x", 0.0))
+                dz = float(pos.get("z", pos.get("y", 0.0)))
+            elif isinstance(pos, (list, tuple)):
+                dx = float(pos[0]) if len(pos) > 0 else 0.0
+                dz = float(pos[1]) if len(pos) > 1 else 0.0
+            else:
+                dx, dz = 0.0, 0.0
             collected_doors.append({
                 "id": d_id or f"door_{len(collected_doors)+1}",
                 "type": "door",
@@ -201,8 +238,14 @@ def adapt_gemini_to_blender_layout(
                 continue
             pos = w_item.get("position", {})
             dim = w_item.get("dimensions", {})
-            wx = float(pos.get("x", 0.0)) if isinstance(pos, dict) else (float(pos[0]) if isinstance(pos, (list, tuple)) and len(pos) > 0 else 0.0)
-            wz = float(pos.get("z", 0.0)) if isinstance(pos, dict) else (float(pos[1]) if isinstance(pos, (list, tuple)) and len(pos) > 1 else 0.0)
+            if isinstance(pos, dict):
+                wx = float(pos.get("x", 0.0))
+                wz = float(pos.get("z", pos.get("y", 0.0)))
+            elif isinstance(pos, (list, tuple)):
+                wx = float(pos[0]) if len(pos) > 0 else 0.0
+                wz = float(pos[1]) if len(pos) > 1 else 0.0
+            else:
+                wx, wz = 0.0, 0.0
             collected_windows.append({
                 "id": w_id or f"win_{len(collected_windows)+1}",
                 "position": [round(wx, 2), round(wz, 2), 1.0],
@@ -221,7 +264,12 @@ def adapt_gemini_to_blender_layout(
             "wall_height": 2.8,
             "wall_thickness": 0.2,
             "slab_thickness": 0.25,
+            "floors": len(design_data.get("floors", [])) or 1,
         },
+        "floors": design_data.get("floors", []),
+        "roof": design_data.get("roof", {}),
+        "exterior": design_data.get("exterior", {}),
+        "site": design_data.get("site", {}),
         "rooms": adapted_rooms,
         "openings": {
             "doors": collected_doors,

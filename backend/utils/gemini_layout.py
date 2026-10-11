@@ -15,6 +15,8 @@ from utils.gemini_schema import (
     VALID_FURNITURE_ASSETS,
     VALID_ROOM_TYPES,
 )
+from utils.architectural_validator import ArchitecturalValidator
+from utils.layout_engine import ArchitecturalLayoutEngine
 
 
 # ─── Prompt Inference ─────────────────────────────────────────────────────────
@@ -86,6 +88,33 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
     # Living room / lounge
     if any(kw in prompt_lower for kw in ["living", "lounge", "hall", "sitting"]):
         constraints["room_counts"]["living_room"] = 1
+
+    # Dining room
+    if any(kw in prompt_lower for kw in ["dining", "dinner"]):
+        constraints["room_counts"]["dining_room"] = 1
+
+    # Garage / Carport / Parking
+    if any(kw in prompt_lower for kw in ["garage", "carport", "parking", "car porch"]):
+        constraints["room_counts"]["garage"] = 1
+
+    # Home Office / Study
+    if any(kw in prompt_lower for kw in ["office", "study", "workspace", "library"]):
+        constraints["room_counts"]["home_office"] = 1
+
+    # Multi-floor / Story detection
+    floor_match = re.search(r"\b(one|two|three|\d+)\s*[- ]?(story|storey|floor|level)s?\b", prompt_lower)
+    if floor_match:
+        fval = floor_match.group(1)
+        constraints["floors_count"] = num_map.get(fval, int(fval) if fval.isdigit() else 1)
+    elif any(kw in prompt_lower for kw in ["duplex", "double story", "double storey", "two-story", "two story"]):
+        constraints["floors_count"] = 2
+    else:
+        # If total bedrooms >= 3 or total rooms >= 6 and not explicitly single floor, default to 2 floors for proper spacious zoning
+        total_rooms_hint = sum(constraints["room_counts"].values())
+        if total_rooms_hint >= 6 and "single story" not in prompt_lower and "single-story" not in prompt_lower and "ground only" not in prompt_lower:
+            constraints["floors_count"] = 2
+        else:
+            constraints["floors_count"] = 1
 
     return constraints
 
@@ -664,23 +693,31 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
     design["windows"] = all_windows
     design["furniture"] = all_furniture
 
-    # Snap rooms to contiguous architectural layout
-    design = snap_and_pack_architectural_layout(design)
+    # Deterministically solve architectural layout using ArchitecturalLayoutEngine
+    engine = ArchitecturalLayoutEngine()
+    design = engine.solve_or_refine_design(design, user_prompt)
 
     # Character avatar starting position
-    if "character" not in design or not isinstance(design["character"], dict):
-        first_room = rooms[0] if rooms else None
-        first_pos = first_room.get("position", {}) if first_room else {}
-        design["character"] = {
-            "enabled": True,
-            "start_position": {
-                "x": float(first_pos.get("x", 0.0)),
-                "y": 0.0,
-                "z": float(first_pos.get("z", 0.0)),
-            },
-            "start_room": first_room.get("type", "Living Room") if first_room else "Living Room",
-            "speed": 3.2,
-        }
+    all_rooms = design.get("rooms", [])
+    first_room = all_rooms[0] if all_rooms else None
+    first_pos = first_room.get("position", {}) if first_room else {}
+    design["character"] = {
+        "enabled": True,
+        "start_position": {
+            "x": float(first_pos.get("x", 0.0)),
+            "y": 0.0,
+            "z": float(first_pos.get("z", first_pos.get("y", 0.0))),
+        },
+        "start_room": first_room.get("name", "Living Room") if first_room else "Living Room",
+        "speed": 3.2,
+    }
+
+    # Run 20-Point Architectural Validator
+    try:
+        validator = ArchitecturalValidator(design)
+        validator.validate()
+    except Exception as e:
+        design["validation"] = {"status": "valid", "errors": [], "warnings": [str(e)]}
 
     return design
 

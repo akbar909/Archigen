@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import TopBar from '../components/TopBar'
@@ -6,7 +6,9 @@ import Viewer3D from '../components/Viewer3D'
 import ChatInput from '../components/ChatInput'
 import StatsRow from '../components/StatsRow'
 import JsonViewer from '../components/JsonViewer'
+import HomeWizard from '../components/home-wizard/HomeWizard'
 import { useAuthStore, useProjectStore } from '../store'
+import { Sparkles, MessageSquare } from 'lucide-react'
 
 export default function DashboardPage() {
   const { projectId, versionId } = useParams()
@@ -24,6 +26,11 @@ export default function DashboardPage() {
     selectVersion,
     generate,
   } = useProjectStore()
+
+  // Track mode when no design is loaded (wizard vs prompt box)
+  const [wizardActive, setWizardActive] = useState(true)
+  // Track modal wizard when viewing an existing 3D design
+  const [showWizardModal, setShowWizardModal] = useState(false)
 
   useEffect(() => {
     if (isAuthed) {
@@ -72,9 +79,18 @@ export default function DashboardPage() {
   }, [design, projects])
 
   const handleGenerate = async (params) => {
+    setShowWizardModal(false)
     const result = await generate(params)
     if (result?.projectId && result?.versionId) {
       navigate(`/app/projects/${result.projectId}/versions/${result.versionId}`)
+    }
+  }
+
+  const handleOpenWizard = () => {
+    if (!design) {
+      setWizardActive(true)
+    } else {
+      setShowWizardModal(true)
     }
   }
 
@@ -86,34 +102,61 @@ export default function DashboardPage() {
       {/* Main area */}
       <div className="main-area">
         {/* TopBar */}
-        <TopBar />
+        <TopBar onOpenWizard={handleOpenWizard} />
 
         {/* Content Area */}
-        <div className="content-area">
+        <div className="content-area" style={{ position: 'relative' }}>
+          {/* No Design loaded & not loading */}
           {!design && !loading && (
-            <div className="empty-state">
-              <div className="empty-state-icon">🏗️</div>
-              <div className="empty-state-title">
-                {activeProject ? `Project: ${activeProject.name}` : 'Design your dream space'}
-              </div>
-              <div className="empty-state-sub">
-                {activeProject
-                  ? 'Ready to generate Version 1. Describe your space below to begin.'
-                  : 'Select a project or create a new one to start designing architectural layouts.'}
-              </div>
-
-              {/* Stats summary */}
-              {!activeProject && projects.length > 0 && (
-                <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <div className="stat-card" style={{ minWidth: 'unset', padding: '10px 16px', textAlign: 'center' }}>
-                    <div className="stat-value stat-accent">{projects.length}</div>
-                    <div className="stat-label">Projects Managed</div>
+            <>
+              {wizardActive ? (
+                <div className="flex flex-col flex-1 h-full min-h-0 w-full overflow-hidden">
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <HomeWizard
+                      onGenerate={handleGenerate}
+                      loading={loading}
+                      onSwitchToPrompt={() => setWizardActive(false)}
+                    />
                   </div>
                 </div>
+              ) : (
+                <div className="empty-state">
+                  <div className="empty-state-icon">🏗️</div>
+                  <div className="empty-state-title">
+                    {activeProject ? `Project: ${activeProject.name}` : 'Design your dream space'}
+                  </div>
+                  <div className="empty-state-sub">
+                    {activeProject
+                      ? 'Ready to generate Version 1. Describe your space below or launch our guided wizard.'
+                      : 'Select a project or create a new one to start designing architectural layouts.'}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setWizardActive(true)}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-500 hover:to-emerald-400 shadow-[0_0_20px_rgba(16,163,127,0.3)] transition-all cursor-pointer"
+                    >
+                      <Sparkles size={16} />
+                      <span>Start Guided Design Wizard</span>
+                    </button>
+                  </div>
+
+                  {/* Stats summary */}
+                  {!activeProject && projects.length > 0 && (
+                    <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <div className="stat-card" style={{ minWidth: 'unset', padding: '10px 16px', textAlign: 'center' }}>
+                        <div className="stat-value stat-accent">{projects.length}</div>
+                        <div className="stat-label">Projects Managed</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
 
+          {/* Loading State */}
           {loading && (
             <div className="empty-state">
               <div style={{ fontSize: '2.5rem', animation: 'pulse-dot 1.5s ease-in-out infinite' }}>⚡</div>
@@ -137,6 +180,7 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* Loaded Design (3D Viewer / JSON) */}
           {design && (
             <div className="viewer-stage-container fade-up" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
               {activeTab === 'json' && (
@@ -157,14 +201,30 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Fixed Bottom Input */}
-        <ChatInput
-          onSend={handleGenerate}
-          loading={loading}
-          disabled={false}
-          showQuickPrompts={!hasGeneratedAnyDesign}
-        />
+        {/* Fixed Bottom Input: Only shown when a design is loaded OR when in quick prompt mode */}
+        {(design || !wizardActive) && (
+          <ChatInput
+            onSend={handleGenerate}
+            onOpenWizard={handleOpenWizard}
+            loading={loading}
+            disabled={false}
+            showQuickPrompts={!hasGeneratedAnyDesign}
+          />
+        )}
       </div>
+
+      {/* Modal Wizard for generating a new design while viewing an existing 3D model */}
+      {showWizardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-6 animate-fadeIn">
+          <div className="relative w-full max-w-5xl h-full max-h-[92vh] bg-[#0d0d0d] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <HomeWizard
+              onGenerate={handleGenerate}
+              loading={loading}
+              onClose={() => setShowWizardModal(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
