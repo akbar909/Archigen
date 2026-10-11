@@ -1,4 +1,5 @@
 import { toast } from 'react-hot-toast'
+import { Sparkles } from 'lucide-react'
 import { useProjectStore } from '../store'
 
 const SidebarToggleIcon = () => (
@@ -32,7 +33,7 @@ const ShareLinkIcon = () => (
   </svg>
 )
 
-export default function TopBar() {
+export default function TopBar({ onOpenWizard }) {
   const {
     projects,
     activeProjectId,
@@ -159,6 +160,18 @@ export default function TopBar() {
             <BuildingIcon />
             <span>3D Model</span>
           </div>
+        )}
+
+        {onOpenWizard && (
+          <button
+            type="button"
+            onClick={onOpenWizard}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 hover:border-emerald-500/50 transition-all cursor-pointer shadow-sm"
+            title="Design a new house with the multi-step wizard"
+          >
+            <Sparkles size={13} />
+            <span className="hidden sm:inline">Design</span> Wizard
+          </button>
         )}
 
         <div className="live-badge">

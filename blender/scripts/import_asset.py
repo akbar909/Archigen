@@ -81,8 +81,8 @@ def load_model(file_path: str, name_prefix: Optional[str] = None) -> Any:
     if name_prefix:
         root_obj.name = f"{name_prefix}_{root_obj.name}"
 
-    # TODO: Perform automated origin centering to bottom (floor contact point)
-    # adjust_origin_to_bottom(root_obj)
+    # Perform automated origin centering to bottom (floor contact point)
+    adjust_origin_to_bottom(root_obj)
 
     return root_obj
 
@@ -93,24 +93,47 @@ def adjust_origin_to_bottom(obj: Any) -> None:
     This ensures that setting Z=0 places the furniture directly on the floor.
     """
     ensure_bpy()
-    if obj.type != 'MESH':
+    mesh_objs = [o for o in [obj] + list(obj.children_recursive) if o.type == 'MESH']
+    if not mesh_objs:
         return
 
-    # Select single object
+    # If single mesh object
+    if len(mesh_objs) == 1 and obj.type == 'MESH':
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+
+        matrix = obj.matrix_world
+        bbox_corners = [matrix @ mathutils.Vector(corner) for corner in obj.bound_box]
+        min_z = min(corner.z for corner in bbox_corners)
+        center_x = sum(corner.x for corner in bbox_corners) / 8.0
+        center_y = sum(corner.y for corner in bbox_corners) / 8.0
+
+        bpy.context.scene.cursor.location = mathutils.Vector((center_x, center_y, min_z))
+        bpy.ops.object.origin_set(type='ORIGIN_CURSOR', center='MEDIAN')
+        return
+
+    # Multi-mesh or hierarchy: compute global minimum Z across all descendant meshes
+    all_corners = []
+    for m in mesh_objs:
+        for corner in m.bound_box:
+            all_corners.append(m.matrix_world @ mathutils.Vector(corner))
+
+    if not all_corners:
+        return
+
+    min_z = min(pt.z for pt in all_corners)
+    center_x = sum(pt.x for pt in all_corners) / len(all_corners)
+    center_y = sum(pt.y for pt in all_corners) / len(all_corners)
+
+    bpy.context.scene.cursor.location = mathutils.Vector((center_x, center_y, min_z))
     bpy.ops.object.select_all(action='DESELECT')
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-
-    # Compute bounding box minimum Z
-    matrix = obj.matrix_world
-    bbox_corners = [matrix @ mathutils.Vector(corner) for corner in obj.bound_box]
-    min_z = min(corner.z for corner in bbox_corners)
-    center_x = sum(corner.x for corner in bbox_corners) / 8.0
-    center_y = sum(corner.y for corner in bbox_corners) / 8.0
-
-    # Set cursor to bottom center and change origin
-    bpy.context.scene.cursor.location = mathutils.Vector((center_x, center_y, min_z))
-    bpy.ops.object.origin_set(type='ORIGIN_CURSOR', center='MEDIAN')
+    try:
+        bpy.ops.object.origin_set(type='ORIGIN_CURSOR', center='MEDIAN')
+    except Exception:
+        pass
 
 
 def get_bounding_dimensions(obj: Any) -> Tuple[float, float, float]:
