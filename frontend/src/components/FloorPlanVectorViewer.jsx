@@ -242,8 +242,8 @@ function CadFurnitureItem({ item, scale, mapX, mapY }) {
 }
 
 // Crisp Architectural CAD Door with Wall Cutout & Swing Arc
-function CadDoorItem({ door, scale, mapX, mapY }) {
-  const rawX = Number(door.position?.x ?? 0)
+function CadDoorItem({ door, scale, mapX, mapY, rooms = [] }) {
+  let rawX = Number(door.position?.x ?? 0)
   let rawY = Number(door.position?.y ?? 0)
   const rawZ = Number(door.position?.z ?? 0)
   if (rawY <= 1.5 && rawZ > 1.5) rawY = rawZ
@@ -252,6 +252,29 @@ function CadDoorItem({ door, scale, mapX, mapY }) {
   const wallSide = String(door.wall_side || door.wall || 'south').toLowerCase()
   const isGarage = door.type === 'garage_door' || door.type === 'overhead' || door.swing === 'overhead'
   const isMain = door.type === 'main_entrance' || door.id?.includes('main')
+
+  // Room anchor lookup: snap door directly to room perimeter wall
+  const targetRoom = rooms.find((r) => r.id === (door.roomId || door.room_id))
+  if (targetRoom) {
+    const rx = Number(targetRoom.position?.x || 0)
+    const ry = Number(targetRoom.position?.y || targetRoom.position?.z || 0)
+    const rw = Number(targetRoom.dimensions?.width || targetRoom.width || 4)
+    const rd = Number(targetRoom.dimensions?.depth || targetRoom.length || 4)
+
+    if (wallSide.includes('south') || wallSide.includes('front')) {
+      rawY = ry
+      rawX = Math.max(rx + 0.5, Math.min(rx + rw - 0.5, rawX))
+    } else if (wallSide.includes('north') || wallSide.includes('back')) {
+      rawY = ry + rd
+      rawX = Math.max(rx + 0.5, Math.min(rx + rw - 0.5, rawX))
+    } else if (wallSide.includes('west') || wallSide.includes('left')) {
+      rawX = rx
+      rawY = Math.max(ry + 0.5, Math.min(ry + rd - 0.5, rawY))
+    } else if (wallSide.includes('east') || wallSide.includes('right')) {
+      rawX = rx + rw
+      rawY = Math.max(ry + 0.5, Math.min(ry + rd - 0.5, rawY))
+    }
+  }
 
   const cx = mapX(rawX)
   const cy = mapY(rawY)
@@ -334,8 +357,8 @@ function CadDoorItem({ door, scale, mapX, mapY }) {
 }
 
 // Crisp Architectural CAD Window with Wall Cutout & Glazing
-function CadWindowItem({ windowItem, scale, mapX, mapY }) {
-  const rawX = Number(windowItem.position?.x ?? 0)
+function CadWindowItem({ windowItem, scale, mapX, mapY, rooms = [] }) {
+  let rawX = Number(windowItem.position?.x ?? 0)
   let rawY = Number(windowItem.position?.y ?? 0)
   const rawZ = Number(windowItem.position?.z ?? 0)
   if (rawY <= 1.5 && rawZ > 1.5) rawY = rawZ
@@ -343,6 +366,29 @@ function CadWindowItem({ windowItem, scale, mapX, mapY }) {
   const ww = Math.max(0.8, Number(windowItem.width || 1.4)) * scale
   const wallSide = String(windowItem.wall_side || windowItem.wall || 'south').toLowerCase()
   const isHoriz = !wallSide.includes('east') && !wallSide.includes('west') && !wallSide.includes('left') && !wallSide.includes('right')
+
+  // Room anchor lookup: snap window directly to room exterior wall
+  const targetRoom = rooms.find((r) => r.id === (windowItem.roomId || windowItem.room_id))
+  if (targetRoom) {
+    const rx = Number(targetRoom.position?.x || 0)
+    const ry = Number(targetRoom.position?.y || targetRoom.position?.z || 0)
+    const rw = Number(targetRoom.dimensions?.width || targetRoom.width || 4)
+    const rd = Number(targetRoom.dimensions?.depth || targetRoom.length || 4)
+
+    if (wallSide.includes('south') || wallSide.includes('front')) {
+      rawY = ry
+      rawX = Math.max(rx + 0.5, Math.min(rx + rw - 0.5, rawX))
+    } else if (wallSide.includes('north') || wallSide.includes('back')) {
+      rawY = ry + rd
+      rawX = Math.max(rx + 0.5, Math.min(rx + rw - 0.5, rawX))
+    } else if (wallSide.includes('west') || wallSide.includes('left')) {
+      rawX = rx
+      rawY = Math.max(ry + 0.5, Math.min(ry + rd - 0.5, rawY))
+    } else if (wallSide.includes('east') || wallSide.includes('right')) {
+      rawX = rx + rw
+      rawY = Math.max(ry + 0.5, Math.min(ry + rd - 0.5, rawY))
+    }
+  }
 
   const cx = mapX(rawX)
   const cy = mapY(rawY)
@@ -780,6 +826,50 @@ export default function FloorPlanVectorViewer({
             strokeDasharray="8,6"
           />
 
+          {/* Main vehicle entrance gate on the front plot boundary */}
+          {design?.exterior?.gate && (() => {
+            const gate = design.exterior.gate
+            const gateX = Number(gate.position?.x ?? design.exterior.driveway?.position?.x ?? 0)
+            const gateY = Number(gate.position?.y ?? 0)
+            const gateWidth = Number(gate.width ?? design.exterior.driveway?.width ?? 3.6)
+            const centerX = mapX(gateX + gateWidth / 2)
+            const canvasY = mapY(gateY)
+            return (
+              <g data-testid="main-entrance-gate">
+                <line
+                  x1={mapX(gateX)}
+                  y1={canvasY}
+                  x2={mapX(gateX + gateWidth)}
+                  y2={canvasY}
+                  stroke="#22d3ee"
+                  strokeWidth="7"
+                  strokeLinecap="square"
+                />
+                <line
+                  x1={centerX}
+                  y1={canvasY - 5}
+                  x2={centerX}
+                  y2={canvasY + 5}
+                  stroke="#082f49"
+                  strokeWidth="2"
+                />
+                <circle cx={mapX(gateX)} cy={canvasY} r="4" fill="#67e8f9" />
+                <circle cx={mapX(gateX + gateWidth)} cy={canvasY} r="4" fill="#67e8f9" />
+                <text
+                  x={centerX}
+                  y={canvasY - 9}
+                  fill="#67e8f9"
+                  fontSize="8"
+                  fontWeight="800"
+                  textAnchor="middle"
+                  letterSpacing="1"
+                >
+                  MAIN GATE
+                </text>
+              </g>
+            )
+          })()}
+
           {/* Driveway Connecting Road to Garage / Entrance (if present) */}
           {design?.exterior?.driveway && (
             <g>
@@ -971,6 +1061,7 @@ export default function FloorPlanVectorViewer({
               scale={scale}
               mapX={mapX}
               mapY={mapY}
+              rooms={rooms}
             />
           ))}
 
@@ -982,6 +1073,7 @@ export default function FloorPlanVectorViewer({
               scale={scale}
               mapX={mapX}
               mapY={mapY}
+              rooms={rooms}
             />
           ))}
 

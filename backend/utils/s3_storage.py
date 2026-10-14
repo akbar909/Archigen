@@ -5,6 +5,7 @@ AWS S3 storage utility for uploading and generating URLs for 3D models.
 """
 
 import os
+from functools import lru_cache
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -23,6 +24,7 @@ from config import (
 )
 
 
+@lru_cache(maxsize=1)
 def get_s3_client():
     """Initializes and returns a boto3 S3 client if credentials and library exist."""
     if boto3 is None:
@@ -174,5 +176,4 @@ def configure_bucket_cors(bucket: Optional[str] = None) -> bool:
     except Exception as e:
         print(f"[WARN] S3 put_bucket_cors failed: {e}")
         return False
-
 

@@ -50,15 +50,33 @@ apiClient.interceptors.response.use(
 
 export function getGenerationErrorMessage(err) {
   const status = err?.response?.status
-  const detail = err?.response?.data?.error || err?.message || 'Generation failed'
+  const payload = err?.response?.data || {}
+  const detail = payload.error || err?.message || 'Generation failed'
 
   if (status === 403 || /permission denied|consumer.*suspended|gemini api error 403/i.test(detail)) {
     return 'AI service is unavailable right now. Please try again later.'
   }
 
-  return detail
+  return appendErrorReasons(detail, payload)
 }
 
 export function getApiErrorMessage(err, fallback = 'Operation failed') {
-  return err?.response?.data?.error || err?.message || fallback
+  const payload = err?.response?.data || {}
+  const detail = payload.error || err?.message || fallback
+  return appendErrorReasons(detail, payload)
+}
+
+function appendErrorReasons(detail, payload) {
+  const reasons = [
+    ...(Array.isArray(payload?.refinement?.errors) ? payload.refinement.errors : []),
+    ...(Array.isArray(payload?.validation?.critical_errors) ? payload.validation.critical_errors : []),
+    ...(Array.isArray(payload?.report?.critical_errors) ? payload.report.critical_errors : []),
+  ].filter(Boolean)
+
+  const uniqueReasons = [...new Set(reasons)].filter((reason) => reason !== detail)
+  if (uniqueReasons.length === 0) return detail
+
+  const visible = uniqueReasons.slice(0, 3).join(' ')
+  const remaining = uniqueReasons.length - 3
+  return `${detail} ${visible}${remaining > 0 ? ` (+${remaining} more)` : ''}`
 }

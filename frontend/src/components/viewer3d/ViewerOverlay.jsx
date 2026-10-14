@@ -44,6 +44,7 @@ export default function ViewerOverlay({
   doors = [],
   windows = [],
   design,
+  isApproved = false,
   selectedRoomId,
   onSelectRoom,
   showRoof = true,
@@ -80,9 +81,11 @@ export default function ViewerOverlay({
     setIsRoomDrawerOpen(false)
   }, [glbUrl, isGenerating3D, viewMode])
 
-  const is3DReady = Boolean(glbUrl && isModelRendered && !isGenerating3D)
-  const is3DLoading = Boolean(glbUrl && !isModelRendered && !isGenerating3D)
   const is2DVectorMode = viewMode === 'plan' && planSubMode === 'vector'
+  const is3DReady = Boolean(glbUrl && isModelRendered && !isGenerating3D)
+  // The Canvas is not mounted in vector-plan mode. In that mode an existing
+  // GLB is ready to open, not stuck in a false loading state.
+  const is3DLoading = Boolean(glbUrl && !isModelRendered && !isGenerating3D && !is2DVectorMode)
 
   // Navigation Camera Modes (3D modes only available or highlighted once 3D exists)
   const viewModes = [
@@ -91,6 +94,7 @@ export default function ViewerOverlay({
     { id: 'plan', icon: Grid3X3, label: 'Floor Plan', requires3D: false },
     { id: 'front', icon: Building, label: 'Front Exterior', requires3D: true },
     { id: 'back', icon: Building2, label: 'Back Exterior', requires3D: true },
+    { id: 'roof', icon: Eye, label: 'Roof View', requires3D: true },
   ]
 
   const activeRoom = rooms.find((r) => r.id === selectedRoomId)
@@ -195,23 +199,25 @@ export default function ViewerOverlay({
             >
               📐 2D CAD Plan
             </button>
-            <button
-              type="button"
-              onClick={() => onPlanSubModeChange('3d')}
-              style={{
-                padding: '4px 9px',
-                borderRadius: 999,
-                border: 'none',
-                background: planSubMode === '3d' ? '#10a37f' : 'transparent',
-                color: planSubMode === '3d' ? '#ffffff' : 'var(--text-secondary)',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              🏛️ 3D Top-Down
-            </button>
+            {is3DReady && (
+              <button
+                type="button"
+                onClick={() => onPlanSubModeChange('3d')}
+                style={{
+                  padding: '4px 9px',
+                  borderRadius: 999,
+                  border: 'none',
+                  background: planSubMode === '3d' ? '#10a37f' : 'transparent',
+                  color: planSubMode === '3d' ? '#ffffff' : 'var(--text-secondary)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                🏛️ 3D Top-Down
+              </button>
+            )}
           </div>
         )}
 
@@ -286,7 +292,8 @@ export default function ViewerOverlay({
           </div>
         )}
 
-        {/* Cloud Blender 3D Model Status Indicator & Trigger */}
+        {/* Saved cloud model opens directly; regeneration is a separate action. */}
+        {isApproved && (
         <div
           style={{
             display: 'flex',
@@ -302,19 +309,25 @@ export default function ViewerOverlay({
           <button
             type="button"
             onClick={() => {
-              if (!isGenerating3D && !is3DLoading && onRegenerate3D) {
+              if (isGenerating3D || is3DLoading) return
+              if (glbUrl) {
+                onViewSourceChange?.('blender')
+                onModeChange?.('dollhouse')
+              } else if (onRegenerate3D) {
                 onRegenerate3D()
               }
             }}
             disabled={isGenerating3D || is3DLoading}
             title={
               is3DReady
-                ? 'Photorealistic Cloud Blender 3D Model is rendered (Click to regenerate)'
+                ? 'Open the saved cloud Blender model'
                 : isGenerating3D
                 ? 'Blender 3D is synthesizing in cloud...'
                 : is3DLoading
                 ? 'Rendering 3D model into viewport...'
-                : 'Click to synthesize Photorealistic Cloud Blender 3D Model!'
+                : glbUrl
+                ? 'Open the previously generated cloud model'
+                : 'Generate a new Blender 3D model'
             }
             style={{
               display: 'flex',
@@ -372,7 +385,7 @@ export default function ViewerOverlay({
               >
                 Loading 3D…
               </span>
-            ) : is3DReady ? (
+            ) : glbUrl ? (
               <span
                 style={{
                   fontSize: '0.65rem',
@@ -383,7 +396,7 @@ export default function ViewerOverlay({
                   marginLeft: 2,
                 }}
               >
-                HD ✓
+                {is3DReady ? 'HD ✓' : 'View'}
               </span>
             ) : (
               <span
@@ -400,7 +413,33 @@ export default function ViewerOverlay({
               </span>
             )}
           </button>
+          {glbUrl && is3DReady && onRegenerate3D && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Regenerate this model from the approved layout? This can take several minutes.')) {
+                  onRegenerate3D()
+                }
+              }}
+              title="Regenerate the Blender model"
+              aria-label="Regenerate the Blender model"
+              style={{
+                display: 'grid',
+                placeItems: 'center',
+                width: 28,
+                height: 28,
+                border: 'none',
+                borderRadius: '50%',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <RotateCcw size={13} />
+            </button>
+          )}
         </div>
+        )}
       </div>
 
       {/* ── Top Right: Tools + Day/Night + Stats ── */}

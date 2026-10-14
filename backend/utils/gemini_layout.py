@@ -16,6 +16,7 @@ from utils.gemini_schema import (
     VALID_ROOM_TYPES,
 )
 from utils.architectural_validator import ArchitecturalValidator
+from utils.architectural_preflight import validate_and_repair_design
 from utils.layout_engine import ArchitecturalLayoutEngine
 
 
@@ -23,31 +24,26 @@ from utils.layout_engine import ArchitecturalLayoutEngine
 
 def infer_layout_constraints(prompt: str) -> dict[str, Any]:
     """Infer room counts, attached bathrooms, and layout constraints from the prompt."""
-    prompt_lower = prompt.lower()
+    # Only the current user instruction is authoritative.  Generation prompts
+    # may also contain a serialized previous design; parsing that JSON used to
+    # re-introduce rooms that the user had explicitly removed.
+    prompt_text = str(prompt or "").split("[DESIGN SPECIFICATION]", 1)[0]
+    prompt_text = prompt_text.split("Current design JSON:", 1)[0]
+    prompt_lower = prompt_text.lower().strip()
     constraints: dict[str, Any] = {
         "room_counts": {},
         "attached_baths": 0,
+        "connections": [],
         "preferred_style": None,
         "single_room": False,
         "open_plan": False,
+        "replace_room_program": False,
+        "main_gate": False,
+        "bedroom_type": "bedroom",
     }
 
-    # Detect single room intent
-    single_room_keywords = [
-        "single room", "one room", "1 room", "just a", "only a",
-        "single bedroom", "studio apartment", "master bedroom", "luxury bedroom",
-        "a bedroom", "a kitchen", "a living room", "a bathroom", "just bedroom", "only bedroom"
-    ]
-    multi_room_indicators = ["house", "villa", "apartment with", "rooms", "bedrooms", "bathrooms", "washrooms", "and a", ","]
-    has_single_kw = any(kw in prompt_lower for kw in single_room_keywords)
-    has_multi_kw = sum(1 for kw in ["bedroom", "kitchen", "living", "bathroom", "washroom"] if kw in prompt_lower) > 1
-
-    if has_single_kw and not has_multi_kw:
-        constraints["single_room"] = True
-
-    # Detect open plan
-    if any(kw in prompt_lower for kw in ["loft", "open living", "open-plan", "open plan"]):
-        constraints["open_plan"] = True
+    # Word to digit mapping
+    num_map = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6}
 
     # Detect architectural style
     for style in ("modern", "minimal", "minimalist", "classic", "industrial", "biophilic", "coastal", "scandinavian", "cozy"):
@@ -55,15 +51,19 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
             constraints["preferred_style"] = "minimal" if style == "minimalist" else style
             break
 
-    # Word to digit mapping
-    num_map = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6}
-
     # Extract bedrooms / general rooms
-    bed_match = re.search(r"\b(one|two|three|four|five|six|\d+)\s*[- ]?(bedroom|bedrom|bed|br|room)s?\b", prompt_lower)
+    bed_match = re.search(
+        r"\b(one|two|three|four|five|six|\d+)\s*[- ]?(?:(master|guest)\s+)?(bedroom|bedrom|bed|br|room)s?\b",
+        prompt_lower,
+    )
     if bed_match:
         val = bed_match.group(1)
         count = num_map.get(val, int(val) if val.isdigit() else 1)
         constraints["room_counts"]["bedroom"] = count
+        if bed_match.group(2):
+            constraints["bedroom_type"] = (
+                "master_bedroom" if bed_match.group(2) == "master" else "guest_room"
+            )
 
     # Extract bathrooms / washrooms
     bath_match = re.search(r"\b(one|two|three|four|five|six|\d+)\s*[- ]?(attached\s+)?(washroom|washrom|bathroom|bath|toilet|wash\s*room)s?\b", prompt_lower)
@@ -71,14 +71,16 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
         val = bath_match.group(1)
         count = num_map.get(val, int(val) if val.isdigit() else 1)
         constraints["room_counts"]["bathroom"] = count
-        if "attached" in prompt_lower:
+        if bath_match.group(2):
             constraints["attached_baths"] = count
 
-    # Check for explicit attached washroom phrases
-    attached_match = re.search(r"\b(one|two|three|four|five|six|\d+)\s*attached\b", prompt_lower)
-    if attached_match and "attached_baths" not in constraints:
-        val = attached_match.group(1)
-        constraints["attached_baths"] = num_map.get(val, int(val) if val.isdigit() else 1)
+    # Attachment is opt-in. Merely mentioning a bedroom and bathroom must not
+    # silently turn the shared bathroom into an ensuite.
+    if re.search(r"\b(?:attached\s+(?:bathroom|bath|washroom|toilet)|en[ -]?suite)\b", prompt_lower):
+        constraints["attached_baths"] = max(
+            1,
+            constraints["room_counts"].get("bathroom", 1),
+        )
 
     # Kitchen (including common typos like kichten, kitchn)
     if any(kw in prompt_lower for kw in ["kitchen", "kichten", "kitchn", "kitch"]):
@@ -97,9 +99,45 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
     if any(kw in prompt_lower for kw in ["garage", "carport", "parking", "car porch"]):
         constraints["room_counts"]["garage"] = 1
 
+    constraints["main_gate"] = bool(
+        re.search(r"\b(?:main|entrance|entry|front)\s+gate\b", prompt_lower)
+        or re.search(r"\bgated\s+entrance\b", prompt_lower)
+    )
+
     # Home Office / Study
     if any(kw in prompt_lower for kw in ["office", "study", "workspace", "library"]):
         constraints["room_counts"]["home_office"] = 1
+
+    # Detect open plan
+    if any(kw in prompt_lower for kw in ["loft", "open living", "open-plan", "open plan"]):
+        constraints["open_plan"] = True
+
+    # Preserve explicit circulation edits during regeneration. Normalize common
+    # phrasings into unordered room-type pairs for the deterministic door solver.
+    room_aliases = {
+        "bedroom": "bedroom", "bed room": "bedroom", "master bedroom": "master_bedroom",
+        "bathroom": "bathroom", "bath room": "bathroom", "washroom": "bathroom",
+        "kitchen": "kitchen", "living room": "living_room", "living": "living_room",
+        "lounge": "living_room", "dining room": "dining_room", "dining": "dining_room",
+        "corridor": "corridor", "hallway": "corridor", "foyer": "foyer", "garage": "garage",
+    }
+    alias_pattern = "|".join(sorted((re.escape(value) for value in room_aliases), key=len, reverse=True))
+    connection_patterns = (
+        rf"\b({alias_pattern})\b[^.;]*?\b(?:door|connected|connect|access|opens?)\b[^.;]*?\b(?:to|with|between|into|and)\b[^.;]*?\b({alias_pattern})\b",
+        rf"\bdoor\b[^.;]*?\bbetween\b[^.;]*?\b({alias_pattern})\b[^.;]*?\b(?:and|with)\b[^.;]*?\b({alias_pattern})\b",
+    )
+    connections = []
+    for pattern in connection_patterns:
+        for match in re.finditer(pattern, prompt_lower):
+            first = room_aliases.get(match.group(1), match.group(1).replace(" ", "_"))
+            second = room_aliases.get(match.group(2), match.group(2).replace(" ", "_"))
+            if first != second and [first, second] not in connections and [second, first] not in connections:
+                connections.append([first, second])
+    if constraints["attached_baths"] > 0 and not any(
+        "bathroom" in pair and any("bedroom" in value for value in pair) for pair in connections
+    ):
+        connections.append(["bedroom", "bathroom"])
+    constraints["connections"] = connections
 
     # Multi-floor / Story detection
     floor_match = re.search(r"\b(one|two|three|\d+)\s*[- ]?(story|storey|floor|level)s?\b", prompt_lower)
@@ -116,6 +154,55 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
         else:
             constraints["floors_count"] = 1
 
+    # Detect single room intent: STRICTLY when exactly 1 room category is requested and no secondary spaces
+    total_distinct_rooms = sum(constraints["room_counts"].values())
+    has_bathroom_mention = any(kw in prompt_lower for kw in ["bathroom", "washroom", "toilet", "bath", "wash room", "powder"])
+    has_room_mention = any(kw in prompt_lower for kw in ["bedroom", "bed room", "room", "living", "kitchen", "studio", "hall"])
+    has_multi_kw = sum(1 for kw in ["bedroom", "kitchen", "living", "bathroom", "washroom", "dining", "office", "garage", "room"] if kw in prompt_lower) > 1
+    has_conjunction = any(w in prompt_lower for w in [" and ", " & ", " with ", " plus ", ",", "along with"])
+
+    # If both bedroom/room and bathroom are in the prompt, it is definitely a multi-room layout
+    if has_room_mention and has_bathroom_mention:
+        constraints["single_room"] = False
+        constraints["room_counts"].setdefault("bedroom", 1)
+        constraints["room_counts"].setdefault("bathroom", 1)
+    elif total_distinct_rooms == 1 and not has_multi_kw and not has_conjunction:
+        single_room_keywords = [
+            "single room", "one room", "1 room", "just a room", "only a room",
+            "single bedroom", "studio apartment", "master bedroom", "luxury bedroom",
+            "a bedroom", "a kitchen", "a living room", "just bedroom", "only bedroom", "just 1 room"
+        ]
+        if any(kw in prompt_lower for kw in single_room_keywords):
+            constraints["single_room"] = True
+    elif total_distinct_rooms == 0:
+        # Fallback keyword check if no explicit counts matched
+        single_room_keywords = [
+            "single room", "one room", "1 room", "just a room", "only a room",
+            "single bedroom", "studio apartment", "a bedroom", "just bedroom", "only bedroom"
+        ]
+        if any(kw in prompt_lower for kw in single_room_keywords) and not has_bathroom_mention and not has_conjunction:
+            constraints["single_room"] = True
+            constraints["room_counts"]["bedroom"] = 1
+
+    # A complete design request replaces the previous room program.  Small
+    # refinement instructions (remove a window, connect two rooms, etc.) do not.
+    design_action = bool(re.search(
+        r"\b(?:create|design|generate|build|plan|draw|give me|i want|i need)\b",
+        prompt_lower,
+    ))
+    complete_home_noun = bool(re.search(
+        r"\b(?:house|home|villa|apartment|flat|floor\s*plan|layout)\b",
+        prompt_lower,
+    ))
+    constraints["replace_room_program"] = bool(
+        constraints["single_room"]
+        or (
+            constraints["room_counts"]
+            and design_action
+            and (len(constraints["room_counts"]) >= 2 or complete_home_noun)
+        )
+    )
+
     return constraints
 
 
@@ -126,24 +213,36 @@ def build_generation_prompt(user_prompt: str, style: str = "modern", base_design
 
     room_counts = constraints["room_counts"]
     if constraints["single_room"]:
-        hints.append("Generate EXACTLY ONE SINGLE ROOM centered at x: 0, z: 0 with 4-6 furniture items from the asset catalog.")
+        hints.append("Generate EXACTLY ONE SINGLE ROOM centered at x: 0, z: 0 with 4-6 furniture items from the asset catalog, 1 exterior main entrance door on the front perimeter wall, and 2 exterior windows.")
     else:
         parts = []
         if room_counts.get("bedroom"):
-            parts.append(f"{room_counts['bedroom']} Bedroom(s)")
+            bedroom_label = constraints.get("bedroom_type", "bedroom").replace("_", " ").title()
+            parts.append(f"{room_counts['bedroom']} {bedroom_label}(s)")
         if room_counts.get("bathroom"):
             attached_note = f" ({constraints['attached_baths']} attached to bedroom)" if constraints["attached_baths"] > 0 else ""
             parts.append(f"{room_counts['bathroom']} Bathroom(s){attached_note}")
         if room_counts.get("kitchen"):
-            parts.append("1 Kitchen")
+            parts.append(f"{room_counts['kitchen']} Kitchen")
         if room_counts.get("living_room"):
             parts.append("1 Living Room")
+        if room_counts.get("dining_room"):
+            parts.append("1 Dining Room")
+        if room_counts.get("home_office"):
+            parts.append("1 Home Office")
+        if room_counts.get("garage"):
+            parts.append("1 Garage")
 
         if parts:
             hints.append(f"Required rooms: {', '.join(parts)}.")
+            if constraints["replace_room_program"]:
+                hints.append("EXACT ROOM PROGRAM: Use exactly the requested room categories and counts. Bedroom, master bedroom, and guest bedroom all count toward the same total bedroom count. Do not add unrequested rooms.")
             if constraints["attached_baths"] > 0:
-                hints.append("CRITICAL: Position each attached bathroom directly adjacent to its bedroom with a connecting door between them.")
-            hints.append("CRITICAL ARCHITECTURE: Design a cohesive, contiguous home where rooms share common partition walls edge-to-edge with zero gaps.")
+                hints.append("CRITICAL: Position each attached bathroom directly adjacent to its bedroom with a connecting door between them on their shared partition wall.")
+            hints.append("CRITICAL ARCHITECTURE: Design a cohesive, contiguous home where rooms share common partition walls edge-to-edge with zero gaps. Include an exterior entrance door on the front wall and windows on perimeter walls.")
+
+    if constraints["main_gate"]:
+        hints.append("Include a visible vehicle entrance gate on the front plot boundary aligned with the driveway or car parking entrance.")
 
     if constraints["open_plan"]:
         hints.append("Open-plan layout connecting living, dining, and kitchen zones.")
@@ -200,8 +299,49 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
         return design
 
     if len(rooms) == 1:
-        rooms[0]["position"] = {"x": 0.0, "y": 0.0, "z": 0.0}
-        rooms[0]["floor"] = 0
+        single_r = rooms[0]
+        lw = float(single_r.get("width") or 8.0)
+        ll = float(single_r.get("length") or 7.0)
+        single_r["position"] = {"x": 0.0, "y": 0.0, "z": 0.0}
+        single_r["floor"] = 0
+        single_r["width"] = lw
+        single_r["length"] = ll
+
+        rid = single_r.get("id", "room_01")
+        design["doors"] = [
+            {
+                "id": f"door_main_{rid}",
+                "roomId": rid,
+                "room_id": rid,
+                "wall": "front",
+                "wall_side": "south",
+                "position": {"x": 0.0, "y": 1.05, "z": round(-ll / 2.0, 2)},
+                "width": 1.0,
+                "height": 2.1,
+            }
+        ]
+        design["windows"] = [
+            {
+                "id": f"win_{rid}_left",
+                "roomId": rid,
+                "room_id": rid,
+                "wall": "left",
+                "wall_side": "west",
+                "position": {"x": round(-lw / 2.0, 2), "y": 1.5, "z": 0.0},
+                "width": 1.8,
+                "height": 1.4,
+            },
+            {
+                "id": f"win_{rid}_right",
+                "roomId": rid,
+                "room_id": rid,
+                "wall": "right",
+                "wall_side": "east",
+                "position": {"x": round(lw / 2.0, 2), "y": 1.5, "z": 0.0},
+                "width": 1.8,
+                "height": 1.4,
+            },
+        ]
         return design
 
     # Classify rooms by architectural role
@@ -223,6 +363,85 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
             bedrooms.append(r)
         else:
             other_rooms.append(r)
+
+    # Special handling for small 2-room home (e.g., Bedroom + Bathroom)
+    if len(rooms) == 2 and not living_rooms:
+        main_r = bedrooms[0] if bedrooms else rooms[0]
+        second_r = bathrooms[0] if bathrooms else rooms[1]
+
+        mw = float(main_r.get("width") or 7.0)
+        ml = float(main_r.get("length") or 7.0)
+        sw = float(second_r.get("width") or 3.5)
+        sl = float(second_r.get("length") or 3.5)
+
+        main_r["width"] = mw
+        main_r["length"] = ml
+        main_r["floor"] = 0
+        main_r["position"] = {"x": round(-sw / 2.0, 2), "y": 0.0, "z": 0.0}
+
+        second_r["width"] = sw
+        second_r["length"] = sl
+        second_r["floor"] = 0
+        second_r["position"] = {"x": round(mw / 2.0, 2), "y": 0.0, "z": 0.0}
+
+        m_id = main_r.get("id", "bedroom_01")
+        s_id = second_r.get("id", "bathroom_01")
+
+        design["doors"] = [
+            {
+                "id": "door_main_entrance",
+                "roomId": m_id,
+                "room_id": m_id,
+                "wall": "front",
+                "wall_side": "south",
+                "position": {"x": round(-sw / 2.0, 2), "y": 1.05, "z": round(-ml / 2.0, 2)},
+                "width": 1.0,
+                "height": 2.1,
+            },
+            {
+                "id": f"door_{m_id}_{s_id}_connect",
+                "roomId": s_id,
+                "room_id": s_id,
+                "wall": "left",
+                "wall_side": "west",
+                "position": {"x": round((-sw / 2.0 + mw / 2.0) / 2.0, 2), "y": 1.05, "z": 0.0},
+                "width": 0.9,
+                "height": 2.1,
+            },
+        ]
+        design["windows"] = [
+            {
+                "id": f"win_{m_id}_left",
+                "roomId": m_id,
+                "room_id": m_id,
+                "wall": "left",
+                "wall_side": "west",
+                "position": {"x": round(-sw / 2.0 - mw / 2.0, 2), "y": 1.5, "z": 0.0},
+                "width": 1.8,
+                "height": 1.4,
+            },
+            {
+                "id": f"win_{m_id}_front",
+                "roomId": m_id,
+                "room_id": m_id,
+                "wall": "front",
+                "wall_side": "south",
+                "position": {"x": round(-sw / 2.0, 2), "y": 1.5, "z": round(-ml / 2.0, 2)},
+                "width": 1.8,
+                "height": 1.4,
+            },
+            {
+                "id": f"win_{s_id}_right",
+                "roomId": s_id,
+                "room_id": s_id,
+                "wall": "right",
+                "wall_side": "east",
+                "position": {"x": round(mw / 2.0 + sw / 2.0, 2), "y": 1.5, "z": 0.0},
+                "width": 1.2,
+                "height": 1.2,
+            },
+        ]
+        return design
 
     # Primary ground floor hub: Living room
     living = living_rooms[0] if living_rooms else rooms[0]
@@ -509,7 +728,142 @@ def snap_and_pack_architectural_layout(design: dict[str, Any]) -> dict[str, Any]
         },
     }
 
-    return design
+# ─── Furniture Asset Normalization ───────────────────────────────────────────
+
+FURNITURE_SYNONYMS: dict[str, str] = {
+    "shower": "shower",
+    "shower_stall": "shower",
+    "shower_cabin": "shower",
+    "shower_enclosure": "shower",
+    "walk_in_shower": "shower",
+    "tub": "bathtub",
+    "bath": "bathtub",
+    "bathtub": "bathtub",
+    "jacuzzi": "bathtub",
+    "soaking_tub": "bathtub",
+    "washbasin": "bathroom_sink",
+    "basin": "bathroom_sink",
+    "sink": "bathroom_sink",
+    "vanity": "bathroom_sink",
+    "bathroom_vanity": "bathroom_sink",
+    "lavatory": "bathroom_sink",
+    "commode": "toilet",
+    "wc": "toilet",
+    "water_closet": "toilet",
+    "toilet_seat": "toilet",
+    "couch": "sofa",
+    "sectional": "sofa",
+    "sofa_3seater": "sofa",
+    "chesterfield": "sofa",
+    "loveseat": "sofa",
+    "tv": "tv_cabinet",
+    "tv_unit": "tv_cabinet",
+    "tv_stand": "tv_cabinet",
+    "television": "tv_cabinet",
+    "media_console": "tv_cabinet",
+    "entertainment_center": "tv_cabinet",
+    "fridge": "refrigerator",
+    "freezer": "refrigerator",
+    "table": "dining_table",
+    "dinner_table": "dining_table",
+    "counter": "kitchen_island",
+    "kitchen_counter": "kitchen_island",
+    "island": "kitchen_island",
+    "breakfast_bar": "kitchen_island",
+    "cabinet": "kitchen_cabinet",
+    "stove": "microwave",
+    "oven": "microwave",
+    "cooktop": "microwave",
+    "closet": "wardrobe",
+    "cupboard": "wardrobe",
+    "dresser": "wardrobe",
+    "wardrobe_closet": "wardrobe",
+    "lamp": "floor_lamp",
+    "standing_lamp": "floor_lamp",
+    "light": "floor_lamp",
+    "night_stand": "nightstand",
+    "bedside_table": "nightstand",
+    "bedside": "nightstand",
+    "desk_chair": "chair",
+    "office_chair": "chair",
+    "arm_chair": "armchair",
+    "lounge_chair": "armchair",
+    "recliner": "armchair",
+    "stairs": "staircase",
+    "stairway": "staircase",
+    "steps": "staircase",
+}
+
+def normalize_furniture_asset(raw_asset: str, room_type: str = "") -> str:
+    """Map any LLM raw furniture asset name to a validated canonical catalog asset name."""
+    if not raw_asset or not isinstance(raw_asset, str):
+        return "chair"
+
+    clean = raw_asset.strip().lower().replace("-", "_").replace(" ", "_")
+    valid_set = set(VALID_FURNITURE_ASSETS) | {"staircase", "shower"}
+
+    # 1. Exact match in valid assets
+    if clean in valid_set:
+        return clean
+
+    # 2. Known synonym dictionary
+    if clean in FURNITURE_SYNONYMS:
+        syn = FURNITURE_SYNONYMS[clean]
+        if syn in valid_set:
+            return syn
+
+    # 3. Substring matching
+    if "shower" in clean:
+        return "shower"
+    if "bath" in clean or "tub" in clean:
+        return "bathtub"
+    if "bed" in clean:
+        return "bed"
+    if "sofa" in clean or "couch" in clean:
+        return "sofa"
+    if "toilet" in clean or "commode" in clean or "wc" in clean:
+        return "toilet"
+    if "sink" in clean or "basin" in clean or "vanity" in clean:
+        if "kitchen" in room_type.lower():
+            return "kitchen_sink"
+        return "bathroom_sink"
+    if "lamp" in clean or "light" in clean:
+        return "floor_lamp"
+    if "tv" in clean:
+        return "tv_cabinet"
+    if "fridge" in clean or "refrigerator" in clean:
+        return "refrigerator"
+    if "wardrobe" in clean or "closet" in clean or "cupboard" in clean:
+        return "wardrobe"
+    if "nightstand" in clean or "bedside" in clean:
+        return "nightstand"
+    if "desk" in clean:
+        return "desk"
+    if "chair" in clean:
+        return "chair"
+    if "table" in clean:
+        if "coffee" in clean:
+            return "coffee_table"
+        return "dining_table"
+    if "island" in clean or "counter" in clean:
+        return "kitchen_island"
+    if "cabinet" in clean:
+        return "kitchen_cabinet"
+    if "stair" in clean:
+        return "staircase"
+
+    # 4. Fallback based on room type
+    r_lower = room_type.lower()
+    if "bath" in r_lower:
+        return "bathroom_sink"
+    if "bed" in r_lower:
+        return "nightstand"
+    if "kitchen" in r_lower:
+        return "kitchen_cabinet"
+    if "living" in r_lower or "lounge" in r_lower:
+        return "armchair"
+
+    return "chair"
 
 
 def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str, Any]:
@@ -672,8 +1026,11 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
                     if f_id and not any(tf.get("id") == f_id for tf in all_furniture):
                         all_furniture.append(f)
 
+    room_type_map = {r.get("id"): r.get("type", "") for r in rooms if isinstance(r, dict)}
     for f in all_furniture:
         if isinstance(f, dict):
+            if "asset" in f:
+                f["asset"] = normalize_furniture_asset(str(f["asset"]), room_type_map.get(f.get("roomId", ""), ""))
             try:
                 if "scale" in f:
                     f["scale"] = max(0.1, min(5.0, float(f["scale"])))
@@ -694,8 +1051,16 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
     design["furniture"] = all_furniture
 
     # Deterministically solve architectural layout using ArchitecturalLayoutEngine
-    engine = ArchitecturalLayoutEngine()
+    # Gemini/schema-v3 coordinates are canonical metres.  The engine's legacy
+    # constructor default is feet, which used to convert an 11 m plot as if it
+    # were 11 ft and then silently expand it to its fallback minimum.
+    engine = ArchitecturalLayoutEngine(unit="meters")
     design = engine.solve_or_refine_design(design, user_prompt)
+
+    # Floors are the canonical source for both renderers.  Preflight synchronizes
+    # compatibility views, repairs safe transform issues, and records any
+    # generation-blocking conflict without dropping requested objects.
+    design, generation_report = validate_and_repair_design(design, repair=True)
 
     # Character avatar starting position
     all_rooms = design.get("rooms", [])
@@ -715,9 +1080,25 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
     # Run 20-Point Architectural Validator
     try:
         validator = ArchitecturalValidator(design)
-        validator.validate()
+        _, architectural_report = validator.validate()
+        architectural_report["critical_errors"] = list(generation_report["critical_errors"])
+        architectural_report["repairs"] = list(generation_report["repairs"])
+        architectural_report["inventory"] = dict(generation_report["inventory"])
+        if generation_report["critical_errors"]:
+            architectural_report["status"] = "invalid"
+            architectural_report["errors"] = (
+                list(generation_report["critical_errors"]) + architectural_report.get("errors", [])
+            )
+        design["validation"] = architectural_report
     except Exception as e:
-        design["validation"] = {"status": "valid", "errors": [], "warnings": [str(e)]}
+        design["validation"] = {
+            "status": generation_report["status"],
+            "errors": list(generation_report["critical_errors"]),
+            "critical_errors": list(generation_report["critical_errors"]),
+            "repairs": list(generation_report["repairs"]),
+            "warnings": [f"Architectural validator failed: {e}"],
+            "inventory": dict(generation_report["inventory"]),
+        }
 
     return design
 
@@ -742,15 +1123,17 @@ def _validate_home_design_schema(design: dict[str, Any], user_prompt: str = "") 
     except ValidationError as exc:
         errors.append(f"Design schema validation failed: {exc.message}")
 
-    # Validate furniture asset names (new format)
+    # Validate and normalize furniture asset names (never crash on slight naming variations)
     furniture = design.get("furniture", [])
+    valid_assets_set = set(VALID_FURNITURE_ASSETS) | {"staircase", "shower"}
+    room_type_map = {r.get("id"): r.get("type", "") for r in rooms if isinstance(r, dict)}
     if isinstance(furniture, list):
         for f in furniture:
             if isinstance(f, dict) and "asset" in f:
                 asset = f["asset"]
-                # Allow staircase as a special case
-                if asset not in VALID_FURNITURE_ASSETS and asset != "staircase":
-                    errors.append(f"Unknown furniture asset: '{asset}'. Valid: {', '.join(VALID_FURNITURE_ASSETS)}")
+                if asset not in valid_assets_set:
+                    # Sanitize through normalization rather than fatal error
+                    f["asset"] = normalize_furniture_asset(str(asset), room_type_map.get(f.get("roomId", ""), ""))
 
     # Check for duplicate room IDs
     room_ids = [r.get("id") for r in rooms if isinstance(r, dict) and r.get("id")]
@@ -768,4 +1151,3 @@ def _validate_home_design_schema(design: dict[str, Any], user_prompt: str = "") 
 
 
 snap_and_normalize_architectural_layout = snap_and_pack_architectural_layout
-

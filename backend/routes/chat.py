@@ -18,8 +18,11 @@ from utils.gemini import (
     generate_home_design,
     validate_architectural_prompt,
 )
+from utils.gemini_layout import infer_layout_constraints
 from utils.middleware import require_auth
 from utils.architectural_validator import ArchitecturalValidator
+from utils.architectural_preflight import validate_and_repair_design
+from utils.architectural_refinement import apply_targeted_refinement
 from utils.architectural_schema_v3 import validate_schema_v3
 
 
@@ -41,9 +44,9 @@ def _serialize_project(doc, latest_version=None):
     }
 
 
-def _serialize_version(doc):
+def _serialize_version(doc, resolve_glb: bool = True):
     raw_glb = doc.get("glb_url") or (doc.get("design") or {}).get("glb_url")
-    resolved_glb = resolve_s3_url_to_presigned(raw_glb)
+    resolved_glb = resolve_s3_url_to_presigned(raw_glb) if resolve_glb else None
     design = doc.get("design")
     if isinstance(design, dict) and resolved_glb:
         design = dict(design)
@@ -58,6 +61,7 @@ def _serialize_version(doc):
         "style":       doc.get("style", "modern"),
         "design":      design,
         "glb_url":     resolved_glb,
+        "has_glb":     bool(raw_glb),
         "created_at":  doc["created_at"].isoformat() if doc.get("created_at") else None,
     }
 
@@ -144,7 +148,9 @@ def get_project(project_id: str):
         {"project_id": obj_id, "user_id": request.user["_id"]},
         projection={"design": 0}
     ).sort("version_num", -1)
-    versions = [_serialize_version(v) for v in cursor]
+    # Sidebar summaries need availability, not a freshly signed URL for every
+    # model. Signing here slows initial project loading and changes cache keys.
+    versions = [_serialize_version(v, resolve_glb=False) for v in cursor]
 
     return jsonify({
         "project": _serialize_project(doc),
@@ -205,7 +211,7 @@ def list_versions(project_id: str):
         projection={"design": 0}   # exclude heavy design JSON
     ).sort("version_num", -1)
 
-    items = [_serialize_version(doc) for doc in cursor]
+    items = [_serialize_version(doc, resolve_glb=False) for doc in cursor]
     return jsonify({"versions": items})
 
 
@@ -276,28 +282,49 @@ def generate_version(project_id: str):
             sort=[("version_num", -1)]
         )
 
-    if base_version and base_version.get("design"):
-        base_design_json = json.dumps(base_version["design"], ensure_ascii=True)
-        generation_prompt = build_generation_prompt(
-            f"{prompt}\nCurrent design JSON:\n{base_design_json}",
-            style=style,
-            base_design=base_version.get("design"),
-        )
-    else:
-        generation_prompt = build_generation_prompt(prompt, style=style)
+    prompt_constraints = infer_layout_constraints(prompt)
+    replace_room_program = bool(prompt_constraints.get("replace_room_program"))
 
-    try:
-        design = generate_home_design(generation_prompt, timeout=120)
-    except GeminiTemporaryUnavailableError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 503
-    except GeminiSchemaValidationError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 422
-    except (ValueError, EnvironmentError) as exc:
-        return jsonify({"success": False, "error": str(exc)}), 400
-    except RuntimeError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 502
-    except Exception:
-        return jsonify({"success": False, "error": "Internal server error."}), 500
+    design = None
+    refinement_report = None
+    if base_version and base_version.get("design") and not replace_room_program:
+        design, refinement_report = apply_targeted_refinement(base_version["design"], prompt)
+        if refinement_report["handled"] and refinement_report["errors"]:
+            return jsonify({
+                "success": False,
+                "error": "The requested layout refinement could not be applied safely.",
+                "refinement": refinement_report,
+            }), 422
+
+    # A recognized small edit is applied directly to the approved canonical
+    # layout.  Only broader redesign prompts are delegated to Gemini.
+    if design is None:
+        if base_version and base_version.get("design") and not replace_room_program:
+            base_design_json = json.dumps(base_version["design"], ensure_ascii=True)
+            generation_prompt = build_generation_prompt(
+                f"{prompt}\nCurrent design JSON:\n{base_design_json}",
+                style=style,
+                base_design=base_version.get("design"),
+            )
+        else:
+            generation_prompt = build_generation_prompt(prompt, style=style)
+
+        try:
+            design = generate_home_design(
+                generation_prompt,
+                timeout=120,
+                constraints_prompt=prompt,
+            )
+        except GeminiTemporaryUnavailableError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 503
+        except GeminiSchemaValidationError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 422
+        except (ValueError, EnvironmentError) as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        except RuntimeError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 502
+        except Exception:
+            return jsonify({"success": False, "error": "Internal server error."}), 500
 
     # Determine next version number
     last = versions_collection().find_one(
@@ -317,8 +344,10 @@ def generate_version(project_id: str):
         "style":      style,
         "design":     design,
         "glb_url":     None,
+        "layout_approved": False,
         "created_at": now,
     }
+    design["layout_approved"] = False
     ver_result = versions_collection().insert_one(ver_doc)
     ver_id = ver_result.inserted_id
     ver_doc["_id"] = ver_id
@@ -333,27 +362,11 @@ def generate_version(project_id: str):
         }}
     )
 
-    # Launch Blender 3D procedural generation in background thread
-    def _bg_generate_blender(d_copy, p_id_str, v_obj_id, v_num):
-        try:
-            g_url = generate_3d_house_model(d_copy, project_id=p_id_str, version_num=v_num)
-            if g_url:
-                versions_collection().update_one(
-                    {"_id": v_obj_id},
-                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
-                )
-        except Exception as e:
-            logging.error(f"[BLENDER] Background generation error: {e}")
-
-    threading.Thread(
-        target=_bg_generate_blender,
-        args=(design, str(proj_id), ver_id, next_num),
-        daemon=True,
-    ).start()
-
+    # 3D synthesis is withheld until the user reviews 2D floor plan and approves
     return jsonify({
         "success": True,
         "version": _serialize_version(ver_doc),
+        "refinement": refinement_report if refinement_report and refinement_report["handled"] else None,
     }), 200
 
 
@@ -379,7 +392,11 @@ def generate_design_legacy():
         timeout = 120
 
     try:
-        design = generate_home_design(build_generation_prompt(prompt, style=style), timeout=timeout)
+        design = generate_home_design(
+            build_generation_prompt(prompt, style=style),
+            timeout=timeout,
+            constraints_prompt=prompt,
+        )
     except GeminiTemporaryUnavailableError as exc:
         return jsonify({"success": False, "error": str(exc)}), 503
     except GeminiSchemaValidationError as exc:
@@ -414,8 +431,10 @@ def generate_design_legacy():
         "style":       style,
         "design":      design,
         "glb_url":     None,
+        "layout_approved": False,
         "created_at":  now,
     }
+    design["layout_approved"] = False
     ver_result = versions_collection().insert_one(ver_doc)
     ver_id = ver_result.inserted_id
 
@@ -426,31 +445,11 @@ def generate_design_legacy():
         "version_id": ver_id,
         "prompt":     prompt,
         "design":     design,
+        "layout_approved": False,
         "created_at": now,
     })
 
-    # Launch Blender 3D procedural generation in background thread
-    def _bg_generate_blender_legacy(d_copy, p_id_str, v_obj_id):
-        try:
-            g_url = generate_3d_house_model(d_copy, project_id=p_id_str, version_num=1)
-            if g_url:
-                versions_collection().update_one(
-                    {"_id": v_obj_id},
-                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
-                )
-                designs_collection().update_one(
-                    {"version_id": v_obj_id},
-                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
-                )
-        except Exception as e:
-            logging.error(f"[BLENDER] Legacy background generation error: {e}")
-
-    threading.Thread(
-        target=_bg_generate_blender_legacy,
-        args=(design, str(proj_id), ver_id),
-        daemon=True,
-    ).start()
-
+    # 3D synthesis is withheld until the user reviews 2D floor plan and approves
     return jsonify({
         "success":    True,
         "design":     design,
@@ -569,8 +568,32 @@ def generate_3d_for_version(project_id: str, version_id: str):
     if not ver or not ver.get("design"):
         return jsonify({"error": "Version or architectural design not found"}), 404
 
+    data = request.get_json(silent=True) or {}
+    force_value = data.get("force", request.args.get("force", False))
+    force = force_value is True or str(force_value).strip().lower() in {"1", "true", "yes", "on"}
+
+    # Opening an existing version must not start Blender again. Return a fresh
+    # signed URL for the saved object unless regeneration was explicit.
+    existing_glb = ver.get("glb_url") or (ver.get("design") or {}).get("glb_url")
+    if existing_glb and not force:
+        serialized = _serialize_version(ver)
+        return jsonify({
+            "success": True,
+            "reused": True,
+            "glb_url": serialized.get("glb_url"),
+            "version": serialized,
+        })
+
+    design, preflight = validate_and_repair_design(ver["design"], repair=True)
+    if preflight["critical_errors"]:
+        return jsonify({
+            "success": False,
+            "error": "3D generation blocked by architectural validation.",
+            "validation": preflight,
+        }), 422
+
     glb_url = generate_3d_house_model(
-        ver["design"],
+        design,
         project_id=project_id,
         version_num=ver.get("version_num", 1)
     )
@@ -578,16 +601,17 @@ def generate_3d_for_version(project_id: str, version_id: str):
     if not glb_url:
         return jsonify({"success": False, "error": "Blender 3D generation failed or timed out"}), 502
 
+    design["glb_url"] = glb_url
     versions_collection().update_one(
         {"_id": ver_obj_id},
-        {"$set": {"glb_url": glb_url, "design.glb_url": glb_url}}
+        {"$set": {"glb_url": glb_url, "design": design}}
     )
     ver["glb_url"] = glb_url
-    if "design" in ver and isinstance(ver["design"], dict):
-        ver["design"]["glb_url"] = glb_url
+    ver["design"] = design
 
     return jsonify({
         "success": True,
+        "reused": False,
         "glb_url": glb_url,
         "version": _serialize_version(ver),
     })
@@ -611,8 +635,17 @@ def approve_layout_for_version(project_id: str, version_id: str):
     if not ver or not ver.get("design"):
         return jsonify({"error": "Version or architectural design not found"}), 404
 
+    # Repair safe transform issues before approval and refuse to represent an
+    # invalid scene as complete.  Required objects are never silently deleted.
+    design, preflight = validate_and_repair_design(ver["design"], repair=True)
+    if preflight["critical_errors"]:
+        return jsonify({
+            "success": False,
+            "error": "Layout cannot be approved until critical conflicts are resolved.",
+            "validation": preflight,
+        }), 422
+
     # Update design state to approved
-    design = ver["design"]
     design["layout_approved"] = True
     design["approved_at"] = dt.datetime.utcnow().isoformat()
 
@@ -670,22 +703,40 @@ def update_layout_for_version(project_id: str, version_id: str):
     if not isinstance(updated_design, dict):
         return jsonify({"error": "design or layout object is required"}), 400
 
-    # Run 20-point validation on updated design
+    updated_design, preflight = validate_and_repair_design(updated_design, repair=True)
+    # A saved edit makes any previous GLB stale. Require review and a new
+    # export rather than presenting old geometry as the edited design.
+    updated_design["layout_approved"] = False
+    updated_design.pop("approved_at", None)
+    updated_design.pop("glb_url", None)
+    # Run architectural validation after deterministic repairs.
     validator = ArchitecturalValidator(updated_design)
     is_valid, val_report = validator.validate()
+    val_report["critical_errors"] = preflight["critical_errors"]
+    val_report["repairs"] = preflight["repairs"]
+    val_report["inventory"] = preflight["inventory"]
+    if preflight["critical_errors"]:
+        is_valid = False
+        val_report["status"] = "invalid"
+        val_report["errors"] = preflight["critical_errors"] + val_report.get("errors", [])
 
     now = dt.datetime.utcnow()
     versions_collection().update_one(
         {"_id": ver_obj_id},
         {"$set": {
             "design": updated_design,
+            "layout_approved": False,
+            "glb_url": None,
             "updated_at": now,
         }}
     )
     ver["design"] = updated_design
+    ver["layout_approved"] = False
+    ver["glb_url"] = None
 
     return jsonify({
         "success": True,
+        "design": updated_design,
         "validation": val_report,
         "version": _serialize_version(ver),
     })
@@ -709,12 +760,19 @@ def get_layout_validation(project_id: str, version_id: str):
     if not ver or not ver.get("design"):
         return jsonify({"error": "Version or design not found"}), 404
 
-    validator = ArchitecturalValidator(ver["design"])
+    canonical, preflight = validate_and_repair_design(ver["design"], repair=True)
+    validator = ArchitecturalValidator(canonical)
     is_valid, report = validator.validate()
+    report["critical_errors"] = preflight["critical_errors"]
+    report["repairs"] = preflight["repairs"]
+    report["inventory"] = preflight["inventory"]
+    if preflight["critical_errors"]:
+        is_valid = False
+        report["status"] = "invalid"
+        report["errors"] = preflight["critical_errors"] + report.get("errors", [])
 
     return jsonify({
         "success": True,
         "is_valid": is_valid,
         "report": report,
     })
-

@@ -21,8 +21,8 @@ VALID_FURNITURE_ASSETS = [
     "sofa", "armchair", "coffee_table", "bed", "wardrobe", "nightstand",
     "desk", "chair", "dining_table", "dining_chair", "sideboard",
     "kitchen_cabinet", "kitchen_island", "refrigerator", "microwave",
-    "kitchen_sink", "bathtub", "bathroom_sink", "toilet",
-    "floor_lamp", "tv_cabinet",
+    "kitchen_sink", "bathtub", "shower", "bathroom_sink", "toilet",
+    "floor_lamp", "tv_cabinet", "staircase",
 ]
 
 VALID_FLOOR_PATTERNS = [

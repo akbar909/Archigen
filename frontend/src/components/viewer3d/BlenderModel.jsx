@@ -166,7 +166,8 @@ export function BlenderHouseModel({ url, onRoomsDetected, onLoaded, showRoof = t
     if (!scene || !onRoomsDetected) return
     const detected = []
     scene.traverse((child) => {
-      if (child.isMesh && (child.name.startsWith('floor_') || child.name.startsWith('floor'))) {
+      const lowerName = String(child.name || '').toLowerCase()
+      if (child.isMesh && lowerName.startsWith('floor')) {
         const box = new THREE.Box3().setFromObject(child)
         const center = new THREE.Vector3()
         const size = new THREE.Vector3()
@@ -174,7 +175,7 @@ export function BlenderHouseModel({ url, onRoomsDetected, onLoaded, showRoof = t
         box.getSize(size)
         detected.push({
           name: child.name,
-          meshId: child.name.replace(/^floor_?/, ''),
+          meshId: child.name.replace(/^floor(?:_L\d+)?_?/i, ''),
           center: { x: center.x, y: center.y, z: center.z },
           size: { x: size.x, y: size.y, z: size.z },
         })
@@ -215,12 +216,10 @@ export function BlenderHouseModel({ url, onRoomsDetected, onLoaded, showRoof = t
 
       // Floor cutaway filtering if activeFloorLevel is specified (e.g. 0 for ground floor only)
       if (activeFloorLevel !== null && activeFloorLevel !== undefined && activeFloorLevel >= 0) {
-        const isUpperFloorMesh =
-          lowerName.includes('floor_1') ||
-          lowerName.includes('floor_2') ||
-          lowerName.includes('level_1') ||
-          lowerName.includes('upper_')
-        if (activeFloorLevel === 0 && isUpperFloorMesh) {
+        const levelMatch = lowerName.match(/_l(\d+)_/)
+        const explicitLevel = levelMatch ? Number(levelMatch[1]) : null
+        const legacyUpper = lowerName.includes('floor_1') || lowerName.includes('floor_2') || lowerName.includes('level_1') || lowerName.includes('upper_')
+        if ((explicitLevel !== null && explicitLevel > activeFloorLevel) || (explicitLevel === null && activeFloorLevel === 0 && legacyUpper)) {
           child.visible = false
         }
       }
@@ -271,4 +270,3 @@ BlenderHouseModel.preload = (url) => {
     useGLTF.preload(url)
   }
 }
-

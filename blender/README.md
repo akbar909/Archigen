@@ -124,6 +124,23 @@ blender --background --python blender/scripts/generate_house.py -- \
         --output blender/output/my_house.glb
 ```
 
+### Upload changed Blender scripts to S3
+
+The focused uploader compares local script content with S3 and uploads only new or changed `.py` files. Its default destination is `s3://$AWS_S3_BUCKET/assets/scripts/`, which is the prefix used by the worker's `/sync-assets` endpoint.
+
+```powershell
+# Preview changes without uploading
+python blender/scripts/upload_s3_scripts.py --dry-run
+
+# Upload new or changed scripts
+python blender/scripts/upload_s3_scripts.py
+
+# Upload only selected scripts
+python blender/scripts/upload_s3_scripts.py --files generate_house.py import_asset.py export_glb.py
+```
+
+AWS configuration is read from the current environment and then from `backend/gem_api.env` for missing values. Use `--force` to upload selected files without comparing them with S3.
+
 ---
 
 ## 6. Headless Docker Execution
