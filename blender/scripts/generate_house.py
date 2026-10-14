@@ -750,15 +750,31 @@ def _try_import_gate_model(
                 cur_d = max(cur_d, 0.05)
                 cur_h = max(cur_h, 0.5)
 
-                gate_obj.location = (gx, gy, gz)
-                gate_obj.rotation_euler = (0.0, 0.0, 0.0)
-
                 scale_x = gw / cur_w
                 scale_z = gh / cur_h
                 target_d = min(0.20, cur_d * min(scale_x, scale_z))
                 scale_y = max(target_d / cur_d, 0.1)
 
+                gate_obj.location = (gx, gy, gz)
+                # Gate.glb is authored vertically inverted (decorative spikes
+                # point downward). Flip the asset around its horizontal axis,
+                # then re-seat it from evaluated geometry instead of trusting
+                # its source pivot.
+                gate_obj.rotation_euler = (math.radians(180.0), 0.0, 0.0)
                 gate_obj.scale = (scale_x, scale_y, scale_z)
+                bpy.context.view_layer.update()
+                meshes = [obj for obj in gate_obj.children_recursive if obj.type == "MESH"]
+                min_z = min(
+                    (obj.matrix_world @ mathutils.Vector(corner)).z
+                    for obj in meshes
+                    for corner in obj.bound_box
+                )
+                gate_obj.location.z += gz - min_z
+                bpy.context.view_layer.update()
+                gate_obj["archgen_exterior_feature"] = "main_gate"
+                gate_obj["archgen_axis_corrected"] = True
+                gate_obj["archgen_target_width"] = gw
+                gate_obj["archgen_target_height"] = gh
                 print(f"[ARCHGEN] Loaded 3D entrance gate model from {local_p} (scale={gate_obj.scale})")
                 return gate_obj
             except Exception as e:
@@ -788,6 +804,96 @@ def _create_garage_door_model(
         if material:
             panel.data.materials.append(material)
         apply_box_uv_mapping(panel, tile_meters=1.0)
+    return root
+
+
+def _create_hinged_door_model(
+    dx: float,
+    dy: float,
+    dz: float,
+    dw: float,
+    dh: float,
+    is_vertical: bool,
+    door_type: str,
+    swing: str,
+) -> Any:
+    """Build a clean frame and an open leaf without relying on asset pivots."""
+    root = bpy.data.objects.new("Architectural_Hinged_Door", None)
+    bpy.context.scene.collection.objects.link(root)
+    root.location = (dx, dy, dz)
+    root.rotation_euler = (0.0, 0.0, math.radians(90.0) if is_vertical else 0.0)
+    root["archgen_procedural_door"] = True
+
+    is_main = door_type == "main_entrance"
+    frame_mat = create_pbr_material(
+        "mat_main_door_frame" if is_main else "mat_interior_door_frame",
+        "wood",
+        [0.22, 0.12, 0.065] if is_main else [0.48, 0.34, 0.22],
+        roughness=0.48,
+    )
+    leaf_mat = create_pbr_material(
+        "mat_main_door_leaf" if is_main else "mat_interior_door_leaf",
+        "wood",
+        [0.30, 0.16, 0.08] if is_main else [0.58, 0.42, 0.27],
+        roughness=0.42,
+    )
+    frame_width = min(0.09, max(0.055, dw * 0.08))
+    frame_depth = 0.16
+
+    def add_part(name: str, location: Tuple[float, float, float], dimensions: Tuple[float, float, float], material: Any) -> Any:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+        part = bpy.context.active_object
+        part.name = name
+        part.parent = root
+        part.location = location
+        part.scale = dimensions
+        if material:
+            part.data.materials.append(material)
+        apply_box_uv_mapping(part, tile_meters=0.8)
+        return part
+
+    add_part(
+        "DoorFrame_Left_Jamb",
+        (-dw / 2.0 + frame_width / 2.0, 0.0, dh / 2.0),
+        (frame_width, frame_depth, dh),
+        frame_mat,
+    )
+    add_part(
+        "DoorFrame_Right_Jamb",
+        (dw / 2.0 - frame_width / 2.0, 0.0, dh / 2.0),
+        (frame_width, frame_depth, dh),
+        frame_mat,
+    )
+    add_part(
+        "DoorFrame_Header",
+        (0.0, 0.0, dh - frame_width / 2.0),
+        (dw, frame_depth, frame_width),
+        frame_mat,
+    )
+
+    # Keep the leaf visibly open so the exported model agrees with the 2D
+    # circulation graph and walkthrough route. The hinge empty provides a real
+    # pivot instead of rotating a centre-origin GLB through the wall.
+    hinge_on_right = "right" in str(swing or "").lower()
+    hinge_x = (dw / 2.0 - frame_width) if hinge_on_right else (-dw / 2.0 + frame_width)
+    leaf_width = max(0.45, dw - frame_width * 2.0)
+    leaf_height = max(0.8, dh - frame_width)
+    hinge = bpy.data.objects.new("DoorLeaf_Hinge", None)
+    bpy.context.scene.collection.objects.link(hinge)
+    hinge.parent = root
+    hinge.location = (hinge_x, 0.0, 0.0)
+    hinge.rotation_euler = (0.0, 0.0, math.radians(-82.0 if hinge_on_right else 82.0))
+    leaf_x = -leaf_width / 2.0 if hinge_on_right else leaf_width / 2.0
+    leaf = add_part(
+        "DoorLeaf_Open",
+        (0.0, 0.0, leaf_height / 2.0),
+        (leaf_width, 0.045, leaf_height),
+        leaf_mat,
+    )
+    leaf.parent = hinge
+    leaf.location = (leaf_x, 0.0, leaf_height / 2.0)
+    leaf["archgen_open_door_leaf"] = True
+    bpy.context.view_layer.update()
     return root
 
 
@@ -865,13 +971,19 @@ def apply_openings(
             cutter.display_type = 'WIRE'
             cutter.hide_render = True
 
-            # A garage opening needs a sectional shutter; stretching an interior
-            # hinged-door asset across it creates the apparent second front door.
+            # Use deterministic geometry for wall-hosted doors. Imported door
+            # hierarchies have inconsistent pivots and loose trim meshes, which
+            # previously produced floating strips and distorted repeated doors.
             door_type = str(d_item.get("type", "")).lower()
             if door_type == "garage_door":
                 door_asset = _create_garage_door_model(dx, dy, dz, dw, dh, is_vertical=is_vert)
             else:
-                door_asset = _try_import_door_model(dx, dy, dz, dw, dh, idx, is_vertical=is_vert)
+                door_asset = _create_hinged_door_model(
+                    dx, dy, dz, dw, dh,
+                    is_vertical=is_vert,
+                    door_type=door_type,
+                    swing=str(d_item.get("swing", "inward_right")),
+                )
             if door_asset:
                 door_asset.name = f"Door_L{level}_{opening_id}"
                 door_asset["archgen_opening_id"] = opening_id
@@ -1244,6 +1356,7 @@ def build_exterior_features(
     boundary = exterior_data.get("boundary_wall", {})
     gate_cfg = exterior_data.get("gate", {})
     drive_cfg = exterior_data.get("driveway", {})
+    entrance_path_cfg = exterior_data.get("entrance_path", {})
     bw_h = float(boundary.get("height", 1.8))
     bw_t = float(boundary.get("thickness", 0.15))
     plot_cx, plot_cy = pw / 2.0, pd / 2.0
@@ -1302,6 +1415,30 @@ def build_exterior_features(
         apply_box_uv_mapping(drive_obj, tile_meters=1.5)
         created.append(drive_obj)
 
+    if entrance_path_cfg:
+        start = entrance_path_cfg.get("start", {})
+        end = entrance_path_cfg.get("end", {})
+        start_x = float(start.get("x", gate_x))
+        start_y = float(start.get("y", 0.0))
+        end_x = float(end.get("x", start_x))
+        end_y = float(end.get("y", sb_f))
+        path_w = max(0.8, float(entrance_path_cfg.get("width", 1.2)))
+        delta_x, delta_y = end_x - start_x, end_y - start_y
+        path_length = math.hypot(delta_x, delta_y)
+        if path_length > 0.05:
+            bpy.ops.mesh.primitive_cube_add(
+                size=1.0,
+                location=((start_x + end_x) / 2.0, (start_y + end_y) / 2.0, 0.005),
+                rotation=(0.0, 0.0, math.atan2(delta_y, delta_x)),
+            )
+            path_obj = bpy.context.active_object
+            path_obj.name = "Exterior_Main_Entrance_Path"
+            path_obj.scale = (path_length, path_w, 0.025)
+            if drive_mat:
+                path_obj.data.materials.append(drive_mat)
+            apply_box_uv_mapping(path_obj, tile_meters=1.0)
+            created.append(path_obj)
+
     return created
 
 
@@ -1314,6 +1451,7 @@ def validate_generated_scene(
     bpy.context.view_layer.update()
     errors, warnings = [], []
     room_map = {str(room.get("id")): room for room in rooms}
+    validation_doors = list(layout_data.get("openings", {}).get("doors", []) or layout_data.get("doors", []))
     actual_roots: Dict[str, List[Any]] = {}
     for obj in bpy.context.scene.objects:
         instance_id = obj.get("archgen_instance_id")
@@ -1350,10 +1488,23 @@ def validate_generated_scene(
                 f"Furniture '{item_id}' actual bounds [{min_x:.2f},{min_y:.2f}]..[{max_x:.2f},{max_y:.2f}] "
                 f"leave room '{room_id}' [{rx:.2f},{ry:.2f}]..[{rx + rw:.2f},{ry + rd:.2f}]."
             )
+        if str(room.get("type", "")).lower() != "garage":
+            actual_footprint = (min_x, min_y, max_x, max_y)
+            for zone in place_furniture._door_clearance_zones(room, validation_doors):
+                if place_furniture._rectangles_overlap(actual_footprint, zone, 0.01):
+                    errors.append(
+                        f"Furniture '{item_id}' blocks a door approach in room '{room_id}': "
+                        f"footprint={tuple(round(value, 2) for value in actual_footprint)}, "
+                        f"clearance={tuple(round(value, 2) for value in zone)}."
+                    )
+                    break
         floor_z = float(bounds.get("z", 0.0))
-        if abs(min_z - floor_z) > 0.035:
+        expected_clearance = float(root.get("archgen_floor_clearance", 0.0))
+        expected_bottom = floor_z + expected_clearance
+        if min_z < floor_z - 0.002 or abs(min_z - expected_bottom) > 0.004:
             errors.append(
-                f"Furniture '{item_id}' is not seated on its finished floor: bottom={min_z:.3f}, floor={floor_z:.3f}."
+                f"Furniture '{item_id}' is not seated on its finished floor: "
+                f"bottom={min_z:.3f}, expected={expected_bottom:.3f}."
             )
 
     expected_inventory = layout_data.get("expected_inventory", {})
@@ -1378,7 +1529,18 @@ def validate_generated_scene(
             if not meshes:
                 errors.append(f"{kind.title()} '{opening_id}' has no mesh geometry.")
                 continue
-            points = [obj.matrix_world @ mathutils.Vector(corner) for obj in meshes for corner in obj.bound_box]
+            # Open door leaves intentionally swing perpendicular to the wall;
+            # validate the jamb/header against the canonical opening and check
+            # the leaf separately through the global site-bounds pass below.
+            alignment_meshes = [
+                obj for obj in meshes
+                if not (kind == "door" and obj.get("archgen_open_door_leaf", False))
+            ] or meshes
+            points = [
+                obj.matrix_world @ mathutils.Vector(corner)
+                for obj in alignment_meshes
+                for corner in obj.bound_box
+            ]
             size_x = max(point.x for point in points) - min(point.x for point in points)
             size_y = max(point.y for point in points) - min(point.y for point in points)
             size_z = max(point.z for point in points) - min(point.z for point in points)
@@ -1556,9 +1718,15 @@ def generate_house_from_layout(
     # 8. Populate Real 3D Furniture Assets
     print("[ARCHGEN] Populating rooms with catalogued 3D furniture models...")
     catalog = place_furniture.FurnitureCatalog(base_path=blender_root)
+    furniture_doors = list(layout_data.get("openings", {}).get("doors", []) or layout_data.get("doors", []))
     total_furniture = 0
     for room in rooms:
-        placed = place_furniture.populate_room_furniture(room, catalog, base_blender_dir=blender_root)
+        placed = place_furniture.populate_room_furniture(
+            room,
+            catalog,
+            base_blender_dir=blender_root,
+            door_openings=furniture_doors,
+        )
         total_furniture += len(placed)
     expected_ids = list(layout_data.get("expected_inventory", {}).get("furniture_ids", []))
     actual_ids = {

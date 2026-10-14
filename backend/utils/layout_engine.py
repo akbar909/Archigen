@@ -141,7 +141,9 @@ class ArchitecturalLayoutEngine:
             connection_preferences=connection_preferences,
         )
         ground_windows = self._generate_windows(ground_rooms, ground_walls, bldg_w, bldg_d, sb_left, sb_front)
-        ground_furniture = self._place_furniture_for_rooms(ground_rooms, style, elevation=0.0)
+        ground_furniture = self._place_furniture_for_rooms(
+            ground_rooms, style, elevation=0.0, doors=ground_doors,
+        )
 
         floors_data = [
             {
@@ -179,7 +181,9 @@ class ArchitecturalLayoutEngine:
                 connection_preferences=connection_preferences,
             )
             first_windows = self._generate_windows(first_rooms, first_walls, bldg_w, bldg_d, sb_left, sb_front)
-            first_furniture = self._place_furniture_for_rooms(first_rooms, style, elevation=floor_h)
+            first_furniture = self._place_furniture_for_rooms(
+                first_rooms, style, elevation=floor_h, doors=first_doors,
+            )
 
             floors_data.append({
                 "id": "first_floor",
@@ -214,21 +218,40 @@ class ArchitecturalLayoutEngine:
 
         # 6. Exterior Features
         road_side = orientation
-        has_garage = any(r.get("type") == "garage" for r in ground_rooms)
-        driveway_x = ground_rooms[0]["position"]["x"] if has_garage else sb_left
-        driveway_w = ground_rooms[0]["dimensions"]["width"] if has_garage else 3.8
+        garage_room = next((r for r in ground_rooms if r.get("type") == "garage"), None)
+        driveway_x = garage_room["position"]["x"] if garage_room else sb_left
+        driveway_w = garage_room["dimensions"]["width"] if garage_room else 3.8
+        main_door = next((d for d in ground_doors if d.get("type") == "main_entrance"), None)
+        entrance_position = dict(
+            (main_door or {}).get("position")
+            or {"x": round(sb_left + bldg_w * 0.45, 2), "y": round(sb_front, 2), "z": 0.0}
+        )
+        entrance_width = float((main_door or {}).get("width", 1.10))
+        entrance_height = float((main_door or {}).get("height", 2.20))
+        gate_width = min(3.6, float(driveway_w))
+        gate_center_x = float(driveway_x) + gate_width / 2.0
 
         exterior_data = {
             "facade_style": style,
             "main_entrance": {
-                "position": {"x": round(sb_left + bldg_w * 0.45, 2), "y": round(sb_front, 2), "z": 0.0},
-                "width": 1.4,
-                "height": 2.4,
+                "door_id": (main_door or {}).get("id"),
+                "position": entrance_position,
+                "width": round(entrance_width, 2),
+                "height": round(entrance_height, 2),
             },
             "gate": {
-                "position": {"x": round(driveway_x, 2), "y": 0.2, "z": 0.0},
-                "width": 3.6,
+                "position": {"x": round(driveway_x, 2), "y": 0.0, "z": 0.0},
+                "width": round(gate_width, 2),
                 "height": 2.0,
+                "asset": "architecture/doors/exterior/Gate.glb",
+            },
+            "entrance_path": {
+                "start": {"x": round(gate_center_x, 2), "y": 0.0},
+                "end": {
+                    "x": round(float(entrance_position.get("x", gate_center_x)), 2),
+                    "y": round(float(entrance_position.get("y", sb_front)), 2),
+                },
+                "width": 1.2,
             },
             "boundary_wall": {
                 "enabled": True,
@@ -1416,7 +1439,8 @@ class ArchitecturalLayoutEngine:
         self,
         rooms: List[Dict[str, Any]],
         style: str,
-        elevation: float = 0.0
+        elevation: float = 0.0,
+        doors: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Positions architectural furniture with clearance, solid wall anchoring,
@@ -1437,13 +1461,93 @@ class ArchitecturalLayoutEngine:
             cx = round(rx + rw / 2.0, 2)
             cy = round(ry + rd / 2.0, 2)
 
+            def _door_xy(door: Dict[str, Any]) -> Tuple[float, float, float]:
+                pos = door.get("position", {})
+                if isinstance(pos, dict):
+                    return float(pos.get("x", 0.0)), float(pos.get("y", 0.0)), float(pos.get("z", floor_elev))
+                if isinstance(pos, (list, tuple)):
+                    return (
+                        float(pos[0]) if len(pos) > 0 else 0.0,
+                        float(pos[1]) if len(pos) > 1 else 0.0,
+                        float(pos[2]) if len(pos) > 2 else floor_elev,
+                    )
+                return 0.0, 0.0, floor_elev
+
+            def _nearest_side(x: float, y: float) -> str:
+                distances = {
+                    "south": abs(y - ry), "north": abs((ry + rd) - y),
+                    "west": abs(x - rx), "east": abs((rx + rw) - x),
+                }
+                return min(distances, key=distances.get)
+
+            door_zones: List[Tuple[float, float, float, float]] = []
+            for door in doors or []:
+                dx, dy, dz = _door_xy(door)
+                if abs(dz - floor_elev) > 0.35:
+                    continue
+                connected = {
+                    str(value) for value in (door.get("connected_room_ids") or door.get("connected_rooms") or [])
+                }
+                direct_room = door.get("room_id") or door.get("roomId")
+                if direct_room is not None:
+                    connected.add(str(direct_room))
+                on_boundary = (
+                    rx - 0.3 <= dx <= rx + rw + 0.3
+                    and ry - 0.3 <= dy <= ry + rd + 0.3
+                    and min(abs(dx - rx), abs(dx - (rx + rw)), abs(dy - ry), abs(dy - (ry + rd))) <= 0.35
+                )
+                if str(rid) not in connected and not on_boundary:
+                    continue
+                half_width = float(door.get("width", 0.9)) / 2.0 + 0.35
+                side = _nearest_side(dx, dy)
+                if side == "south":
+                    zone = (dx - half_width, ry, dx + half_width, min(ry + rd, ry + 1.15))
+                elif side == "north":
+                    zone = (dx - half_width, max(ry, ry + rd - 1.15), dx + half_width, ry + rd)
+                elif side == "west":
+                    zone = (rx, dy - half_width, min(rx + rw, rx + 1.15), dy + half_width)
+                else:
+                    zone = (max(rx, rx + rw - 1.15), dy - half_width, rx + rw, dy + half_width)
+                door_zones.append((max(rx, zone[0]), max(ry, zone[1]), min(rx + rw, zone[2]), min(ry + rd, zone[3])))
+
             def _add(f_dict):
                 fw = float(f_dict.get("dimensions", {}).get("width", 0.8))
                 fd = float(f_dict.get("dimensions", {}).get("depth", 0.8))
+                rotation = float(f_dict.get("rotation", 0.0))
+                angle = math.radians(rotation % 180.0)
+                rotated_w = abs(math.cos(angle)) * fw + abs(math.sin(angle)) * fd
+                rotated_d = abs(math.sin(angle)) * fw + abs(math.cos(angle)) * fd
                 px = float(f_dict.get("position", {}).get("x", cx))
                 py = float(f_dict.get("position", {}).get("y", cy))
-                cx_clamped = max(rx + fw / 2.0 + 0.05, min(rx + rw - fw / 2.0 - 0.05, px))
-                cy_clamped = max(ry + fd / 2.0 + 0.05, min(ry + rd - fd / 2.0 - 0.05, py))
+                min_x, max_x = rx + rotated_w / 2.0 + 0.10, rx + rw - rotated_w / 2.0 - 0.10
+                min_y, max_y = ry + rotated_d / 2.0 + 0.10, ry + rd - rotated_d / 2.0 - 0.10
+                cx_clamped = max(min_x, min(max_x, px)) if min_x <= max_x else cx
+                cy_clamped = max(min_y, min(max_y, py)) if min_y <= max_y else cy
+
+                def footprint(x: float, y: float) -> Tuple[float, float, float, float]:
+                    return (x - rotated_w / 2.0, y - rotated_d / 2.0, x + rotated_w / 2.0, y + rotated_d / 2.0)
+
+                def blocked(rect: Tuple[float, float, float, float]) -> bool:
+                    if str(f_dict.get("category", "")).lower() == "vehicle":
+                        return False
+                    return any(not (
+                        rect[2] + 0.04 <= zone[0] or rect[0] - 0.04 >= zone[2]
+                        or rect[3] + 0.04 <= zone[1] or rect[1] - 0.04 >= zone[3]
+                    ) for zone in door_zones)
+
+                if blocked(footprint(cx_clamped, cy_clamped)) and min_x <= max_x and min_y <= max_y:
+                    candidates = []
+                    candidate_x = min_x
+                    while candidate_x <= max_x + 0.001:
+                        candidate_y = min_y
+                        while candidate_y <= max_y + 0.001:
+                            candidates.append((candidate_x, candidate_y))
+                            candidate_y += 0.25
+                        candidate_x += 0.25
+                    candidates.sort(key=lambda value: (value[0] - px) ** 2 + (value[1] - py) ** 2)
+                    replacement = next((value for value in candidates if not blocked(footprint(*value))), None)
+                    if replacement:
+                        cx_clamped, cy_clamped = replacement
                 f_dict["position"]["x"] = round(cx_clamped, 2)
                 f_dict["position"]["y"] = round(cy_clamped, 2)
                 furniture.append(f_dict)
@@ -1515,7 +1619,8 @@ class ArchitecturalLayoutEngine:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": cx, "y": bed_y, "z": floor_elev},
-                        "rotation": 180.0,
+                        "rotation": 0.0,
+                        "anchor_wall": "north",
                         "dimensions": {"width": 2.1, "depth": 2.15, "height": 1.10},
                     },
                     {
@@ -1549,6 +1654,7 @@ class ArchitecturalLayoutEngine:
                         "room_id": rid,
                         "position": {"x": round(rx + 0.65, 2), "y": round(ry + 0.8, 2), "z": floor_elev},
                         "rotation": 90.0,
+                        "anchor_wall": "west",
                         "dimensions": {"width": 1.2, "depth": 0.60, "height": 2.00},
                     },
                 ]
@@ -1580,7 +1686,8 @@ class ArchitecturalLayoutEngine:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": round(rx + 0.55, 2), "y": round(ry + 0.55, 2), "z": floor_elev},
-                        "rotation": 0.0,
+                        "rotation": 180.0,
+                        "anchor_wall": "south",
                         "dimensions": {"width": 0.90, "depth": 0.80, "height": 1.82},
                     },
                     {
@@ -1591,7 +1698,8 @@ class ArchitecturalLayoutEngine:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": round(rx + rw - 0.55, 2), "y": round(ry + 0.55, 2), "z": floor_elev},
-                        "rotation": 0.0,
+                        "rotation": 180.0,
+                        "anchor_wall": "south",
                         "dimensions": {"width": 0.80, "depth": 0.55, "height": 0.88},
                     },
                 ]:
@@ -1606,7 +1714,8 @@ class ArchitecturalLayoutEngine:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": round(rx + 0.45, 2), "y": round(ry + rd - 0.45, 2), "z": floor_elev},
-                        "rotation": 180.0,
+                        "rotation": 0.0,
+                        "anchor_wall": "north",
                         "dimensions": {"width": 0.45, "depth": 0.65, "height": 0.80},
                     },
                     {
@@ -1617,7 +1726,8 @@ class ArchitecturalLayoutEngine:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": round(rx + rw - 0.45, 2), "y": round(ry + rd - 0.45, 2), "z": floor_elev},
-                        "rotation": 180.0,
+                        "rotation": 0.0,
+                        "anchor_wall": "north",
                         "dimensions": {"width": 0.70, "depth": 0.48, "height": 0.85},
                     },
                 ]
@@ -1631,7 +1741,8 @@ class ArchitecturalLayoutEngine:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": round(rx + rw - 0.55, 2), "y": round(ry + 0.55, 2), "z": floor_elev},
-                        "rotation": 0.0,
+                        "rotation": 180.0,
+                        "anchor_wall": "south",
                         "dimensions": {"width": 0.90, "depth": 0.90, "height": 2.00},
                     })
                 for item in bath_items:
