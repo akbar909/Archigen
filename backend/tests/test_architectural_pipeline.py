@@ -90,6 +90,32 @@ class ArchitecturalPipelineTests(unittest.TestCase):
                     self.assertGreater(len(elevations), 1)
                     self.assertTrue(all(floor.get("stairs") for floor in canonical["floors"]))
 
+    def test_wall_backed_fixture_orientation_reaches_blender(self):
+        design = self.make_design(["kitchen", "bedroom", "bathroom"], (15, 18), 1)
+        floor = design["floors"][0]
+        furniture = {item["id"]: item for item in floor["furniture"]}
+
+        bed = next(item for item in furniture.values() if item["id"].startswith("bed_"))
+        toilet = next(item for item in furniture.values() if item["id"].startswith("toilet_"))
+        vanity = next(item for item in furniture.values() if item["id"].startswith("vanity_"))
+        kitchen_sink = next(item for item in furniture.values() if item["id"].startswith("sink_"))
+
+        for item in (bed, toilet, vanity):
+            self.assertEqual("north", item["anchor_wall"])
+            self.assertEqual(0.0, item["rotation"])
+        self.assertEqual("south", kitchen_sink["anchor_wall"])
+        self.assertEqual(180.0, kitchen_sink["rotation"])
+
+        adapted = adapt_gemini_to_blender_layout(design, project_id="orientation", version_num=1)
+        requirements = {
+            item["instance_id"]: item
+            for room in adapted["rooms"]
+            for item in room["furniture_requirements"]
+        }
+        for source in (bed, toilet, vanity, kitchen_sink):
+            self.assertEqual(source["anchor_wall"], requirements[source["id"]]["anchor_wall"])
+            self.assertEqual(source["rotation"], requirements[source["id"]]["rotation_deg"])
+
     def test_door_and_window_on_same_wall_are_separated(self):
         design = self.make_design(["bedroom", "bathroom"], (12, 14), 1)
         floor = design["floors"][0]
@@ -243,6 +269,26 @@ class ArchitecturalPipelineTests(unittest.TestCase):
             [room["type"] for room in design["rooms"]],
         )
         self.assertEqual([], design["validation"]["critical_errors"])
+
+        main_door = next(door for door in design["doors"] if door["type"] == "main_entrance")
+        self.assertEqual(main_door["id"], design["exterior"]["main_entrance"]["door_id"])
+        self.assertEqual(main_door["position"], design["exterior"]["main_entrance"]["position"])
+        self.assertEqual(
+            main_door["position"]["x"],
+            design["exterior"]["entrance_path"]["end"]["x"],
+        )
+        self.assertEqual(
+            main_door["position"]["y"],
+            design["exterior"]["entrance_path"]["end"]["y"],
+        )
+
+        legacy_design = copy.deepcopy(design)
+        legacy_design["exterior"].pop("entrance_path")
+        legacy_design["exterior"]["main_entrance"]["position"] = {"x": 0, "y": 0, "z": 0}
+        repaired, report = validate_and_repair_design(legacy_design, repair=True)
+        self.assertEqual([], report["critical_errors"], report)
+        self.assertEqual(main_door["position"], repaired["exterior"]["main_entrance"]["position"])
+        self.assertEqual(main_door["position"]["x"], repaired["exterior"]["entrance_path"]["end"]["x"])
         self.assertIn("gate", design["exterior"])
 
     def test_previous_design_json_does_not_change_current_prompt_counts(self):

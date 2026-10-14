@@ -485,6 +485,46 @@ def _validate_floor_geometry(
         )
 
 
+def _repair_exterior_access(
+    design: Dict[str, Any], doors: List[Dict[str, Any]], report: Dict[str, Any]
+) -> None:
+    """Keep the site gate, entrance route, and wall-hosted main door connected."""
+    main_door = next(
+        (door for door in doors if str(door.get("type", "")).lower() == "main_entrance"),
+        None,
+    )
+    exterior = design.get("exterior")
+    if not main_door or not isinstance(exterior, dict):
+        return
+
+    door_position = _position(main_door)
+    canonical_entrance = {
+        "door_id": main_door.get("id"),
+        "position": door_position,
+        "width": round(_number(main_door.get("width"), 1.10), 2),
+        "height": round(_number(main_door.get("height"), 2.20), 2),
+    }
+    if exterior.get("main_entrance") != canonical_entrance:
+        exterior["main_entrance"] = canonical_entrance
+        report["repairs"].append("Aligned the exterior entrance marker with the main entrance door.")
+
+    gate = exterior.get("gate")
+    if not isinstance(gate, dict):
+        return
+    gate.setdefault("asset", "architecture/doors/exterior/Gate.glb")
+    gate_position = _position(gate)
+    gate_width = max(0.8, _number(gate.get("width"), 3.6))
+    gate_center_x = gate_position["x"] + gate_width / 2.0
+    canonical_path = {
+        "start": {"x": round(gate_center_x, 2), "y": round(gate_position["y"], 2)},
+        "end": {"x": round(door_position["x"], 2), "y": round(door_position["y"], 2)},
+        "width": 1.2,
+    }
+    if exterior.get("entrance_path") != canonical_path:
+        exterior["entrance_path"] = canonical_path
+        report["repairs"].append("Connected the main gate to the main entrance with an access path.")
+
+
 def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Return a canonical design and a generation-gating validation report."""
     doc = copy.deepcopy(design) if repair else design
@@ -540,6 +580,7 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
     doc["doors"] = all_doors
     doc["windows"] = all_windows
     doc["furniture"] = all_furniture
+    _repair_exterior_access(doc, all_doors, report)
     report["inventory"] = {
         "rooms": len(all_rooms), "doors": len(all_doors), "windows": len(all_windows),
         "furniture_expected": len(all_furniture),

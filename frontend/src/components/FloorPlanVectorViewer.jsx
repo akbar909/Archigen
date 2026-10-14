@@ -826,6 +826,37 @@ export default function FloorPlanVectorViewer({
             strokeDasharray="8,6"
           />
 
+          {/* A continuous pedestrian route from the plot gate to the real
+              wall-hosted main entrance door. */}
+          {design?.exterior?.entrance_path && (() => {
+            const path = design.exterior.entrance_path
+            const start = path.start || {}
+            const end = path.end || {}
+            const pathWidth = Math.max(0.8, Number(path.width || 1.2)) * scale
+            return (
+              <g data-testid="main-entrance-path">
+                <line
+                  x1={mapX(Number(start.x || 0))}
+                  y1={mapY(Number(start.y || 0))}
+                  x2={mapX(Number(end.x || 0))}
+                  y2={mapY(Number(end.y || 0))}
+                  stroke="rgba(148, 163, 184, 0.28)"
+                  strokeWidth={pathWidth}
+                  strokeLinecap="butt"
+                />
+                <line
+                  x1={mapX(Number(start.x || 0))}
+                  y1={mapY(Number(start.y || 0))}
+                  x2={mapX(Number(end.x || 0))}
+                  y2={mapY(Number(end.y || 0))}
+                  stroke="rgba(226, 232, 240, 0.55)"
+                  strokeWidth="1.5"
+                  strokeDasharray="6,5"
+                />
+              </g>
+            )
+          })()}
+
           {/* Main vehicle entrance gate on the front plot boundary */}
           {design?.exterior?.gate && (() => {
             const gate = design.exterior.gate

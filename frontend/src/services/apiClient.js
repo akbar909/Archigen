@@ -5,7 +5,7 @@ const API_BASE = 'http://localhost:7860/api'
 
 export const apiClient = axios.create({
   baseURL: API_BASE,
-  timeout: 180000,
+  timeout: 300000,
 })
 
 apiClient.interceptors.request.use((config) => {

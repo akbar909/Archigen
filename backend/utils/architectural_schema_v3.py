@@ -191,6 +191,7 @@ ARCHITECTURAL_SCHEMA_V3: Dict[str, Any] = {
                 "facade_style": {"type": "string"},
                 "main_entrance": {"type": "object"},
                 "gate": {"type": "object"},
+                "entrance_path": {"type": "object"},
                 "boundary_wall": {"type": "object"},
                 "driveway": {"type": "object"},
                 "landscape": {"type": "object"}

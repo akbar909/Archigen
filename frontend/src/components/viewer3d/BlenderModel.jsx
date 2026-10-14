@@ -190,6 +190,27 @@ export function BlenderHouseModel({ url, onRoomsDetected, onLoaded, showRoof = t
   const clonedScene = useMemo(() => {
     if (!scene) return null
     const clone = scene.clone(true)
+    clone.updateMatrixWorld(true)
+
+    // Old exports could contain parapet children that inherited the already
+    // scaled roof slab transform. Keep those cached GLBs usable by rejecting
+    // only roof meshes that are implausibly larger than the actual house.
+    const structuralBounds = new THREE.Box3()
+    const ownWorldBounds = (object) => {
+      if (!object?.isMesh || !object.geometry) return null
+      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
+      return object.geometry.boundingBox?.clone().applyMatrix4(object.matrixWorld) || null
+    }
+    clone.traverse((child) => {
+      const lowerName = String(child.name || '').toLowerCase()
+      if (child.isMesh && (lowerName.startsWith('wall_') || lowerName.startsWith('floor_'))) {
+        const bounds = ownWorldBounds(child)
+        if (bounds) structuralBounds.union(bounds)
+      }
+    })
+    const structuralSize = new THREE.Vector3()
+    if (!structuralBounds.isEmpty()) structuralBounds.getSize(structuralSize)
+
     clone.traverse((child) => {
       if (child.isLight) {
         child.visible = false
@@ -211,7 +232,14 @@ export function BlenderHouseModel({ url, onRoomsDetected, onLoaded, showRoof = t
 
       // Roof visibility toggle (showRoof = true / false)
       if (lowerName.startsWith('roof') || lowerName.includes('_roof_') || lowerName.startsWith('roof_')) {
-        child.visible = showRoof
+        const bounds = ownWorldBounds(child)
+        const size = new THREE.Vector3()
+        if (bounds) bounds.getSize(size)
+        const malformedLegacyRoof = (
+          structuralSize.x > 0 && structuralSize.z > 0
+          && (size.x > structuralSize.x * 1.35 || size.z > structuralSize.z * 1.35)
+        )
+        child.visible = showRoof && !malformedLegacyRoof
       }
 
       // Floor cutaway filtering if activeFloorLevel is specified (e.g. 0 for ground floor only)

@@ -105,13 +105,14 @@ def _canonical_blender_layout(
                 seen_furniture.add(fid)
                 item = floor_items[fid]
                 fpos, fdim = item.get("position", {}), item.get("dimensions", {})
-                category = str(item.get("asset") or item.get("category") or item.get("type") or "furniture").lower()
+                category = str(item.get("category") or item.get("asset") or item.get("type") or "furniture").lower()
                 furniture_reqs.append({
                     "id": fid,
                     "instance_id": fid,
                     "category": category,
                     "preferred_id": item.get("asset_id") or item.get("asset") or item.get("model_id"),
                     "placement_hint": item.get("placement_hint", "exact"),
+                    "anchor_wall": item.get("anchor_wall"),
                     "position": [
                         round(float(fpos.get("x", bx + bw / 2.0)), 3),
                         round(float(fpos.get("y", by + bd / 2.0)), 3),
@@ -238,7 +239,7 @@ def adapt_gemini_to_blender_layout(
 
         for f in room_furniture:
             # Support both old format ("type") and new format ("asset")
-            cat = str(f.get("asset") or f.get("type", "sofa")).lower()
+            cat = str(f.get("category") or f.get("asset") or f.get("type", "sofa")).lower()
             fpos = f.get("position", {})
             fx = float(fpos.get("x", 0.0)) if isinstance(fpos, dict) else 0.0
             fy_val = float(fpos.get("y", 0.0)) if isinstance(fpos, dict) else 0.0
@@ -265,6 +266,7 @@ def adapt_gemini_to_blender_layout(
                 "category": cat,
                 "preferred_id": f.get("id"),
                 "placement_hint": "center",
+                "anchor_wall": f.get("anchor_wall"),
                 "position": [round(abs_x, 2), round(abs_y, 2), round(target_z, 2)],
                 "rotation_deg": rot,
             })

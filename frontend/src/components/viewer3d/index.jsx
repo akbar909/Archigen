@@ -108,6 +108,41 @@ export default function Viewer3D({ design }) {
   const rooms = useMemo(() => (Array.isArray(design?.rooms) ? design.rooms : []), [design?.rooms])
   const doors = useMemo(() => (Array.isArray(design?.doors) ? design.doors : []), [design?.doors])
   const windows = useMemo(() => (Array.isArray(design?.windows) ? design.windows : []), [design?.windows])
+  const isExteriorAccessWalkable = useMemo(() => {
+    const exterior = design?.exterior || {}
+    const path = exterior.entrance_path || {}
+    const start = path.start || {}
+    const end = path.end || {}
+    const ax = Number(start.x)
+    const az = Number(start.y)
+    const bx = Number(end.x)
+    const bz = Number(end.y)
+    const pathWidth = Math.max(0.8, Number(path.width) || 1.2)
+    const driveway = exterior.driveway || {}
+    const driveX = Number(driveway.position?.x)
+    const driveZ = Number(driveway.position?.y)
+    const driveWidth = Number(driveway.width)
+    const driveDepth = Number(driveway.depth)
+
+    return (x, z, pad = 0.15) => {
+      if ([ax, az, bx, bz].every(Number.isFinite)) {
+        const vx = bx - ax
+        const vz = bz - az
+        const lengthSq = vx * vx + vz * vz
+        const amount = lengthSq > 0
+          ? Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / lengthSq))
+          : 0
+        const nearestX = ax + amount * vx
+        const nearestZ = az + amount * vz
+        if (Math.hypot(x - nearestX, z - nearestZ) <= pathWidth / 2 + pad) return true
+      }
+      return (
+        [driveX, driveZ, driveWidth, driveDepth].every(Number.isFinite)
+        && x >= driveX - pad && x <= driveX + driveWidth + pad
+        && z >= driveZ - pad && z <= driveZ + driveDepth + pad
+      )
+    }
+  }, [design?.exterior])
   const floors = useMemo(() => {
     if (Array.isArray(design?.floors) && design.floors.length > 0) {
       return design.floors
@@ -408,6 +443,7 @@ export default function Viewer3D({ design }) {
                 return nx >= rx - rw && nx <= rx + rw && nz >= rz - rl && nz <= rz + rl
               })
               if (inRoom) return true
+              if (isExteriorAccessWalkable(nx, nz, pad)) return true
 
               const nearDoor = allDoors.some((d) => {
                 const dx = d.worldX !== undefined ? d.worldX : (Number(d.position?.x) || 0)
@@ -462,7 +498,7 @@ export default function Viewer3D({ design }) {
                 return dist <= dw * 0.8 + 0.35
               })
 
-              if (inRoom || nearDoor || rooms.length === 0) {
+              if (inRoom || nearDoor || isExteriorAccessWalkable(nextX, nextZ, 0.15) || rooms.length === 0) {
                 targetPos.current.set(nextX, 1.0, nextZ)
                 return { x: nextX, y: 0.1, z: nextZ }
               }
@@ -479,7 +515,7 @@ export default function Viewer3D({ design }) {
 
     animId = requestAnimationFrame(update)
     return () => cancelAnimationFrame(animId)
-  }, [rooms, allDoors, viewMode, currentRoom, detectedRooms])
+  }, [rooms, allDoors, viewMode, currentRoom, detectedRooms, isExteriorAccessWalkable])
 
   // Select room camera jump (jumps directly into the true 3D room center)
   const handleSelectRoom = (room) => {
