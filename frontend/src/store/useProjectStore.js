@@ -78,9 +78,16 @@ export const useProjectStore = create((set, get) => ({
       return null
     }
 
-    // If version is already loaded with design, skip refetching
-    if (get().activeProjectId === projectId && get().activeVersionId === versionId && get().design) {
-      return get().design
+    // Keep an already usable version instant, but refresh an approved version
+    // whose background Blender URL was not available during the previous read.
+    const currentDesign = get().design
+    if (
+      get().activeProjectId === projectId &&
+      get().activeVersionId === versionId &&
+      currentDesign &&
+      (!currentDesign.layout_approved || currentDesign.glb_url)
+    ) {
+      return currentDesign
     }
 
     set({
@@ -304,11 +311,7 @@ export const useProjectStore = create((set, get) => ({
 
       await loadProjectsList({ showLoader: false })
 
-      // Automatically poll for Cloud Blender 3D synthesis
-      if (resultVersionId) {
-        get().pollForGlbModel(resultVersionId)
-      }
-
+      // 3D synthesis will start once user approves 2D layout in CAD viewer
       return { projectId: resultProjectId, versionId: resultVersionId }
     } catch (err) {
       toast.error(getGenerationErrorMessage(err))
@@ -365,7 +368,7 @@ export const useProjectStore = create((set, get) => ({
 
     set({ isGenerating3D: true })
     try {
-      const data = await apiGenerate3D(pId, vId)
+      const data = await apiGenerate3D(pId, vId, { force: true })
       if (data.success && data.glb_url) {
         set((state) => ({
           design: state.design ? { ...state.design, glb_url: data.glb_url } : state.design,

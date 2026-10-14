@@ -11,6 +11,7 @@
   "width": 0.9,
   "depth": 0.55,
   "height": 0.85,
+  "canonical_yaw_offset_deg": 90,
   "model_file": "assets/furniture/bathroom/sink_001.glb",
   "format": "glb",
   "license": "CC0",

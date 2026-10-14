@@ -154,10 +154,11 @@ blender/assets/
 
 ## 3. Existing 3D Models Inventory (Current Live Assets)
 
-The repository currently contains **28 3D models** ready for procedural generation and runtime rendering:
+The repository currently contains **29 3D models** ready for procedural generation and runtime rendering:
 
 | Asset ID | Model Name | Category | Room | Relative File Path | Format | Size | Dimensions ($W \times D \times H$) | Metadata Record |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `entrance_gate_01` | Modern Metal Entrance Gate | `gate` | exterior | `assets/architecture/doors/exterior/Gate.glb` | GLB | 375.0 KB | $4.63 \times 0.17 \times 2.15\text{ m}$ | Exterior site boundary gate |
 | `door_standard_01` | Standard Flush Door | `door` | general | `assets/doors/door_standard.glb` | GLB | 41.9 KB | $0.90 \times 0.15 \times 2.10\text{ m}$ | Schema default |
 | `door_standard_02` | Panel Interior Door | `door` | general | `assets/doors/door_standard_02.glb` | GLB | 11.0 KB | $0.90 \times 0.15 \times 2.10\text{ m}$ | Schema default |
 | `door_standard_03` | Minimalist Door | `door` | general | `assets/doors/door_standard_03.glb` | GLB | 15.4 KB | $0.90 \times 0.15 \times 2.10\text{ m}$ | Schema default |

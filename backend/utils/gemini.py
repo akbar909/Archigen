@@ -156,7 +156,11 @@ def _extract_text_from_response(response_data: dict[str, Any]) -> str:
 
 # ─── Main Generation Function ────────────────────────────────────────────────
 
-def generate_home_design(user_prompt: str, timeout: int = 120) -> dict[str, Any]:
+def generate_home_design(
+    user_prompt: str,
+    timeout: int = 120,
+    constraints_prompt: str | None = None,
+) -> dict[str, Any]:
     api_key = _get_api_key()
     endpoint = f"{GEMINI_API_BASE_URL}/{GEMINI_MODEL}:generateContent?key={parse.quote(api_key)}"
 
@@ -198,10 +202,13 @@ def generate_home_design(user_prompt: str, timeout: int = 120) -> dict[str, Any]
             raise ValueError(f"Failed to parse Gemini response: {parse_error}")
 
         # Normalize design structure, add defaults & character metadata
-        normalized = _normalize_design(parsed_json, user_prompt)
+        # The request sent to Gemini may contain a previous design JSON. Room
+        # counts must be inferred only from the current user instruction.
+        authoritative_prompt = constraints_prompt or user_prompt
+        normalized = _normalize_design(parsed_json, authoritative_prompt)
 
         # Validate schema
-        is_valid, validation_errors = _validate_home_design_schema(normalized, user_prompt)
+        is_valid, validation_errors = _validate_home_design_schema(normalized, authoritative_prompt)
         if not is_valid:
             raise GeminiSchemaValidationError(f"Design validation failed: {'; '.join(validation_errors)}")
 

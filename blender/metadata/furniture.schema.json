@@ -78,6 +78,11 @@
       "description": "Bounding box height (Z dimension in meters).",
       "minimum": 0.01
     },
+    "canonical_yaw_offset_deg": {
+      "type": "number",
+      "description": "One-time yaw correction that normalizes the authored asset to ArchiGen's local-axis convention.",
+      "default": 0
+    },
     "model_file": {
       "type": "string",
       "description": "Relative file path from the blender/ root directory to the 3D model asset."

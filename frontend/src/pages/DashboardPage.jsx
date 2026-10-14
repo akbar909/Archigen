@@ -161,7 +161,7 @@ export default function DashboardPage() {
             <div className="empty-state">
               <div style={{ fontSize: '2.5rem', animation: 'pulse-dot 1.5s ease-in-out infinite' }}>⚡</div>
               <div className="empty-state-title">Generating your architectural layout…</div>
-              <div className="empty-state-sub">Assembling rooms, multi-part furniture, and realistic lighting.</div>
+              <div className="empty-state-sub">Calculating room geometry, openings, and furniture placement.</div>
               {/* Loading skeleton */}
               <div style={{ width: '100%', maxWidth: 600, marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[100, 80, 65].map((w) => (
@@ -181,7 +181,7 @@ export default function DashboardPage() {
           )}
 
           {/* Loaded Design (3D Viewer / JSON) */}
-          {design && (
+          {design && !loading && (
             <div className="viewer-stage-container fade-up" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
               {activeTab === 'json' && (
                 <div style={{ marginBottom: 6, flexShrink: 0 }}>

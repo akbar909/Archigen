@@ -52,7 +52,11 @@ def export_scene_to_glb(
     export_kwargs = {
         "filepath": output_path,
         "export_format": "GLB",
-        "export_apply": apply_modifiers,
+        # Modifiers are baked explicitly below while their boolean cutters are
+        # still present. glTF's export_apply also rebakes imported empty-root
+        # hierarchies and shifts door/gate meshes away from their floor-level
+        # origins, so it must remain disabled.
+        "export_apply": False,
         "export_materials": "EXPORT" if export_materials else "NONE",
         "export_colors": False,      # Materials use PBR shaders, vertex colors add redundant byte overhead
         "export_animations": False,  # Static architectural geometry has no skeletal/transform animations
@@ -110,7 +114,17 @@ def export_scene_to_glb(
     gc.collect()
 
     try:
-        bpy.ops.export_scene.gltf(**export_kwargs)
+        # Blender's glTF operator options change between releases (for example
+        # export_colors was removed in 5.x).  Filter optional flags against the
+        # running operator schema so the worker remains version-compatible.
+        supported = {
+            prop.identifier for prop in bpy.ops.export_scene.gltf.get_rna_type().properties
+        }
+        compatible_kwargs = {key: value for key, value in export_kwargs.items() if key in supported}
+        removed = sorted(set(export_kwargs) - set(compatible_kwargs))
+        if removed:
+            print(f"[EXPORT] Ignoring unsupported Blender options: {', '.join(removed)}")
+        bpy.ops.export_scene.gltf(**compatible_kwargs)
         file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
         print(f"[EXPORT] Successfully generated GLB ({file_size_mb:.2f} MB): {output_path}")
         return output_path

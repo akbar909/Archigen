@@ -22,8 +22,11 @@ export async function generateDesign(payload) {
   return data
 }
 
-export async function generate3D(projectId, versionId) {
-  const { data } = await apiClient.post(`/projects/${projectId}/versions/${versionId}/generate-3d`)
+export async function generate3D(projectId, versionId, { force = false } = {}) {
+  const { data } = await apiClient.post(
+    `/projects/${projectId}/versions/${versionId}/generate-3d`,
+    { force }
+  )
   return data
 }
 
@@ -44,4 +47,3 @@ export async function fetchLayoutValidation(projectId, versionId) {
   const { data } = await apiClient.get(`/projects/${projectId}/versions/${versionId}/validation`)
   return data
 }
-

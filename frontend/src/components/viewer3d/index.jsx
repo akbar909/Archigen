@@ -10,8 +10,19 @@ import {
   CameraController,
 } from './CharacterAvatar'
 import { BlenderErrorBoundary, BlenderHouseModel, BlenderLoadingFallback } from './BlenderModel'
+import RoomVolume from './RoomVolume'
 import ViewerOverlay from './ViewerOverlay'
 import FloorPlanVectorViewer from '../FloorPlanVectorViewer'
+
+function modelIdentity(url) {
+  if (!url) return null
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return String(url).split('?')[0]
+  }
+}
 
 // ── Main Professional Viewer3D Component ─────────────────────────────
 export default function Viewer3D({ design }) {
@@ -57,8 +68,31 @@ export default function Viewer3D({ design }) {
     setIsModelRendered(false)
   }
 
-  const [viewMode, setViewMode] = useState(() => (glbUrl ? 'dollhouse' : 'plan'))
+  const isApproved = Boolean(design?.layout_approved || design?.approved_at)
+  const [viewMode, setViewMode] = useState(() => (glbUrl && isApproved ? 'dollhouse' : 'plan'))
   const [planSubMode, setPlanSubMode] = useState('vector')
+  const previousModelIdentityRef = useRef(null)
+
+  // A version with a saved cloud model should open that model directly. Use
+  // the path (not the temporary signature) to avoid treating URL refreshes as
+  // different models.
+  useEffect(() => {
+    const identity = modelIdentity(glbUrl)
+    if (identity && isApproved && identity !== previousModelIdentityRef.current) {
+      setViewSource('blender')
+      setViewMode('dollhouse')
+      setPlanSubMode('3d')
+    }
+    previousModelIdentityRef.current = identity
+  }, [activeVersionId, glbUrl, isApproved])
+
+  // Always route unapproved designs to 2D CAD floor plan for user review & approval
+  useEffect(() => {
+    if (!isApproved) {
+      setViewMode('plan')
+      setPlanSubMode('vector')
+    }
+  }, [activeVersionId, isApproved])
   const [isNightMode, setIsNightMode] = useState(false)
   const [selectedRoomId, setSelectedRoomId] = useState('overview')
   const [dismissedSynthesisPrompt, setDismissedSynthesisPrompt] = useState(false)
@@ -88,7 +122,7 @@ export default function Viewer3D({ design }) {
   const getRoom3DPosition = (room) => {
     if (!room) return { x: 0, y: 0.1, z: 0, w: 8, l: 8 }
     // 1. Match by room id
-    let match = detectedRooms.find((d) => d.meshId === room.id || d.name === `floor_${room.id}`)
+    let match = detectedRooms.find((d) => d.meshId === room.id || d.name.toLowerCase().endsWith(`_${String(room.id).toLowerCase()}`))
     // 2. Match by clean type name
     if (!match && room.type) {
       const cleanType = String(room.type).toLowerCase().replace(/[\s_]+/g, '')
@@ -117,18 +151,31 @@ export default function Viewer3D({ design }) {
       }
     }
 
-    return {
+    const canonical = room.dimensions && room.position
+    const width = Number(room.dimensions?.width ?? room.width) || 8
+    const depth = Number(room.dimensions?.depth ?? room.length) || 8
+    return canonical ? {
+      x: (Number(room.position?.x) || 0) + width / 2,
+      y: Number(room.position?.z) || 0,
+      z: (Number(room.position?.y) || 0) + depth / 2,
+      w: width,
+      l: depth,
+    } : {
       x: Number(room.position?.x) || 0,
       y: Number(room.position?.y) || 0,
       z: Number(room.position?.z) || 0,
-      w: Number(room.width) || 8,
-      l: Number(room.length) || 8,
+      w: width,
+      l: depth,
     }
   }
 
   // Collect all doors across design (top-level + per-room) for doorway passage detection
   const allDoors = useMemo(() => {
-    const list = [...doors]
+    const list = doors.map((door) => ({
+      ...door,
+      worldX: Number(door.position?.x) || 0,
+      worldZ: Number(door.position?.y ?? door.position?.z) || 0,
+    }))
     rooms.forEach((r) => {
       if (Array.isArray(r.doors)) {
         r.doors.forEach((d) => {
@@ -168,10 +215,11 @@ export default function Viewer3D({ design }) {
       })
     } else {
       rooms.forEach((r) => {
-        const rx = Number(r.position?.x) || 0
-        const rz = Number(r.position?.z) || 0
-        const rw = (Number(r.width) || 8) / 2
-        const rl = (Number(r.length) || 8) / 2
+        const pos = getRoom3DPosition(r)
+        const rx = pos.x
+        const rz = pos.z
+        const rw = pos.w / 2
+        const rl = pos.l / 2
         minX = Math.min(minX, rx - rw)
         maxX = Math.max(maxX, rx + rw)
         minZ = Math.min(minZ, rz - rl)
@@ -204,6 +252,7 @@ export default function Viewer3D({ design }) {
   const isMouseLockedRef = useRef(false)
   const yawRef = useRef(0)
   const pitchRef = useRef(0)
+  const eyeHeightRef = useRef(1.65)
 
   // Toggle pointer lock for mouse look
   const toggleMouseLook = () => {
@@ -234,7 +283,7 @@ export default function Viewer3D({ design }) {
     const onMouseMove = (e) => {
       if (!isMouseLockedRef.current || viewMode !== 'walkthrough') return
 
-      const sensitivity = 0.0003
+      const sensitivity = 0.0022
       yawRef.current += e.movementX * sensitivity
       pitchRef.current -= e.movementY * sensitivity
 
@@ -243,6 +292,7 @@ export default function Viewer3D({ design }) {
 
       if (controlsRef.current?.object) {
         const cam = controlsRef.current.object
+        cam.position.y = eyeHeightRef.current
         const cosPitch = Math.cos(pitchRef.current)
         const sinPitch = Math.sin(pitchRef.current)
         const cosYaw = Math.cos(yawRef.current)
@@ -254,8 +304,11 @@ export default function Viewer3D({ design }) {
           -cosYaw * cosPitch
         )
 
-        controlsRef.current.target.copy(cam.position).add(lookDir.multiplyScalar(2.0))
-        targetPos.current.copy(controlsRef.current.target)
+        const lookTarget = cam.position.clone().add(lookDir.multiplyScalar(2.0))
+        cam.lookAt(lookTarget)
+        controlsRef.current.target.copy(lookTarget)
+        targetPos.current.copy(lookTarget)
+        targetCamPos.current.copy(cam.position)
       }
     }
 
@@ -267,9 +320,8 @@ export default function Viewer3D({ design }) {
   useEffect(() => {
     if (rooms.length > 0) {
       const first = rooms[0]
-      const fx = Number(first.position?.x) || 0
-      const fz = Number(first.position?.z) || 0
-      setCharPos({ x: fx, y: 0.1, z: fz })
+      const firstPosition = getRoom3DPosition(first)
+      setCharPos({ x: firstPosition.x, y: firstPosition.y + 0.1, z: firstPosition.z })
       setSelectedRoomId('overview')
 
       const { cx, cz, maxDim } = houseBounds
@@ -369,6 +421,7 @@ export default function Viewer3D({ design }) {
 
             if (isWalkable(nextCamX, nextCamZ, 0.15)) {
               cam.position.add(move)
+              cam.position.y = eyeHeightRef.current
               controlsRef.current.target.add(move)
               targetCamPos.current.copy(cam.position)
               targetPos.current.copy(controlsRef.current.target)
@@ -442,6 +495,7 @@ export default function Viewer3D({ design }) {
       pitchRef.current = 0
       targetCamPos.current.set(rx, ry + 1.65, rz + 0.2)
       targetPos.current.set(rx, ry + 1.6, rz - 2.0)
+      eyeHeightRef.current = ry + 1.65
       if (controlsRef.current) {
         controlsRef.current.object.position.set(rx, ry + 1.65, rz + 0.2)
         controlsRef.current.target.set(rx, ry + 1.6, rz - 2.0)
@@ -491,6 +545,13 @@ export default function Viewer3D({ design }) {
         controlsRef.current.minDistance = 2
         controlsRef.current.maxDistance = 120
       }
+    } else if (mode === 'roof') {
+      targetPos.current.set(cx, maxDim * 0.12, cz)
+      targetCamPos.current.set(cx + maxDim * 0.45, maxDim * 1.45, cz + maxDim * 0.55)
+      if (controlsRef.current) {
+        controlsRef.current.minDistance = 2
+        controlsRef.current.maxDistance = 140
+      }
     } else if (mode === 'walkthrough') {
       yawRef.current = 0
       pitchRef.current = 0
@@ -503,6 +564,7 @@ export default function Viewer3D({ design }) {
 
       targetCamPos.current.set(rx, ry + 1.65, rz + 0.2)
       targetPos.current.set(rx, ry + 1.6, rz - 2.0)
+      eyeHeightRef.current = ry + 1.65
 
       if (controlsRef.current) {
         controlsRef.current.object.position.set(rx, ry + 1.65, rz + 0.2)
@@ -529,9 +591,7 @@ export default function Viewer3D({ design }) {
   // Reset Camera to complete house view
   const handleResetCamera = () => {
     setSelectedRoomId('overview')
-    const { cx, cz, maxDim } = houseBounds
-    targetPos.current.set(cx, 1.0, cz + 2.0)
-    targetCamPos.current.set(cx + maxDim * 0.95, maxDim * 1.05, cz + maxDim * 1.15)
+    handleModeChange(viewMode)
   }
 
   return (
@@ -597,7 +657,7 @@ export default function Viewer3D({ design }) {
           />
 
           {/* ── Photorealistic Architectural House Model: Cloud Blender GLB ── */}
-          {glbUrl ? (
+          {glbUrl && viewSource !== 'threejs' ? (
             <BlenderErrorBoundary
               key={glbUrl}
               onError={handleBlenderError}
@@ -613,7 +673,24 @@ export default function Viewer3D({ design }) {
                 />
               </Suspense>
             </BlenderErrorBoundary>
-          ) : !dismissedSynthesisPrompt ? (
+          ) : (
+            <group>
+              {rooms.map((r, idx) => (
+                <RoomVolume
+                  key={r.id || idx}
+                  room={r}
+                  viewMode={viewMode}
+                  isSelected={selectedRoomId === r.id}
+                  isNightMode={isNightMode}
+                  furniture={r.furniture}
+                  doors={doors}
+                  windows={windows}
+                />
+              ))}
+            </group>
+          )}
+
+          {!glbUrl && !dismissedSynthesisPrompt && (
             <Html center style={{ pointerEvents: 'auto', transform: 'translate3d(-50%, -70px, 0)' }}>
               <div
                 style={{
@@ -748,7 +825,7 @@ export default function Viewer3D({ design }) {
                 )}
               </div>
             </Html>
-          ) : null}
+          )}
 
           {/* Walkthrough Avatar (Hidden in first-person walkthrough to avoid blocking camera) */}
           <CharacterAvatar
@@ -763,6 +840,7 @@ export default function Viewer3D({ design }) {
 
           <OrbitControls
             ref={controlsRef}
+            enabled={viewMode !== 'walkthrough'}
             enableDamping
             dampingFactor={0.08}
             minDistance={viewMode === 'walkthrough' ? 0.1 : 2}
@@ -795,6 +873,7 @@ export default function Viewer3D({ design }) {
         doors={doors}
         windows={windows}
         design={design}
+        isApproved={isApproved}
         selectedRoomId={selectedRoomId}
         onSelectRoom={handleSelectRoom}
         showRoof={showRoof}

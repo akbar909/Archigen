@@ -196,8 +196,12 @@ def create_pbr_material(
             bsdf.inputs["Transmission"].default_value = 0.95
         elif "Transmission Weight" in bsdf.inputs:
             bsdf.inputs["Transmission Weight"].default_value = 0.95
-        mat.blend_method = 'BLEND'
-        mat.shadow_method = 'NONE'
+        if hasattr(mat, "surface_render_method"):
+            mat.surface_render_method = 'DITHERED'
+        elif hasattr(mat, "blend_method"):
+            mat.blend_method = 'BLEND'
+        if hasattr(mat, "shadow_method"):
+            mat.shadow_method = 'NONE'
 
     elif mat_type == "wood":
         # Hardwood floor planks from floor assets
@@ -290,8 +294,8 @@ def create_pbr_material(
 
 def build_foundation_and_patio(rooms: List[Dict[str, Any]]) -> List[Any]:
     """
-    Creates a dual-tier beveled concrete podium, an outdoor teak patio deck,
-    and lush surrounding grass grounds framing the house with distinct Z levels.
+    Creates the ground-floor foundation and landscape.  Patios/driveways are
+    generated only from explicit canonical exterior definitions.
     """
     if bpy is None or not rooms:
         return []
@@ -315,7 +319,6 @@ def build_foundation_and_patio(rooms: List[Dict[str, Any]]) -> List[Any]:
     cy = (min_y + max_y) / 2.0
 
     concrete_mat = create_pbr_material("mat_foundation_podium", "concrete")
-    deck_mat = create_pbr_material("mat_patio_deck", "deck")
     grass_mat = create_pbr_material("mat_landscape_grass", "grass")
 
     # 0. Surrounding Lush Garden Lawn (elevation: top at -0.22 to prevent z-fighting)
@@ -340,18 +343,6 @@ def build_foundation_and_patio(rooms: List[Dict[str, Any]]) -> List[Any]:
     apply_box_uv_mapping(base, tile_meters=1.5)
     created_objs.append(base)
 
-    # 2. Outdoor Front Patio Deck (top at 0.00)
-    deck_depth = 4.5
-    deck_y = min_y - (deck_depth / 2.0) - 0.2
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(cx, deck_y, -0.06))
-    deck = bpy.context.active_object
-    deck.name = "Outdoor_Teak_Patio_Deck"
-    deck.scale = (hw + 1.0, deck_depth, 0.12)
-    if deck_mat:
-        deck.data.materials.append(deck_mat)
-    apply_box_uv_mapping(deck, tile_meters=1.5)
-    created_objs.append(deck)
-
     return created_objs
 
 
@@ -371,13 +362,16 @@ def build_floor_slab(rooms: List[Dict[str, Any]], slab_thickness: float = 0.2) -
 
         cx = x + (w / 2.0)
         cy = y + (d / 2.0)
-        # Floor slab top at +0.01 to ensure zero Z-fighting with foundation
-        cz = -slab_thickness / 2.0 + 0.01
+        elevation = float(bounds.get("z", room.get("elevation", 0.0)))
+        # Canonical Z is the finished floor; slab mass extends below it.
+        cz = elevation - slab_thickness / 2.0
 
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(cx, cy, cz))
         slab = bpy.context.active_object
-        slab.name = f"floor_{room.get('id', 'room')}"
+        slab.name = f"Floor_L{room.get('floor_level', 0)}_{room.get('id', 'room')}"
         slab.scale = (w, d, slab_thickness)
+        slab["archgen_room_id"] = room.get("id", "")
+        slab["archgen_floor_level"] = int(room.get("floor_level", 0))
 
         flooring = room.get("flooring", {})
         pattern = str(flooring.get("material", "")).lower()
@@ -400,6 +394,61 @@ def build_floor_slab(rooms: List[Dict[str, Any]], slab_thickness: float = 0.2) -
         floor_objects.append(slab)
 
     return floor_objects
+
+
+def build_walls_from_network(
+    walls: List[Dict[str, Any]], rooms: List[Dict[str, Any]], wall_height: float = 2.8,
+    default_thickness: float = 0.20,
+) -> List[Any]:
+    """Build the approved wall network exactly once; never infer it from rooms."""
+    if bpy is None:
+        return []
+    room_map = {str(room.get("id")): room for room in rooms}
+    default_mat = create_pbr_material("mat_architectural_wall", "wall", [0.93, 0.91, 0.88], roughness=0.82)
+    result = []
+    for index, wall_data in enumerate(walls):
+        start, end = wall_data.get("start", {}), wall_data.get("end", {})
+        x1, y1 = float(start.get("x", 0.0)), float(start.get("y", 0.0))
+        x2, y2 = float(end.get("x", 0.0)), float(end.get("y", 0.0))
+        base_z = float(start.get("z", wall_data.get("position", {}).get("z", 0.0)))
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length <= 0.01:
+            print(f"[ERROR] Skipping zero-length canonical wall '{wall_data.get('id')}'.")
+            continue
+        thickness = float(wall_data.get("thickness", default_thickness))
+        height = min(float(wall_data.get("height", wall_height)), wall_height)
+        horizontal = abs(x2 - x1) >= abs(y2 - y1)
+        bpy.ops.mesh.primitive_cube_add(
+            size=1.0,
+            location=((x1 + x2) / 2.0, (y1 + y2) / 2.0, base_z + height / 2.0),
+        )
+        wall = bpy.context.active_object
+        wall_id = str(wall_data.get("id") or f"wall_{index + 1:03d}")
+        level = int(wall_data.get("floor_level", round(base_z / max(wall_height, 0.1))))
+        wall.name = f"Wall_L{level}_{wall_id}"
+        wall.scale = (length, thickness, height) if horizontal else (thickness, length, height)
+        wall["archgen_wall_id"] = wall_id
+        wall["archgen_floor_level"] = level
+        wall["archgen_connected_rooms"] = ",".join(str(v) for v in wall_data.get("connected_rooms", []))
+        wall["archgen_wall_vertical"] = not horizontal
+        wall["archgen_wall_length"] = length
+        wall["archgen_wall_thickness"] = thickness
+        wall["archgen_wall_height"] = height
+        wall["archgen_wall_base_z"] = base_z
+
+        connected = wall_data.get("connected_rooms", [])
+        target_room = room_map.get(str(connected[0])) if connected else None
+        cfg = (target_room or {}).get("walls", {})
+        pattern, color = str(cfg.get("pattern", "")).lower(), cfg.get("color")
+        if "brick" in pattern: material = create_pbr_material("mat_wall_brick_shared", "wall_brick", color)
+        elif any(token in pattern for token in ("wood", "slat", "panel")): material = create_pbr_material("mat_wall_wood_shared", "wall_wood", color)
+        elif "paint" in pattern: material = create_pbr_material("mat_wall_painted_shared", "wall_painted", color)
+        else: material = default_mat
+        if material:
+            wall.data.materials.append(material)
+        apply_box_uv_mapping(wall, tile_meters=1.8)
+        result.append(wall)
+    return result
 
 
 # ─── Walls with Baseboards & Dollhouse Caps ────────────────────────────────────
@@ -490,6 +539,11 @@ def build_walls(
         wall = bpy.context.active_object
         wall.name = f"wall_{room_id}_{sidx}"
         wall.scale = (sx, sy, wall_height)
+        wall["archgen_wall_vertical"] = sx <= sy
+        wall["archgen_wall_length"] = sy if sx <= sy else sx
+        wall["archgen_wall_thickness"] = sx if sx <= sy else sy
+        wall["archgen_wall_height"] = wall_height
+        wall["archgen_wall_base_z"] = 0.01
 
         target_room = room_map.get(room_id, {})
         wall_cfg = target_room.get("walls", {})
@@ -525,11 +579,19 @@ def _safe_opening_coords(item: Dict[str, Any], default_z: float = 0.0) -> Tuple[
         z = float(pos[2]) if len(pos) > 2 else default_z
     elif isinstance(pos, dict):
         x = float(pos.get("x", 0.0))
-        if "z" in pos:
-            y = float(pos.get("z", 0.0))
-            z = float(pos.get("y", default_z))
-        else:
+        if "y" in pos and "z" in pos:
+            # If layout engine coordinates (y is depth, z is elevation <= 1.0)
+            if float(pos.get("z", 0.0)) <= 1.0 and float(pos.get("y", 0.0)) > 1.0:
+                y = float(pos.get("y", 0.0))
+                z = float(pos.get("z", default_z))
+            else:
+                y = float(pos.get("z", 0.0))
+                z = float(pos.get("y", default_z))
+        elif "y" in pos:
             y = float(pos.get("y", 0.0))
+            z = default_z
+        else:
+            y = float(pos.get("z", 0.0))
             z = default_z
     else:
         x, y, z = 0.0, 0.0, default_z
@@ -556,8 +618,11 @@ def _is_opening_vertical(ox: float, oy: float, wall_hint: Optional[str], wall_ob
     min_dist = float("inf")
     for wall in wall_objects:
         # Distance from opening (ox, oy) to the wall's rectangular bounding box
-        half_sx = wall.scale.x / 2.0
-        half_sy = wall.scale.y / 2.0
+        vertical = bool(wall.get("archgen_wall_vertical", wall.scale.y > wall.scale.x))
+        length = float(wall.get("archgen_wall_length", wall.scale.y if vertical else wall.scale.x))
+        thickness = float(wall.get("archgen_wall_thickness", wall.scale.x if vertical else wall.scale.y))
+        half_sx = (thickness if vertical else length) / 2.0
+        half_sy = (length if vertical else thickness) / 2.0
         dx = max(wall.location.x - half_sx - ox, 0.0, ox - (wall.location.x + half_sx))
         dy = max(wall.location.y - half_sy - oy, 0.0, oy - (wall.location.y + half_sy))
         dist = math.hypot(dx, dy)
@@ -567,8 +632,22 @@ def _is_opening_vertical(ox: float, oy: float, wall_hint: Optional[str], wall_ob
 
     if closest_wall:
         # If wall length along Y is greater than along X, it is a vertical wall
-        return closest_wall.scale.y > closest_wall.scale.x
+        return bool(closest_wall.get("archgen_wall_vertical", closest_wall.scale.y > closest_wall.scale.x))
     return False
+
+
+def _wall_is_vertical(wall: Any) -> bool:
+    return bool(wall.get("archgen_wall_vertical", wall.scale.y > wall.scale.x))
+
+
+def _wall_half_extents(wall: Any) -> Tuple[float, float]:
+    vertical = _wall_is_vertical(wall)
+    length = float(wall.get("archgen_wall_length", wall.scale.y if vertical else wall.scale.x))
+    thickness = float(wall.get("archgen_wall_thickness", wall.scale.x if vertical else wall.scale.y))
+    return (
+        (thickness if vertical else length) / 2.0,
+        (length if vertical else thickness) / 2.0,
+    )
 
 
 def _try_import_door_model(
@@ -592,10 +671,12 @@ def _try_import_door_model(
                 target_h = min(dh, 2.3)
                 wall_t = 0.20
 
-                door_obj.location = (dx, dy, 0.0)
+                door_obj.location = (dx, dy, dz)
                 if is_vertical:
                     door_obj.rotation_euler = (0.0, 0.0, math.radians(90))
-                    door_obj.scale = (wall_t / cur_d, dw / cur_w, target_h / cur_h)
+                    # Normalize in asset-local axes first (X=opening width,
+                    # Y=wall depth), then rotate the complete normalized asset.
+                    door_obj.scale = (dw / cur_w, wall_t / cur_d, target_h / cur_h)
                 else:
                     door_obj.rotation_euler = (0.0, 0.0, 0.0)
                     door_obj.scale = (dw / cur_w, wall_t / cur_d, target_h / cur_h)
@@ -628,7 +709,7 @@ def _try_import_window_model(
                 win_obj.location = (wx, wy, wz - wh / 2.0)
                 if is_vertical:
                     win_obj.rotation_euler = (0.0, 0.0, math.radians(90))
-                    win_obj.scale = (wall_t / cur_d, ww / cur_w, wh / cur_h)
+                    win_obj.scale = (ww / cur_w, wall_t / cur_d, wh / cur_h)
                 else:
                     win_obj.rotation_euler = (0.0, 0.0, 0.0)
                     win_obj.scale = (ww / cur_w, wall_t / cur_d, wh / cur_h)
@@ -636,6 +717,78 @@ def _try_import_window_model(
             except Exception as e:
                 print(f"[WARN] Could not load window model {p}: {e}")
     return None
+
+
+def _try_import_gate_model(
+    gx: float, gy: float, gz: float, gw: float, gh: float
+) -> Optional[Any]:
+    """Attempts to import a real 3D gate GLB model into the entrance gate cutout."""
+    gate_candidates = [
+        os.path.join(BLENDER_ROOT, "assets", "architecture", "doors", "exterior", "Gate.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "architecture", "doors", "exterior", "gate.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "doors", "exterior", "Gate.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "doors", "Gate.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "doors", "gate.glb"),
+    ]
+    for p in gate_candidates:
+        local_p = p
+        if not os.path.isfile(local_p):
+            try:
+                import s3_asset_resolver
+                norm_rel = os.path.relpath(local_p, BLENDER_ROOT).replace("\\", "/")
+                res_path = s3_asset_resolver.download_asset_if_missing(norm_rel, base_blender_dir=BLENDER_ROOT)
+                if res_path and os.path.isfile(res_path) and os.path.getsize(res_path) > 0:
+                    local_p = res_path
+            except Exception as e:
+                print(f"[S3Resolver] Download failed for {local_p}: {e}")
+
+        if os.path.isfile(local_p) and os.path.getsize(local_p) > 0:
+            try:
+                gate_obj = import_asset.load_model(local_p, name_prefix="Exterior_Entrance_Gate")
+                cur_w, cur_d, cur_h = import_asset.get_bounding_dimensions(gate_obj)
+                cur_w = max(cur_w, 0.5)
+                cur_d = max(cur_d, 0.05)
+                cur_h = max(cur_h, 0.5)
+
+                gate_obj.location = (gx, gy, gz)
+                gate_obj.rotation_euler = (0.0, 0.0, 0.0)
+
+                scale_x = gw / cur_w
+                scale_z = gh / cur_h
+                target_d = min(0.20, cur_d * min(scale_x, scale_z))
+                scale_y = max(target_d / cur_d, 0.1)
+
+                gate_obj.scale = (scale_x, scale_y, scale_z)
+                print(f"[ARCHGEN] Loaded 3D entrance gate model from {local_p} (scale={gate_obj.scale})")
+                return gate_obj
+            except Exception as e:
+                print(f"[WARN] Could not load gate model {local_p}: {e}")
+    return None
+
+
+def _create_garage_door_model(
+    dx: float, dy: float, dz: float, dw: float, dh: float, is_vertical: bool
+) -> Any:
+    """Build a correctly oriented sectional garage shutter, not a stretched room door."""
+    root = bpy.data.objects.new("Garage_Rollup_Door", None)
+    bpy.context.scene.collection.objects.link(root)
+    root.location = (dx, dy, dz)
+    material = create_pbr_material("mat_garage_door", "metal", [0.18, 0.20, 0.22], roughness=0.48)
+    sections = 8
+    gap = 0.018
+    section_h = max(0.05, dh / sections - gap)
+    for index in range(sections):
+        local_z = (index + 0.5) * (dh / sections)
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+        panel = bpy.context.active_object
+        panel.name = f"Garage_Rollup_Panel_{index + 1:02d}"
+        panel.parent = root
+        panel.location = (0.0, 0.0, local_z)
+        panel.scale = (0.10, dw, section_h) if is_vertical else (dw, 0.10, section_h)
+        if material:
+            panel.data.materials.append(material)
+        apply_box_uv_mapping(panel, tile_meters=1.0)
+    return root
 
 
 def apply_openings(
@@ -658,17 +811,43 @@ def apply_openings(
 
     doors = openings.get("doors", [])
     windows = openings.get("windows", [])
+    opening_errors = []
+
+    def target_wall(item, ox, oy):
+        wall_id = str(item.get("wall_id") or "")
+        if wall_id:
+            for candidate in wall_objects:
+                if str(candidate.get("archgen_wall_id", "")) == wall_id:
+                    return candidate
+        vertical = _is_opening_vertical(ox, oy, item.get("wall_side") or item.get("wall"), wall_objects)
+        compatible = [wall for wall in wall_objects if _wall_is_vertical(wall) == vertical]
+        if not compatible:
+            return None
+        def distance(wall):
+            hx, hy = _wall_half_extents(wall)
+            dx = max(wall.location.x - hx - ox, 0.0, ox - wall.location.x - hx)
+            dy = max(wall.location.y - hy - oy, 0.0, oy - wall.location.y - hy)
+            return math.hypot(dx, dy)
+        closest = min(compatible, key=distance)
+        return closest if distance(closest) <= 0.25 else None
 
     # 1. Process Doors
     for idx, d_item in enumerate(doors):
         try:
-            dx, dy, _, dw, raw_dh = _safe_opening_coords(d_item, default_z=0.0)
+            dx, dy, dz, dw, raw_dh = _safe_opening_coords(d_item, default_z=0.0)
             dh = min(raw_dh, wall_height)
-            is_vert = _is_opening_vertical(dx, dy, d_item.get("wall"), wall_objects)
+            wall = target_wall(d_item, dx, dy)
+            if wall is None:
+                raise ValueError(f"door '{d_item.get('id')}' has no matching wall")
+            is_vert = _wall_is_vertical(wall)
+            level = int(wall.get("archgen_floor_level", 0))
+            opening_id = str(d_item.get("id") or idx)
+            wall_base = float(wall.get("archgen_wall_base_z", wall.location.z - wall.scale.z / 2.0))
+            dz = max(dz, wall_base)
 
             # Create Boolean Cutter Box (oriented to slice through wall cleanly)
             cutter_h = dh + 0.10
-            cutter_z = (dh / 2.0)
+            cutter_z = dz + (dh / 2.0)
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, cutter_z))
             cutter = bpy.context.active_object
             cutter.name = f"_boolean_cutter_door_{idx}"
@@ -677,27 +856,46 @@ def apply_openings(
             else:
                 cutter.scale = (dw, 0.80, cutter_h)
 
-            # Apply Boolean Difference to all intersecting walls
-            for wall in wall_objects:
-                dist = math.hypot(wall.location.x - dx, wall.location.y - dy)
-                if dist < max(wall.scale.x, wall.scale.y) + 0.8:
-                    bool_mod = wall.modifiers.new(name=f"Bool_Door_{idx}", type='BOOLEAN')
-                    bool_mod.operation = 'DIFFERENCE'
-                    bool_mod.object = cutter
-                    bool_mod.solver = 'FAST'
+            # Apply the opening only to its canonical host wall.
+            bool_mod = wall.modifiers.new(name=f"Bool_Door_{idx}", type='BOOLEAN')
+            bool_mod.operation = 'DIFFERENCE'
+            bool_mod.object = cutter
+            bool_mod.solver = 'EXACT'
 
             cutter.display_type = 'WIRE'
             cutter.hide_render = True
 
-            # Try to place 3D door model
-            door_asset = _try_import_door_model(dx, dy, 0.0, dw, dh, idx, is_vertical=is_vert)
+            # A garage opening needs a sectional shutter; stretching an interior
+            # hinged-door asset across it creates the apparent second front door.
+            door_type = str(d_item.get("type", "")).lower()
+            if door_type == "garage_door":
+                door_asset = _create_garage_door_model(dx, dy, dz, dw, dh, is_vertical=is_vert)
+            else:
+                door_asset = _try_import_door_model(dx, dy, dz, dw, dh, idx, is_vertical=is_vert)
             if door_asset:
+                door_asset.name = f"Door_L{level}_{opening_id}"
+                door_asset["archgen_opening_id"] = opening_id
+                door_asset["archgen_opening_kind"] = "door"
+                door_asset["archgen_opening_width"] = dw
+                door_asset["archgen_opening_height"] = dh
+                door_asset["archgen_opening_vertical"] = is_vert
+                door_asset["archgen_opening_x"] = dx
+                door_asset["archgen_opening_y"] = dy
+                door_asset["archgen_opening_base_z"] = dz
                 created_frames.append(door_asset)
             else:
                 # Fallback: Insert Architectural Door Frame
-                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, dh / 2.0))
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, dz + dh / 2.0))
                 frame = bpy.context.active_object
-                frame.name = f"door_frame_{idx}"
+                frame.name = f"DoorFrame_L{level}_{opening_id}"
+                frame["archgen_opening_id"] = opening_id
+                frame["archgen_opening_kind"] = "door"
+                frame["archgen_opening_width"] = dw
+                frame["archgen_opening_height"] = dh
+                frame["archgen_opening_vertical"] = is_vert
+                frame["archgen_opening_x"] = dx
+                frame["archgen_opening_y"] = dy
+                frame["archgen_opening_base_z"] = dz
                 if is_vert:
                     frame.scale = (0.22, dw + 0.08, dh + 0.04)
                 else:
@@ -707,7 +905,7 @@ def apply_openings(
                     frame.data.materials.append(door_mat)
 
                 # Hollow interior of frame
-                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, (dh - 0.04) / 2.0))
+                bpy.ops.mesh.primitive_cube_add(size=1.0, location=(dx, dy, dz + (dh - 0.04) / 2.0))
                 frame_cutter = bpy.context.active_object
                 frame_cutter.name = f"_frame_cutter_{idx}"
                 if is_vert:
@@ -718,20 +916,29 @@ def apply_openings(
                 mod = frame.modifiers.new(name="FrameHollow", type='BOOLEAN')
                 mod.operation = 'DIFFERENCE'
                 mod.object = frame_cutter
-                mod.solver = 'FAST'
+                mod.solver = 'EXACT'
                 frame_cutter.hide_render = True
                 frame_cutter.display_type = 'WIRE'
 
                 created_frames.append(frame)
         except Exception as e:
             print(f"[WARN] Failed to process door {idx}: {e}")
+            opening_errors.append(f"door '{d_item.get('id', idx)}': {e}")
 
     # 2. Process Windows
     for idx, w_item in enumerate(windows):
         try:
             wx, wy, wz, ww, wh = _safe_opening_coords(w_item, default_z=1.0)
-            actual_z = min(wz + (wh / 2.0), wall_height - (wh / 2.0))
-            is_vert = _is_opening_vertical(wx, wy, w_item.get("wall"), wall_objects)
+            wall = target_wall(w_item, wx, wy)
+            if wall is None:
+                raise ValueError(f"window '{w_item.get('id')}' has no matching wall")
+            is_vert = _wall_is_vertical(wall)
+            level = int(wall.get("archgen_floor_level", 0))
+            opening_id = str(w_item.get("id") or idx)
+            wall_base = float(wall.get("archgen_wall_base_z", wall.location.z - wall.scale.z / 2.0))
+            wall_top = wall_base + float(wall.get("archgen_wall_height", wall.scale.z))
+            actual_z = min(max(wz + (wh / 2.0), wall_base + wh / 2.0), wall_top - wh / 2.0)
+            actual_base_z = actual_z - wh / 2.0
 
             # Create Boolean Cutter Box
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
@@ -742,13 +949,10 @@ def apply_openings(
             else:
                 cutter.scale = (ww, 0.60, wh)
 
-            for wall in wall_objects:
-                dist = math.hypot(wall.location.x - wx, wall.location.y - wy)
-                if dist < max(wall.scale.x, wall.scale.y) + 0.5:
-                    bool_mod = wall.modifiers.new(name=f"Bool_Win_{idx}", type='BOOLEAN')
-                    bool_mod.operation = 'DIFFERENCE'
-                    bool_mod.object = cutter
-                    bool_mod.solver = 'FAST'
+            bool_mod = wall.modifiers.new(name=f"Bool_Win_{idx}", type='BOOLEAN')
+            bool_mod.operation = 'DIFFERENCE'
+            bool_mod.object = cutter
+            bool_mod.solver = 'EXACT'
 
             cutter.display_type = 'WIRE'
             cutter.hide_render = True
@@ -756,12 +960,29 @@ def apply_openings(
             # Try to place 3D window model
             win_asset = _try_import_window_model(wx, wy, actual_z, ww, wh, idx, is_vertical=is_vert)
             if win_asset:
+                win_asset.name = f"Window_L{level}_{opening_id}"
+                win_asset["archgen_opening_id"] = opening_id
+                win_asset["archgen_opening_kind"] = "window"
+                win_asset["archgen_opening_width"] = ww
+                win_asset["archgen_opening_height"] = wh
+                win_asset["archgen_opening_vertical"] = is_vert
+                win_asset["archgen_opening_x"] = wx
+                win_asset["archgen_opening_y"] = wy
+                win_asset["archgen_opening_base_z"] = actual_base_z
                 created_frames.append(win_asset)
             else:
                 # Fallback: Insert Modern Aluminum Window Frame + Double Glazing
                 bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
                 win_frame = bpy.context.active_object
-                win_frame.name = f"window_frame_{idx}"
+                win_frame.name = f"WindowFrame_L{level}_{opening_id}"
+                win_frame["archgen_opening_id"] = opening_id
+                win_frame["archgen_opening_kind"] = "window"
+                win_frame["archgen_opening_width"] = ww
+                win_frame["archgen_opening_height"] = wh
+                win_frame["archgen_opening_vertical"] = is_vert
+                win_frame["archgen_opening_x"] = wx
+                win_frame["archgen_opening_y"] = wy
+                win_frame["archgen_opening_base_z"] = actual_base_z
                 if is_vert:
                     win_frame.scale = (0.22, ww + 0.06, wh + 0.06)
                 else:
@@ -782,7 +1003,7 @@ def apply_openings(
                 wmod = win_frame.modifiers.new(name="WinHollow", type='BOOLEAN')
                 wmod.operation = 'DIFFERENCE'
                 wmod.object = wcutter
-                wmod.solver = 'FAST'
+                wmod.solver = 'EXACT'
                 wcutter.hide_render = True
                 wcutter.display_type = 'WIRE'
 
@@ -791,7 +1012,7 @@ def apply_openings(
                 # Insert Double-Glazed Glass Pane
                 bpy.ops.mesh.primitive_cube_add(size=1.0, location=(wx, wy, actual_z))
                 glass = bpy.context.active_object
-                glass.name = f"window_glass_{idx}"
+                glass.name = f"WindowGlass_L{level}_{opening_id}"
                 if is_vert:
                     glass.scale = (0.02, ww - 0.08, wh - 0.08)
                 else:
@@ -799,10 +1020,17 @@ def apply_openings(
 
                 if glass_mat:
                     glass.data.materials.append(glass_mat)
-                glass.parent = win_frame
+                # The pane is already in canonical world coordinates. Parenting
+                # it to a non-applied, non-uniformly scaled frame can produce a
+                # second transform during glTF export and stretch it across the
+                # house, so keep it as an independent architectural mesh.
                 created_frames.append(glass)
         except Exception as e:
             print(f"[WARN] Failed to process window {idx}: {e}")
+            opening_errors.append(f"window '{w_item.get('id', idx)}': {e}")
+
+    if opening_errors:
+        raise RuntimeError("Opening generation failed: " + "; ".join(opening_errors))
 
     return created_frames
 
@@ -947,6 +1175,7 @@ def build_roof_structure(
     roof_slab.scale = (bldg_w + 0.4, bldg_d + 0.4, slab_thickness)
     if slab_mat:
         roof_slab.data.materials.append(slab_mat)
+    apply_box_uv_mapping(roof_slab, tile_meters=1.5)
     created.append(roof_slab)
 
     if roof_type in ["parapet", "flat"]:
@@ -966,7 +1195,10 @@ def build_roof_structure(
             pwall.scale = (pw, pd, parapet_h)
             if trim_mat:
                 pwall.data.materials.append(trim_mat)
-            pwall.parent = roof_slab
+            # Keep parapets in world space. A child of the non-uniformly scaled
+            # slab exported with the slab transform a second time in glTF,
+            # producing the huge floating rectangle that followed Roof ON/OFF.
+            apply_box_uv_mapping(pwall, tile_meters=1.5)
             created.append(pwall)
     elif roof_type == "gable":
         gable_h = 1.80
@@ -981,7 +1213,7 @@ def build_roof_structure(
         gable.rotation_euler = (0, 0, math.radians(45))
         if trim_mat:
             gable.data.materials.append(trim_mat)
-        gable.parent = roof_slab
+        apply_box_uv_mapping(gable, tile_meters=1.5)
         created.append(gable)
 
     return created
@@ -1009,50 +1241,232 @@ def build_exterior_features(
     drive_mat = create_pbr_material("mat_driveway_paving", "concrete")
     created = []
 
-    bw_h = 1.80
-    bw_t = 0.15
-    px_center = cx
-    py_center = cy - (sb_f / 2.0)
+    boundary = exterior_data.get("boundary_wall", {})
+    gate_cfg = exterior_data.get("gate", {})
+    drive_cfg = exterior_data.get("driveway", {})
+    bw_h = float(boundary.get("height", 1.8))
+    bw_t = float(boundary.get("thickness", 0.15))
+    plot_cx, plot_cy = pw / 2.0, pd / 2.0
+    drive_w = float(drive_cfg.get("width", 3.8))
+    drive_d = min(pd, max(0.0, float(drive_cfg.get("depth", sb_f))))
+    drive_pos = drive_cfg.get("position", {})
+    drive_x0 = max(0.0, min(pw - drive_w, float(drive_pos.get("x", plot_cx - drive_w / 2.0))))
+    gate_w = min(float(gate_cfg.get("width", drive_w)), drive_w)
+    gate_h = float(gate_cfg.get("height", bw_h))
+    gate_x = drive_x0 + drive_w / 2.0
 
-    # Left, Right, Rear boundary walls
-    b_segments = [
-        (px_center - pw / 2.0, py_center, bw_t, pd),
-        (px_center + pw / 2.0, py_center, bw_t, pd),
-        (px_center, py_center + pd / 2.0, pw, bw_t),
-    ]
-    for idx, (bx, by, b_w, b_d) in enumerate(b_segments):
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, by, bw_h / 2.0))
-        bw_obj = bpy.context.active_object
-        bw_obj.name = f"Exterior_Boundary_Wall_{idx+1}"
-        bw_obj.scale = (b_w, b_d, bw_h)
-        if wall_mat:
-            bw_obj.data.materials.append(wall_mat)
-        created.append(bw_obj)
+    if boundary.get("enabled", False):
+        # The canonical plot origin is south-west (0, 0); boundary geometry must
+        # never be centred around the building or it can cross the entire scene.
+        b_segments = [
+            (0.0, plot_cy, bw_t, pd),
+            (pw, plot_cy, bw_t, pd),
+            (plot_cx, pd, pw, bw_t),
+        ]
+        left_width = max(0.0, gate_x - gate_w / 2.0)
+        right_start = gate_x + gate_w / 2.0
+        right_width = max(0.0, pw - right_start)
+        if left_width > 0.05:
+            b_segments.append((left_width / 2.0, 0.0, left_width, bw_t))
+        if right_width > 0.05:
+            b_segments.append((right_start + right_width / 2.0, 0.0, right_width, bw_t))
+        for idx, (bx, by, b_w, b_d) in enumerate(b_segments):
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, by, bw_h / 2.0))
+            bw_obj = bpy.context.active_object
+            bw_obj.name = f"Exterior_Boundary_Wall_{idx+1}"
+            bw_obj.scale = (b_w, b_d, bw_h)
+            if wall_mat:
+                bw_obj.data.materials.append(wall_mat)
+            apply_box_uv_mapping(bw_obj, tile_meters=1.8)
+            created.append(bw_obj)
 
-    # Front Gate
-    gate_w = 3.6
-    gate_h = 1.80
-    gate_y = py_center - pd / 2.0
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(px_center - 1.5, gate_y, gate_h / 2.0))
-    gate_obj = bpy.context.active_object
-    gate_obj.name = "Exterior_Entrance_Gate"
-    gate_obj.scale = (gate_w, 0.06, gate_h)
-    if gate_mat:
-        gate_obj.data.materials.append(gate_mat)
-    created.append(gate_obj)
+    if gate_cfg:
+        gate_obj = _try_import_gate_model(gate_x, 0.0, 0.0, gate_w, gate_h)
+        if gate_obj is None:
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(gate_x, 0.0, gate_h / 2.0))
+            gate_obj = bpy.context.active_object
+            gate_obj.name = "Exterior_Entrance_Gate"
+            gate_obj.scale = (gate_w, 0.06, gate_h)
+            if gate_mat:
+                gate_obj.data.materials.append(gate_mat)
+            apply_box_uv_mapping(gate_obj, tile_meters=1.2)
+        created.append(gate_obj)
 
-    # Driveway Paving
-    drive_w = 3.8
-    drive_d = max(sb_f + 1.0, 4.0)
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(px_center - 1.5, gate_y + drive_d / 2.0, 0.01))
-    drive_obj = bpy.context.active_object
-    drive_obj.name = "Exterior_Driveway_Paving"
-    drive_obj.scale = (drive_w, drive_d, 0.02)
-    if drive_mat:
-        drive_obj.data.materials.append(drive_mat)
-    created.append(drive_obj)
+    if drive_cfg and drive_d > 0.05:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(gate_x, drive_d / 2.0, -0.01))
+        drive_obj = bpy.context.active_object
+        drive_obj.name = "Exterior_Driveway_Paving"
+        drive_obj.scale = (drive_w, drive_d, 0.02)
+        if drive_mat:
+            drive_obj.data.materials.append(drive_mat)
+        apply_box_uv_mapping(drive_obj, tile_meters=1.5)
+        created.append(drive_obj)
 
     return created
+
+
+def validate_generated_scene(
+    layout_data: Dict[str, Any], rooms: List[Dict[str, Any]], expected_ids: List[str]
+) -> Dict[str, Any]:
+    """Validate the actual Blender scene, including transformed asset bounds."""
+    if bpy is None or mathutils is None:
+        return {"status": "unavailable", "errors": ["Blender scene is unavailable"], "warnings": []}
+    bpy.context.view_layer.update()
+    errors, warnings = [], []
+    room_map = {str(room.get("id")): room for room in rooms}
+    actual_roots: Dict[str, List[Any]] = {}
+    for obj in bpy.context.scene.objects:
+        instance_id = obj.get("archgen_instance_id")
+        if instance_id is not None:
+            actual_roots.setdefault(str(instance_id), []).append(obj)
+
+    missing = [str(item_id) for item_id in expected_ids if str(item_id) not in actual_roots]
+    duplicates = [item_id for item_id, values in actual_roots.items() if len(values) != 1]
+    if missing:
+        errors.append(f"Missing furniture instances: {missing}")
+    if duplicates:
+        errors.append(f"Duplicate furniture instances: {duplicates}")
+
+    for item_id, roots in actual_roots.items():
+        root = roots[0]
+        if root.get("archgen_asset_load_failed", False):
+            errors.append(f"Furniture '{item_id}' used a missing-asset placeholder: {root.get('archgen_asset_error', '')}")
+        room_id = str(root.get("archgen_room_id", ""))
+        room = room_map.get(room_id)
+        meshes = [obj for obj in [root] + list(root.children_recursive) if obj.type == 'MESH']
+        if not room or not meshes:
+            errors.append(f"Furniture '{item_id}' has no valid room or mesh geometry.")
+            continue
+        corners = [obj.matrix_world @ mathutils.Vector(corner) for obj in meshes for corner in obj.bound_box]
+        min_x, max_x = min(p.x for p in corners), max(p.x for p in corners)
+        min_y, max_y = min(p.y for p in corners), max(p.y for p in corners)
+        min_z = min(p.z for p in corners)
+        bounds = room.get("bounds", {})
+        rx, ry = float(bounds.get("x", 0.0)), float(bounds.get("y", 0.0))
+        rw, rd = float(bounds.get("width", 0.0)), float(bounds.get("depth", 0.0))
+        tolerance = 0.16
+        if min_x < rx - tolerance or max_x > rx + rw + tolerance or min_y < ry - tolerance or max_y > ry + rd + tolerance:
+            errors.append(
+                f"Furniture '{item_id}' actual bounds [{min_x:.2f},{min_y:.2f}]..[{max_x:.2f},{max_y:.2f}] "
+                f"leave room '{room_id}' [{rx:.2f},{ry:.2f}]..[{rx + rw:.2f},{ry + rd:.2f}]."
+            )
+        floor_z = float(bounds.get("z", 0.0))
+        if abs(min_z - floor_z) > 0.035:
+            errors.append(
+                f"Furniture '{item_id}' is not seated on its finished floor: bottom={min_z:.3f}, floor={floor_z:.3f}."
+            )
+
+    expected_inventory = layout_data.get("expected_inventory", {})
+    for kind, key in (("door", "door_ids"), ("window", "window_ids")):
+        expected_openings = [str(value) for value in expected_inventory.get(key, [])]
+        actual_openings: Dict[str, List[Any]] = {}
+        for obj in bpy.context.scene.objects:
+            if str(obj.get("archgen_opening_kind", "")) == kind and obj.get("archgen_opening_id") is not None:
+                actual_openings.setdefault(str(obj.get("archgen_opening_id")), []).append(obj)
+        missing_openings = sorted(set(expected_openings) - set(actual_openings))
+        duplicate_openings = sorted(value for value, objects in actual_openings.items() if len(objects) != 1)
+        extra_openings = sorted(set(actual_openings) - set(expected_openings))
+        if missing_openings or duplicate_openings or extra_openings:
+            errors.append(
+                f"{kind.title()} inventory mismatch: missing={missing_openings}, duplicates={duplicate_openings}, extra={extra_openings}."
+            )
+        for opening_id, roots in actual_openings.items():
+            if len(roots) != 1:
+                continue
+            root = roots[0]
+            meshes = [obj for obj in [root] + list(root.children_recursive) if obj.type == 'MESH']
+            if not meshes:
+                errors.append(f"{kind.title()} '{opening_id}' has no mesh geometry.")
+                continue
+            points = [obj.matrix_world @ mathutils.Vector(corner) for obj in meshes for corner in obj.bound_box]
+            size_x = max(point.x for point in points) - min(point.x for point in points)
+            size_y = max(point.y for point in points) - min(point.y for point in points)
+            size_z = max(point.z for point in points) - min(point.z for point in points)
+            expected_width = float(root.get("archgen_opening_width", 0.0))
+            expected_height = float(root.get("archgen_opening_height", 0.0))
+            vertical = bool(root.get("archgen_opening_vertical", False))
+            along, through = (size_y, size_x) if vertical else (size_x, size_y)
+            if along > expected_width + 0.25 or through > 0.65 or size_z > expected_height + 0.25:
+                errors.append(
+                    f"{kind.title()} '{opening_id}' geometry exceeds its canonical opening "
+                    f"({along:.2f} x {through:.2f} x {size_z:.2f} m)."
+                )
+            center_x = (min(point.x for point in points) + max(point.x for point in points)) / 2.0
+            center_y = (min(point.y for point in points) + max(point.y for point in points)) / 2.0
+            min_z = min(point.z for point in points)
+            expected_x = float(root.get("archgen_opening_x", center_x))
+            expected_y = float(root.get("archgen_opening_y", center_y))
+            expected_base_z = float(root.get("archgen_opening_base_z", min_z))
+            if (
+                abs(center_x - expected_x) > 0.08
+                or abs(center_y - expected_y) > 0.08
+                or abs(min_z - expected_base_z) > 0.08
+            ):
+                errors.append(
+                    f"{kind.title()} '{opening_id}' is misaligned with its canonical opening "
+                    f"(centre={center_x:.2f},{center_y:.2f}, base={min_z:.2f})."
+                )
+
+    expected_rooms = {str(room.get("id")) for room in rooms}
+    floor_objects: Dict[str, List[Any]] = {}
+    for obj in bpy.context.scene.objects:
+        if obj.get("archgen_room_id") is not None and obj.name.lower().startswith("floor"):
+            floor_objects.setdefault(str(obj.get("archgen_room_id")), []).append(obj)
+    floor_rooms = set(floor_objects)
+    if expected_rooms != floor_rooms:
+        errors.append(f"Floor inventory mismatch: missing={sorted(expected_rooms - floor_rooms)}, extra={sorted(floor_rooms - expected_rooms)}")
+    duplicate_floors = sorted(room_id for room_id, objects in floor_objects.items() if len(objects) != 1)
+    if duplicate_floors:
+        errors.append(f"Duplicate room floor surfaces: {duplicate_floors}")
+    for room_id, objects in floor_objects.items():
+        room = room_map.get(room_id)
+        if not room or len(objects) != 1:
+            continue
+        obj = objects[0]
+        points = [obj.matrix_world @ mathutils.Vector(corner) for corner in obj.bound_box]
+        bounds = room.get("bounds", {})
+        expected = (
+            float(bounds.get("x", 0.0)), float(bounds.get("y", 0.0)),
+            float(bounds.get("x", 0.0)) + float(bounds.get("width", 0.0)),
+            float(bounds.get("y", 0.0)) + float(bounds.get("depth", 0.0)),
+            float(bounds.get("z", 0.0)),
+        )
+        actual = (min(p.x for p in points), min(p.y for p in points), max(p.x for p in points), max(p.y for p in points), max(p.z for p in points))
+        if any(abs(first - second) > 0.015 for first, second in zip(actual, expected)):
+            errors.append(f"Floor '{room_id}' bounds/elevation do not match its canonical room polygon.")
+
+    plot = layout_data.get("site", {}).get("plot", {})
+    plot_w, plot_d = float(plot.get("width", 0.0)), float(plot.get("depth", 0.0))
+    top = max((float(room.get("bounds", {}).get("z", 0.0)) + float(room.get("height", 3.0)) for room in rooms), default=3.0)
+    for obj in bpy.context.scene.objects:
+        if obj.type != 'MESH' or obj.name == "Lush_Garden_Ground" or obj.name.startswith("_"):
+            continue
+        points = [obj.matrix_world @ mathutils.Vector(corner) for corner in obj.bound_box]
+        if any(not math.isfinite(value) for point in points for value in point):
+            errors.append(f"Object '{obj.name}' contains non-finite geometry.")
+            continue
+        if plot_w > 0 and plot_d > 0:
+            if (min(p.x for p in points) < -2.0 or max(p.x for p in points) > plot_w + 2.0 or
+                    min(p.y for p in points) < -2.0 or max(p.y for p in points) > plot_d + 2.0 or
+                    min(p.z for p in points) < -1.0 or max(p.z for p in points) > top + 3.0):
+                errors.append(f"Object '{obj.name}' is detached from the canonical site bounds.")
+
+    report = {
+        "status": "invalid" if errors else "valid",
+        "errors": errors,
+        "warnings": warnings,
+        "furniture_expected": len(expected_ids),
+        "furniture_actual": len(actual_roots),
+        "rooms_expected": len(expected_rooms),
+        "floors_actual": len(floor_rooms),
+    }
+    if errors:
+        raise RuntimeError("Scene validation failed: " + "; ".join(errors))
+    print(
+        f"[ARCHGEN] Scene validation PASS: rooms={len(expected_rooms)}, "
+        f"furniture={len(actual_roots)}, no detached geometry."
+    )
+    return report
 
 
 # ─── Main Generator Pipeline ──────────────────────────────────────────────────
@@ -1066,6 +1480,11 @@ def generate_house_from_layout(
     """Main hyperrealistic generator pipeline supporting multi-floor architecture."""
     print(f"[ARCHGEN] Generating Hyperrealistic 3D Architecture: {layout_data.get('project_name', 'House')}")
 
+    validation = layout_data.get("generation_validation", {})
+    critical = validation.get("critical_errors", []) if isinstance(validation, dict) else []
+    if critical:
+        raise ValueError("Generation blocked by architectural preflight: " + "; ".join(str(v) for v in critical))
+
     # 1. Clear default scene
     clear_scene()
 
@@ -1075,6 +1494,7 @@ def generate_house_from_layout(
     wall_t = float(bldg.get("wall_thickness", 0.20))
     slab_t = float(bldg.get("slab_thickness", 0.22))
     rooms = layout_data.get("rooms", [])
+    wall_network = layout_data.get("walls", [])
     openings = layout_data.get("openings", {})
     floors = layout_data.get("floors", [])
     roof_data = layout_data.get("roof", {})
@@ -1096,7 +1516,8 @@ def generate_house_from_layout(
 
     # 3. Foundation Podium & Patio Deck
     print("[ARCHGEN] Building architectural foundation & outdoor patio deck...")
-    build_foundation_and_patio(rooms)
+    ground_rooms = [r for r in rooms if int(r.get("floor_level", 0)) == 0]
+    build_foundation_and_patio(ground_rooms or rooms)
 
     # 4. Room Floor Slabs with PBR Materials
     print("[ARCHGEN] Building room floor slabs with PBR shaders...")
@@ -1104,7 +1525,12 @@ def generate_house_from_layout(
 
     # 5. Walls with Baseboard Skirting and Dollhouse Caps
     print(f"[ARCHGEN] Constructing architectural walls (height={wall_h}m)...")
-    wall_objs, auto_doors = build_walls(rooms, wall_height=wall_h, wall_thickness=wall_t, add_baseboards=True)
+    if wall_network:
+        wall_objs = build_walls_from_network(wall_network, rooms, wall_height=wall_h, default_thickness=wall_t)
+        auto_doors = []
+    else:
+        # Backward compatibility for stored legacy projects only.
+        wall_objs, auto_doors = build_walls(rooms, wall_height=wall_h, wall_thickness=wall_t, add_baseboards=True)
 
     # 6. Door and Window Boolean Cutouts & Glazing
     print(f"[ARCHGEN] Carving door and window openings (input doors={len(openings.get('doors', []))}, auto partition doors={len(auto_doors)})...")
@@ -1124,9 +1550,8 @@ def generate_house_from_layout(
     if stair_def and len(floors) > 1:
         print("[ARCHGEN] Building true 3D staircase and upper intermediate floor slab...")
         build_staircase(stair_def, lower_elevation=0.0, upper_elevation=3.0)
-        upper_rooms = [r for r in rooms if r.get("bounds", {}).get("z", 0.0) >= 2.5]
-        if upper_rooms:
-            build_intermediate_slab(upper_rooms, stair_def=stair_def, elevation=3.0, slab_thickness=slab_t)
+        # Upper floors were already emitted from their canonical room polygons;
+        # do not add a second bounding-rectangle slab over them.
 
     # 8. Populate Real 3D Furniture Assets
     print("[ARCHGEN] Populating rooms with catalogued 3D furniture models...")
@@ -1135,11 +1560,24 @@ def generate_house_from_layout(
     for room in rooms:
         placed = place_furniture.populate_room_furniture(room, catalog, base_blender_dir=blender_root)
         total_furniture += len(placed)
-    print(f"[ARCHGEN] Successfully placed {total_furniture} furniture pieces.")
+    expected_ids = list(layout_data.get("expected_inventory", {}).get("furniture_ids", []))
+    actual_ids = {
+        str(obj.get("archgen_instance_id")) for obj in bpy.context.scene.objects
+        if obj.get("archgen_instance_id") is not None
+    }
+    missing_ids = [item_id for item_id in expected_ids if str(item_id) not in actual_ids]
+    if total_furniture != len(expected_ids) or missing_ids:
+        raise RuntimeError(
+            f"Furniture inventory mismatch: expected={len(expected_ids)}, placed={total_furniture}, missing={missing_ids}"
+        )
+    print(f"[ARCHGEN] Verified furniture inventory: {total_furniture}/{len(expected_ids)} pieces.")
 
     # 9. Roof Generation
     if roof_data:
-        top_elev = (len(floors) or 1) * 3.0
+        top_elev = max(
+            (float(r.get("bounds", {}).get("z", 0.0)) + float(r.get("height", wall_h)) for r in rooms),
+            default=wall_h,
+        )
         print(f"[ARCHGEN] Generating architectural roof ({roof_data.get('type', 'parapet')})...")
         build_roof_structure(bldg_w, bldg_d, cx, cy, top_elev, roof_data)
 
@@ -1147,6 +1585,9 @@ def generate_house_from_layout(
     if exterior_data:
         print("[ARCHGEN] Generating exterior features (gate, boundary, driveway)...")
         build_exterior_features(site_data, exterior_data, bldg_w, bldg_d, cx, cy)
+
+    # Validate transformed meshes, not merely the input JSON or Blender exit code.
+    validate_generated_scene(layout_data, rooms, expected_ids)
 
     # 11. Physical Lighting
     setup_lighting()

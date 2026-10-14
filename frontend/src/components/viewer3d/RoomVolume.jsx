@@ -82,17 +82,161 @@ function BalconyGlassRailing({ width = 6.0, position = [0, 0, 0] }) {
   )
 }
 
+// ── Wall with Door or Window Cutout ──────────────────────────────────
+function WallWithOpening({
+  length,
+  height,
+  thickness,
+  position,
+  rotation = [0, 0, 0],
+  opening = null,
+  isAccent,
+  accentMat,
+  defaultMat,
+  wallCapMat,
+  baseboardMat,
+}) {
+  const mat = isAccent && accentMat ? accentMat : defaultMat
+
+  if (!opening) {
+    return (
+      <group position={position} rotation={rotation}>
+        <ArchitecturalWall
+          width={length}
+          height={height}
+          thickness={thickness}
+          position={[0, 0, 0]}
+          isAccent={isAccent}
+          accentMat={accentMat}
+          defaultMat={defaultMat}
+          wallCapMat={wallCapMat}
+          baseboardMat={baseboardMat}
+        />
+      </group>
+    )
+  }
+
+  const isDoor = opening.type === 'door' || opening.type === 'main_entrance' || opening.type === 'interior_door'
+  const opW = Math.min(Math.max(Number(opening.width) || (isDoor ? 0.95 : 1.4), 0.7), Math.max(length - 0.4, 0.6))
+  const opH = Math.min(Number(opening.height) || (isDoor ? 2.1 : 1.3), height - 0.1)
+  const sillH = isDoor ? 0 : Math.max(Number(opening.sill_height) || 0.85, 0.2)
+
+  const sideW = Math.max((length - opW) / 2, 0.05)
+  const headerH = Math.max(height - (sillH + opH), 0.05)
+
+  return (
+    <group position={position} rotation={rotation}>
+      {/* Left Wall Segment */}
+      <mesh position={[-(opW / 2 + sideW / 2), 0, 0]} castShadow receiveShadow>
+        <boxGeometry args={[sideW, height, thickness]} />
+        <primitive object={mat} attach="material" />
+      </mesh>
+      {/* Left Wall Cap */}
+      <mesh position={[-(opW / 2 + sideW / 2), height / 2 + 0.015, 0]} castShadow>
+        <boxGeometry args={[sideW, 0.03, thickness]} />
+        <primitive object={wallCapMat} attach="material" />
+      </mesh>
+      {/* Left Baseboard */}
+      <mesh position={[-(opW / 2 + sideW / 2), -height / 2 + 0.05, 0]}>
+        <boxGeometry args={[sideW, 0.10, thickness]} />
+        <primitive object={baseboardMat} attach="material" />
+      </mesh>
+
+      {/* Right Wall Segment */}
+      <mesh position={[(opW / 2 + sideW / 2), 0, 0]} castShadow receiveShadow>
+        <boxGeometry args={[sideW, height, thickness]} />
+        <primitive object={mat} attach="material" />
+      </mesh>
+      {/* Right Wall Cap */}
+      <mesh position={[(opW / 2 + sideW / 2), height / 2 + 0.015, 0]} castShadow>
+        <boxGeometry args={[sideW, 0.03, thickness]} />
+        <primitive object={wallCapMat} attach="material" />
+      </mesh>
+      {/* Right Baseboard */}
+      <mesh position={[(opW / 2 + sideW / 2), -height / 2 + 0.05, 0]}>
+        <boxGeometry args={[sideW, 0.10, thickness]} />
+        <primitive object={baseboardMat} attach="material" />
+      </mesh>
+
+      {/* Header Segment Above Opening */}
+      {headerH > 0.08 && (
+        <mesh position={[0, height / 2 - headerH / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[opW, headerH, thickness]} />
+          <primitive object={mat} attach="material" />
+        </mesh>
+      )}
+      {/* Header Wall Cap */}
+      <mesh position={[0, height / 2 + 0.015, 0]} castShadow>
+        <boxGeometry args={[opW, 0.03, thickness]} />
+        <primitive object={wallCapMat} attach="material" />
+      </mesh>
+
+      {/* Bottom Parapet under Window (for windows only) */}
+      {!isDoor && sillH > 0.08 && (
+        <>
+          <mesh position={[0, -height / 2 + sillH / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[opW, sillH, thickness]} />
+            <primitive object={mat} attach="material" />
+          </mesh>
+          <mesh position={[0, -height / 2 + 0.05, 0]}>
+            <boxGeometry args={[opW, 0.10, thickness]} />
+            <primitive object={baseboardMat} attach="material" />
+          </mesh>
+        </>
+      )}
+
+      {/* 3D Architectural Frame & Core */}
+      {isDoor ? (
+        <group position={[0, -height / 2 + opH / 2, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[opW + 0.04, opH + 0.02, thickness + 0.02]} />
+            <meshStandardMaterial color="#2d1d13" roughness={0.6} metalness={0.2} />
+          </mesh>
+          <mesh position={[opW * 0.15, 0, 0.06]} rotation={[0, 0.40, 0]} castShadow>
+            <boxGeometry args={[opW * 0.90, opH * 0.96, 0.045]} />
+            <meshStandardMaterial color="#6b4c35" roughness={0.7} metalness={0.1} />
+          </mesh>
+        </group>
+      ) : (
+        <group position={[0, -height / 2 + sillH + opH / 2, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[opW, opH, thickness * 0.8]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.4} metalness={0.8} />
+          </mesh>
+          <mesh>
+            <boxGeometry args={[opW * 0.92, opH * 0.90, 0.02]} />
+            <meshPhysicalMaterial
+              color="#93c5fd"
+              transparent
+              opacity={0.35}
+              transmission={0.88}
+              roughness={0.06}
+              metalness={0.1}
+              ior={1.5}
+            />
+          </mesh>
+          <mesh position={[0, 0, 0.01]} castShadow>
+            <boxGeometry args={[0.035, opH * 0.90, 0.03]} />
+            <meshStandardMaterial color="#334155" roughness={0.5} metalness={0.7} />
+          </mesh>
+        </group>
+      )}
+    </group>
+  )
+}
+
 // ── Room Volume with Multi-Floor & Contiguous Wall Integration ───────
-export default function RoomVolume({ room, viewMode, isSelected, isNightMode, furniture }) {
-  const width = Math.max(Number(room.width) || 1, 1)
-  const length = Math.max(Number(room.length) || 1, 1)
-  const fullHeight = Math.max(Number(room.height) || 3.0, 2.4)
+export default function RoomVolume({ room, viewMode, isSelected, isNightMode, furniture, doors = [], windows = [] }) {
+  const width = Math.max(Number(room.dimensions?.width ?? room.width) || 1, 1)
+  const length = Math.max(Number(room.dimensions?.depth ?? room.length) || 1, 1)
+  const fullHeight = Math.max(Number(room.dimensions?.height ?? room.height) || 3.0, 2.4)
 
   const wallHeight = viewMode === 'dollhouse' ? 1.45 : fullHeight
   const position = room.position || { x: 0, y: 0, z: 0 }
-  const x = Number(position.x) || 0
-  const y = Number(position.y) || 0
-  const z = Number(position.z) || 0
+  const isCanonical = Boolean(room.dimensions)
+  const x = (Number(position.x) || 0) + (isCanonical ? width / 2 : 0)
+  const y = Number(isCanonical ? position.z : position.y) || 0
+  const z = (Number(isCanonical ? position.y : position.z) || 0) + (isCanonical ? length / 2 : 0)
 
   const isUpperFloor = y >= 2.5 || Number(room.floor) === 1
   const wallThickness = 0.14
@@ -187,14 +331,66 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
   }, [pbrMaterial?.floor, floorTexture])
 
   const furnitureList = useMemo(() => {
-    if (Array.isArray(furniture) && furniture.length > 0) return furniture
-    return Array.isArray(room?.furniture) ? room.furniture : []
-  }, [furniture, room?.furniture])
+    const items = Array.isArray(furniture) && furniture.length > 0 ? furniture : (Array.isArray(room?.furniture) ? room.furniture : [])
+    if (!isCanonical) return items
+    return items.map((item) => ({
+      ...item,
+      position: {
+        x: (Number(item.position?.x) || x) - x,
+        y: Math.max(0, (Number(item.position?.z) || y) - y),
+        z: (Number(item.position?.y) || z) - z,
+      },
+      rotation_y: -(Number(item.rotation ?? item.rotation_y) || 0),
+    }))
+  }, [furniture, room?.furniture, isCanonical, x, y, z])
 
   const furnitureGroup = useMemo(
     () => buildFurniture(furnitureList),
     [furnitureList]
   )
+
+  const roomDoors = useMemo(() => {
+    const list = Array.isArray(doors) && doors.length > 0 ? doors.filter((d) => (d.roomId || d.room_id) === room.id) : []
+    return list.length > 0 ? list : (Array.isArray(room.doors) ? room.doors : [])
+  }, [doors, room.doors, room.id])
+
+  const roomWindows = useMemo(() => {
+    const list = Array.isArray(windows) && windows.length > 0 ? windows.filter((w) => (w.roomId || w.room_id) === room.id) : []
+    return list.length > 0 ? list : (Array.isArray(room.windows) ? room.windows : [])
+  }, [windows, room.windows, room.id])
+
+  // Resolve openings per wall side
+  const backOpening = useMemo(() => {
+    const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/back|north/))
+    if (d) return { ...d, type: 'door' }
+    const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/back|north/))
+    if (w) return { ...w, type: 'window' }
+    return null
+  }, [roomDoors, roomWindows])
+
+  const frontOpening = useMemo(() => {
+    const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/front|south/))
+    if (d) return { ...d, type: 'door' }
+    const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/front|south/))
+    if (w) return { ...w, type: 'window' }
+    return null
+  }, [roomDoors, roomWindows])
+
+  const leftOpening = useMemo(() => {
+    const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/left|west/))
+    if (d) return { ...d, type: 'door' }
+    const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/left|west/))
+    if (w) return { ...w, type: 'window' }
+    return null
+  }, [roomDoors, roomWindows])
+
+  const rightOpening = useMemo(() => {
+    const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/right|east/))
+    if (d) return { ...d, type: 'door' }
+    const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/right|east/))
+    if (w) return { ...w, type: 'window' }
+    return null
+  }, [roomDoors, roomWindows])
 
   const lights = Array.isArray(room?.lights) ? room.lights : []
   const hasCeiling = viewMode === 'walkthrough'
@@ -240,41 +436,69 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
       )}
 
       {/* Back Wall */}
-      <ArchitecturalWall
-        width={width} height={wallHeight} thickness={wallThickness}
+      <WallWithOpening
+        length={width}
+        height={wallHeight}
+        thickness={wallThickness}
         position={[0, wallHeight / 2, -length / 2 + wallThickness / 2]}
-        isAccent={accentSide === 'back'} accentMat={accentWallMat}
-        defaultMat={defaultWallMat} wallCapMat={wallCapMat} baseboardMat={baseboardMat}
+        opening={backOpening}
+        isAccent={accentSide === 'back'}
+        accentMat={accentWallMat}
+        defaultMat={defaultWallMat}
+        wallCapMat={wallCapMat}
+        baseboardMat={baseboardMat}
       />
 
-      {/* Front Wall: Floor-to-Ceiling Glass for Living & Master, Solid Wall for others */}
+      {/* Front Wall */}
       {isLiving || isMasterSuite ? (
-        <FloorToCeilingGlass width={width} height={wallHeight}
+        <FloorToCeilingGlass
+          width={width}
+          height={wallHeight}
           position={[0, wallHeight / 2, length / 2 - wallThickness / 2]}
         />
       ) : (
-        <ArchitecturalWall
-          width={width} height={wallHeight} thickness={wallThickness}
+        <WallWithOpening
+          length={width}
+          height={wallHeight}
+          thickness={wallThickness}
           position={[0, wallHeight / 2, length / 2 - wallThickness / 2]}
-          isAccent={accentSide === 'front'} accentMat={accentWallMat}
-          defaultMat={defaultWallMat} wallCapMat={wallCapMat} baseboardMat={baseboardMat}
+          opening={frontOpening}
+          isAccent={accentSide === 'front'}
+          accentMat={accentWallMat}
+          defaultMat={defaultWallMat}
+          wallCapMat={wallCapMat}
+          baseboardMat={baseboardMat}
         />
       )}
 
       {/* Left Wall */}
-      <ArchitecturalWall
-        width={wallThickness} height={wallHeight} thickness={length}
+      <WallWithOpening
+        length={length}
+        height={wallHeight}
+        thickness={wallThickness}
         position={[-width / 2 + wallThickness / 2, wallHeight / 2, 0]}
-        isAccent={accentSide === 'left'} accentMat={accentWallMat}
-        defaultMat={defaultWallMat} wallCapMat={wallCapMat} baseboardMat={baseboardMat}
+        rotation={[0, Math.PI / 2, 0]}
+        opening={leftOpening}
+        isAccent={accentSide === 'left'}
+        accentMat={accentWallMat}
+        defaultMat={defaultWallMat}
+        wallCapMat={wallCapMat}
+        baseboardMat={baseboardMat}
       />
 
       {/* Right Wall */}
-      <ArchitecturalWall
-        width={wallThickness} height={wallHeight} thickness={length}
+      <WallWithOpening
+        length={length}
+        height={wallHeight}
+        thickness={wallThickness}
         position={[width / 2 - wallThickness / 2, wallHeight / 2, 0]}
-        isAccent={accentSide === 'right'} accentMat={accentWallMat}
-        defaultMat={defaultWallMat} wallCapMat={wallCapMat} baseboardMat={baseboardMat}
+        rotation={[0, Math.PI / 2, 0]}
+        opening={rightOpening}
+        isAccent={accentSide === 'right'}
+        accentMat={accentWallMat}
+        defaultMat={defaultWallMat}
+        wallCapMat={wallCapMat}
+        baseboardMat={baseboardMat}
       />
 
       {hasCeiling && (

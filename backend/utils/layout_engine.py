@@ -98,13 +98,14 @@ class ArchitecturalLayoutEngine:
         req_room_inputs = requirements.get("rooms", [])
         norm_room_types = self._normalize_requested_rooms(req_room_inputs, requirements, floors_count)
 
-        # Scale plot size to accommodate rooms without cramped dimensions
-        has_garage_req = any("garage" in str(r.get("type", "")).lower() for r in norm_room_types)
-        total_rooms_count = len(norm_room_types)
-        min_pw = 15.0 if has_garage_req else (13.5 if total_rooms_count >= 5 else 11.0)
-        min_pd = 16.5 if total_rooms_count >= 5 else (14.0 if total_rooms_count >= 3 else 10.0)
-        plot_w = max(min_pw, plot_w)
-        plot_d = max(min_pd, plot_d)
+        # The requested plot is a hard boundary, not a suggestion.  Previous
+        # code silently enlarged smaller valid plots (an 11 x 12 m request
+        # became 11 x 14 m), so both the scale and resulting room geometry no
+        # longer matched the user's approved plan.
+        if plot_w < 6.0 or plot_d < 6.0:
+            raise ValueError(
+                f"Plot {plot_w:.2f} x {plot_d:.2f} m is too small for a safe residential layout."
+            )
 
         # Standard residential setbacks
         sb_front = round(min(plot_d * 0.18, 3.5), 2)
@@ -134,7 +135,11 @@ class ArchitecturalLayoutEngine:
         )
 
         ground_walls = self._compute_floor_walls(ground_rooms, wall_t, sb_left, sb_front, bldg_w, bldg_d)
-        ground_doors = self._generate_doors(ground_rooms, ground_walls, is_ground=True)
+        connection_preferences = requirements.get("connection_preferences", [])
+        ground_doors = self._generate_doors(
+            ground_rooms, ground_walls, is_ground=True,
+            connection_preferences=connection_preferences,
+        )
         ground_windows = self._generate_windows(ground_rooms, ground_walls, bldg_w, bldg_d, sb_left, sb_front)
         ground_furniture = self._place_furniture_for_rooms(ground_rooms, style, elevation=0.0)
 
@@ -169,7 +174,10 @@ class ArchitecturalLayoutEngine:
                 stair_ref=stair_def,
             )
             first_walls = self._compute_floor_walls(first_rooms, wall_t, sb_left, sb_front, bldg_w, bldg_d)
-            first_doors = self._generate_doors(first_rooms, first_walls, is_ground=False)
+            first_doors = self._generate_doors(
+                first_rooms, first_walls, is_ground=False,
+                connection_preferences=connection_preferences,
+            )
             first_windows = self._generate_windows(first_rooms, first_walls, bldg_w, bldg_d, sb_left, sb_front)
             first_furniture = self._place_furniture_for_rooms(first_rooms, style, elevation=floor_h)
 
@@ -342,9 +350,13 @@ class ArchitecturalLayoutEngine:
             for i in range(1, num_baths):
                 room_types.append({"type": "bathroom", "name": f"Bathroom {i+1}", "raw": {}})
 
-        # Ensure mandatory core rooms exist if multi-room house
+        # Older layouts automatically gained living/kitchen/bathroom spaces.
+        # Explicit full-design prompts use a strict room program instead: the
+        # user's categories and counts are the contract.
         types_present = {r["type"] for r in room_types}
-        if len(room_types) > 1:
+        has_living_or_kitchen_intent = any(t in types_present for t in ["living_room", "kitchen", "dining_room"])
+        strict_room_program = bool(requirements.get("strict_room_program", False))
+        if not strict_room_program and (len(room_types) >= 3 or (len(room_types) >= 2 and has_living_or_kitchen_intent)):
             if "living_room" not in types_present:
                 room_types.insert(0, {"type": "living_room", "name": "Living Room", "raw": {}})
             if "kitchen" not in types_present:
@@ -466,6 +478,13 @@ class ArchitecturalLayoutEngine:
         baths = [r for r in room_types if "bath" in r["type"]]
         misc_rooms = [r for r in room_types if r not in ([garage, living, dining, kitchen, office, master_bed] + other_beds + baths)]
 
+        # The primary bedroom belongs in the main habitable wing.
+        # If no explicit master bedroom is labeled, promote the first
+        # bedroom to master so it anchors the rear suite rather than being
+        # demoted to a narrow utility/garage flank.
+        if not master_bed and other_beds:
+            master_bed = other_beds.pop(0)
+
         # ── 1. Vehicular Flank: Garage (if present on ground floor) ──
         hab_x = sb_left
         hab_w = bldg_w
@@ -487,18 +506,32 @@ class ArchitecturalLayoutEngine:
                 floor_idx=floor_idx,
             ))
             # Habitable building zone is shifted to the right of the garage
-            hab_x = round(sb_left + gw + wall_t, 2)
-            hab_w = round(bldg_w - gw - wall_t, 2)
+            hab_x = round(sb_left + gw, 2)
+            hab_w = round(bldg_w - gw, 2)
 
-            # Check if an office, extra bedroom, or laundry can take the space behind the garage
-            rear_flank_d = round(bldg_d - gd - wall_t, 2)
+            # Check if an office, extra bedroom, laundry, or bathroom can take the space behind the garage.
+            # IMPORTANT: The primary bedroom is already master_bed and is reserved for the main rear wing.
+            rear_flank_d = round(bldg_d - gd, 2)
             if office and rear_flank_d >= 3.0:
                 rear_flank_room = office
                 office = None  # consumed
             elif other_beds and rear_flank_d >= 3.0:
+                # Secondary bedroom in flank behind garage
                 rear_flank_room = other_beds.pop(0)
             elif misc_rooms and rear_flank_d >= 2.5:
                 rear_flank_room = misc_rooms.pop(0)
+            elif not living and not dining and baths and rear_flank_d >= 2.2:
+                # When there is no living/dining room, kitchen takes front habitable wing
+                # and master bedroom takes the rear habitable wing.
+                # The bathroom takes the garage flank so that the bedroom retains the grand rear wing!
+                rear_flank_room = baths.pop(0)
+            elif kitchen and living and rear_flank_d >= 3.0:
+                # Kitchen behind garage with direct service access, leaving front habitable zone for living room
+                rear_flank_room = kitchen
+                kitchen = None
+            elif baths and len(baths) > 1 and rear_flank_d >= 2.2:
+                # Common/powder bath in garage flank
+                rear_flank_room = baths.pop()
 
             if rear_flank_room:
                 rooms.append(self._create_room_dict(
@@ -506,7 +539,7 @@ class ArchitecturalLayoutEngine:
                     name=rear_flank_room["name"],
                     room_type=rear_flank_room["type"],
                     x=sb_left,
-                    y=round(sb_front + gd + wall_t, 2),
+                    y=round(sb_front + gd, 2),
                     z=elevation,
                     w=gw,
                     d=rear_flank_d,
@@ -514,9 +547,62 @@ class ArchitecturalLayoutEngine:
                     floor_idx=floor_idx,
                 ))
 
+        # ── 1b. Small House Spatial Arrangement (<= 2 rooms on this floor) ──
+        if len(room_types) == 1 and not garage:
+            single_r = room_types[0]
+            rooms.append(self._create_room_dict(
+                room_id=single_r.get("raw", {}).get("id", f"{single_r['type']}_01"),
+                name=single_r["name"],
+                room_type=single_r["type"],
+                x=hab_x,
+                y=sb_front,
+                z=elevation,
+                w=hab_w,
+                d=bldg_d,
+                materials=self._default_materials(single_r["type"]),
+                floor_idx=floor_idx,
+            ))
+            return rooms, stair_def
+
+        if len(room_types) == 2 and not garage and not any(r["type"] in ["living_room", "dining_room"] for r in room_types):
+            main_r = next((r for r in room_types if "bed" in r["type"] or "office" in r["type"]), room_types[0])
+            sec_r = next((r for r in room_types if r != main_r), room_types[1])
+
+            # Main room (bedroom) takes ~68% of building width, secondary room (bathroom) takes ~32%
+            main_w = round(hab_w * 0.68, 2)
+            sec_w = round(hab_w - main_w, 2)
+
+            rooms.append(self._create_room_dict(
+                room_id=main_r.get("raw", {}).get("id", f"{main_r['type']}_01"),
+                name=main_r["name"],
+                room_type=main_r["type"],
+                x=hab_x,
+                y=sb_front,
+                z=elevation,
+                w=main_w,
+                d=bldg_d,
+                materials=self._default_materials(main_r["type"]),
+                floor_idx=floor_idx,
+            ))
+
+            rooms.append(self._create_room_dict(
+                room_id=sec_r.get("raw", {}).get("id", f"{sec_r['type']}_01"),
+                name=sec_r["name"],
+                room_type=sec_r["type"],
+                x=round(hab_x + main_w, 2),
+                y=sb_front,
+                z=elevation,
+                w=sec_w,
+                d=bldg_d,
+                materials=self._default_materials(sec_r["type"]),
+                floor_idx=floor_idx,
+            ))
+            return rooms, stair_def
+
         # ── 2. Divide Habitable Zone into Front Band (South) and Rear Band (North) ──
-        front_d = round(bldg_d * 0.46, 2)
-        rear_d = round(bldg_d - front_d - wall_t, 2)
+        has_front_intent = bool(living or dining or kitchen)
+        front_d = round(bldg_d * 0.46, 2) if has_front_intent else 0.0
+        rear_d = round(bldg_d - front_d, 2)
 
         # ── A. Front Zone Placement (Living, Dining, Kitchen) ──
         front_rooms_list = []
@@ -547,7 +633,7 @@ class ArchitecturalLayoutEngine:
             liv = front_rooms_list[0]
             sec = front_rooms_list[1]
             liv_w = round(hab_w * 0.58, 2)
-            sec_w = round(hab_w - liv_w - wall_t, 2)
+            sec_w = round(hab_w - liv_w, 2)
 
             rooms.append(self._create_room_dict(
                 room_id=liv.get("raw", {}).get("id", "living_01"),
@@ -570,7 +656,7 @@ class ArchitecturalLayoutEngine:
                     room_id=sec.get("raw", {}).get("id", "dining_01"),
                     name=sec["name"],
                     room_type=sec["type"],
-                    x=round(hab_x + liv_w + wall_t, 2),
+                    x=round(hab_x + liv_w, 2),
                     y=sb_front,
                     z=elevation,
                     w=sec_w,
@@ -582,8 +668,8 @@ class ArchitecturalLayoutEngine:
                     room_id=kitchen.get("raw", {}).get("id", "kitchen_01"),
                     name=kitchen["name"],
                     room_type="kitchen",
-                    x=round(hab_x + liv_w + wall_t, 2),
-                    y=round(sb_front + din_d + wall_t, 2),
+                    x=round(hab_x + liv_w, 2),
+                    y=round(sb_front + din_d, 2),
                     z=elevation,
                     w=sec_w,
                     d=kit_d,
@@ -596,7 +682,7 @@ class ArchitecturalLayoutEngine:
                     room_id=sec.get("raw", {}).get("id", "dining_01"),
                     name=sec["name"],
                     room_type=sec["type"],
-                    x=round(hab_x + liv_w + wall_t, 2),
+                    x=round(hab_x + liv_w, 2),
                     y=sb_front,
                     z=elevation,
                     w=sec_w,
@@ -623,7 +709,7 @@ class ArchitecturalLayoutEngine:
             stair_w = 1.10
             stair_d = 2.80
             stair_x = round(hab_x + hab_w * 0.48, 2)
-            stair_y = round(sb_front + front_d + wall_t, 2)
+            stair_y = round(sb_front + front_d, 2)
             stair_def = {
                 "id": "stair_01",
                 "position": {"x": stair_x, "y": stair_y, "z": 0.0},
@@ -636,19 +722,61 @@ class ArchitecturalLayoutEngine:
             }
 
         # Divide rear band into left wing and right wing
-        rear_y = round(sb_front + front_d + wall_t, 2)
+        rear_y = round(sb_front + front_d, 2)
         if not rear_candidates:
-            # Fallback master bed
-            rear_candidates.append({"type": "master_bedroom", "name": "Master Bedroom", "raw": {}})
+            # Never invent a bedroom. If the requested program only has a
+            # remaining bathroom, let it occupy this rear zone; otherwise the
+            # already placed front/flank rooms complete the floor.
+            if baths:
+                rear_candidates.append(baths.pop(0))
+            else:
+                return rooms, stair_def
+
+        # ── Realistic bathroom size caps (meters) ─────────────────────────
+        # Bathrooms must never inherit an oversized zone.  Architectural
+        # norms: standard bath ≤ 3.5 × 3.0 m, master bath ≤ 4.0 × 3.5 m.
+        MAX_BATH_DIMS = {
+            "bathroom":        {"w": 3.5, "d": 3.0},
+            "master_bathroom": {"w": 4.0, "d": 3.5},
+            "powder_room":     {"w": 2.0, "d": 1.8},
+        }
+
+        def _cap_bath(room_type: str, w: float, d: float):
+            """Clamp bathroom dimensions to realistic architectural maximums."""
+            caps = MAX_BATH_DIMS.get(room_type)
+            if caps:
+                w = min(w, caps["w"])
+                d = min(d, caps["d"])
+            return round(w, 2), round(d, 2)
 
         if len(rear_candidates) == 1:
             rc = rear_candidates[0]
-            # If bathroom exists, place attached ensuite in corner
-            bath_w = 2.4
-            bath_d = 2.2
-            if baths:
+            is_bath_only = "bath" in rc["type"]
+
+            if is_bath_only and not baths:
+                # A bathroom is the sole rear room — cap it and give the
+                # remaining width back to any bedroom already placed in the
+                # garage flank (expand it), or leave a gap that the
+                # foundation covers.
+                capped_w, capped_d = _cap_bath(rc["type"], hab_w, rear_d)
+                rooms.append(self._create_room_dict(
+                    room_id=rc.get("raw", {}).get("id", f"{rc['type']}_01"),
+                    name=rc["name"],
+                    room_type=rc["type"],
+                    x=hab_x,
+                    y=rear_y,
+                    z=elevation,
+                    w=capped_w,
+                    d=capped_d,
+                    materials=self._default_materials(rc["type"]),
+                    floor_idx=floor_idx,
+                ))
+            elif baths:
+                # If bathroom exists, place attached ensuite in corner
                 b_item = baths.pop(0)
-                main_w = round(hab_w - bath_w - wall_t, 2)
+                bath_w = min(2.8, max(2.2, round(hab_w * 0.35, 2)))
+                bath_d = rear_d  # fill full depth of the corner column to ensure continuous shared partition
+                main_w = round(hab_w - bath_w, 2)
                 rooms.append(self._create_room_dict(
                     room_id=rc.get("raw", {}).get("id", f"{rc['type']}_01"),
                     name=rc["name"],
@@ -665,7 +793,7 @@ class ArchitecturalLayoutEngine:
                     room_id=b_item.get("raw", {}).get("id", f"{b_item['type']}_01"),
                     name=b_item["name"],
                     room_type=b_item["type"],
-                    x=round(hab_x + main_w + wall_t, 2),
+                    x=round(hab_x + main_w, 2),
                     y=rear_y,
                     z=elevation,
                     w=bath_w,
@@ -689,7 +817,7 @@ class ArchitecturalLayoutEngine:
         else:
             # Multiple rear rooms: split width into 2 wings (Left Wing & Right Wing)
             left_w = round(hab_w * 0.52, 2)
-            right_w = round(hab_w - left_w - wall_t, 2)
+            right_w = round(hab_w - left_w, 2)
 
             r_left = rear_candidates[0]
             r_right = rear_candidates[1]
@@ -698,7 +826,9 @@ class ArchitecturalLayoutEngine:
             if "master" in r_left["type"] and baths:
                 b_item = baths.pop(0)
                 bath_d = min(2.5, round(rear_d * 0.45, 2))
-                bed_d = round(rear_d - bath_d - wall_t, 2)
+                # Cap bathroom dimensions to realistic maximums
+                _, bath_d = _cap_bath(b_item["type"], left_w, bath_d)
+                bed_d = round(rear_d - bath_d, 2)
 
                 rooms.append(self._create_room_dict(
                     room_id=r_left.get("raw", {}).get("id", "master_bed_01"),
@@ -717,7 +847,7 @@ class ArchitecturalLayoutEngine:
                     name=b_item["name"],
                     room_type=b_item["type"],
                     x=hab_x,
-                    y=round(rear_y + bed_d + wall_t, 2),
+                    y=round(rear_y + bed_d, 2),
                     z=elevation,
                     w=left_w,
                     d=bath_d,
@@ -742,13 +872,15 @@ class ArchitecturalLayoutEngine:
             if baths:
                 b_common = baths.pop(0)
                 bath_d = min(2.4, round(rear_d * 0.45, 2))
-                main_d = round(rear_d - bath_d - wall_t, 2)
+                # Cap bathroom dimensions to realistic maximums
+                _, bath_d = _cap_bath(b_common["type"], right_w, bath_d)
+                main_d = round(rear_d - bath_d, 2)
 
                 rooms.append(self._create_room_dict(
                     room_id=r_right.get("raw", {}).get("id", f"{r_right['type']}_02"),
                     name=r_right["name"],
                     room_type=r_right["type"],
-                    x=round(hab_x + left_w + wall_t, 2),
+                    x=round(hab_x + left_w, 2),
                     y=rear_y,
                     z=elevation,
                     w=right_w,
@@ -760,8 +892,8 @@ class ArchitecturalLayoutEngine:
                     room_id=b_common.get("raw", {}).get("id", f"{b_common['type']}_02"),
                     name=b_common["name"],
                     room_type=b_common["type"],
-                    x=round(hab_x + left_w + wall_t, 2),
-                    y=round(rear_y + main_d + wall_t, 2),
+                    x=round(hab_x + left_w, 2),
+                    y=round(rear_y + main_d, 2),
                     z=elevation,
                     w=right_w,
                     d=bath_d,
@@ -773,7 +905,7 @@ class ArchitecturalLayoutEngine:
                     room_id=r_right.get("raw", {}).get("id", f"{r_right['type']}_02"),
                     name=r_right["name"],
                     room_type=r_right["type"],
-                    x=round(hab_x + left_w + wall_t, 2),
+                    x=round(hab_x + left_w, 2),
                     y=rear_y,
                     z=elevation,
                     w=right_w,
@@ -792,13 +924,26 @@ class ArchitecturalLayoutEngine:
                     name=b_rem["name"],
                     room_type="bathroom",
                     x=sb_left,
-                    y=round(sb_front + gd + wall_t, 2),
+                    y=round(sb_front + gd, 2),
                     z=elevation,
                     w=gw,
-                    d=min(2.5, rear_flank_d),
+                    d=rear_flank_d,
                     materials=self._default_materials("bathroom"),
                     floor_idx=floor_idx,
                 ))
+
+        # Architectural sanity check: A bathroom must NEVER be larger than any bedroom on the floor
+        all_beds = [r for r in rooms if "bed" in r["type"]]
+        all_baths = [r for r in rooms if "bath" in r["type"]]
+        if all_beds and all_baths:
+            min_bed_area = min(r["dimensions"]["width"] * r["dimensions"]["depth"] for r in all_beds)
+            for b in all_baths:
+                b_area = b["dimensions"]["width"] * b["dimensions"]["depth"]
+                if b_area > min_bed_area:
+                    # Bathroom cannot exceed bedroom: clamp its dimensions
+                    scale = (min_bed_area * 0.7) / b_area
+                    b["dimensions"]["width"] = round(b["dimensions"]["width"] * (scale ** 0.5), 2)
+                    b["dimensions"]["depth"] = round(b["dimensions"]["depth"] * (scale ** 0.5), 2)
 
         return rooms, stair_def
 
@@ -909,74 +1054,73 @@ class ArchitecturalLayoutEngine:
             raw_segments.append({"side": "west", "room_id": rid, "x1": rx, "y1": ry, "x2": rx, "y2": ry + rd, "z": rz})
             raw_segments.append({"side": "east", "room_id": rid, "x1": rx + rw, "y1": ry, "x2": rx + rw, "y2": ry + rd, "z": rz})
 
-        # Group coincident wall lines
+        # Split every collinear run at every room endpoint.  This avoids the old
+        # behaviour where a partially overlapping room edge consumed the whole
+        # neighbouring wall and produced gaps or duplicate partitions.
+        line_groups: Dict[Tuple[str, float, float], List[Dict[str, Any]]] = {}
+        for segment in raw_segments:
+            horizontal = segment["side"] in ("south", "north")
+            axis = "h" if horizontal else "v"
+            fixed = segment["y1"] if horizontal else segment["x1"]
+            key = (axis, round(fixed, 4), round(segment["z"], 4))
+            line_groups.setdefault(key, []).append(segment)
+
+        atomic = []
+        for (axis, fixed, z), segments in sorted(line_groups.items()):
+            points = sorted({
+                round(value, 4)
+                for segment in segments
+                for value in ((segment["x1"], segment["x2"]) if axis == "h" else (segment["y1"], segment["y2"]))
+            })
+            for start, end in zip(points, points[1:]):
+                if end - start <= 0.01:
+                    continue
+                middle = (start + end) / 2.0
+                covering = []
+                for segment in segments:
+                    a, b = ((segment["x1"], segment["x2"]) if axis == "h" else (segment["y1"], segment["y2"]))
+                    if min(a, b) - 0.01 <= middle <= max(a, b) + 0.01:
+                        covering.append(segment)
+                if not covering:
+                    continue
+                connected = sorted({segment["room_id"] for segment in covering})
+                side = covering[0]["side"]
+                on_boundary = (
+                    (axis == "h" and (abs(fixed - sb_front) < 0.05 or abs(fixed - (sb_front + bldg_d)) < 0.05)) or
+                    (axis == "v" and (abs(fixed - sb_left) < 0.05 or abs(fixed - (sb_left + bldg_w)) < 0.05))
+                )
+                is_ext = len(connected) == 1 and on_boundary
+                signature = (axis, fixed, z, tuple(connected), is_ext, side)
+                if atomic and atomic[-1]["signature"] == signature and abs(atomic[-1]["end"] - start) < 0.01:
+                    atomic[-1]["end"] = end
+                else:
+                    atomic.append({
+                        "axis": axis, "fixed": fixed, "z": z, "start": start, "end": end,
+                        "connected": connected, "is_ext": is_ext, "side": side, "signature": signature,
+                    })
+
         walls = []
-        matched_indices = set()
-
-        for i, s1 in enumerate(raw_segments):
-            if i in matched_indices:
-                continue
-
-            connected = [s1["room_id"]]
-            is_horizontal = (s1["side"] in ["south", "north"])
-
-            # Check if an opposite segment from another room touches this line
-            for j, s2 in enumerate(raw_segments):
-                if i != j and j not in matched_indices:
-                    if is_horizontal and (s2["side"] in ["south", "north"]):
-                        if abs(s1["y1"] - s2["y1"]) < 0.15:
-                            # Overlap check along X
-                            ov_start = max(s1["x1"], s2["x1"])
-                            ov_end = min(s1["x2"], s2["x2"])
-                            if (ov_end - ov_start) > 0.30:
-                                matched_indices.add(j)
-                                if s2["room_id"] not in connected:
-                                    connected.append(s2["room_id"])
-                    elif not is_horizontal and (s2["side"] in ["west", "east"]):
-                        if abs(s1["x1"] - s2["x1"]) < 0.15:
-                            # Overlap check along Y
-                            ov_start = max(s1["y1"], s2["y1"])
-                            ov_end = min(s1["y2"], s2["y2"])
-                            if (ov_end - ov_start) > 0.30:
-                                matched_indices.add(j)
-                                if s2["room_id"] not in connected:
-                                    connected.append(s2["room_id"])
-
-            matched_indices.add(i)
-
-            # Determine wall type: exterior if on building boundary, interior if sharing rooms
-            is_ext = len(connected) == 1 and (
-                abs(s1["y1"] - sb_front) < 0.25 or
-                abs(s1["y1"] - (sb_front + bldg_d)) < 0.25 or
-                abs(s1["x1"] - sb_left) < 0.25 or
-                abs(s1["x1"] - (sb_left + bldg_w)) < 0.25
-            )
-
-            wall_id = f"wall_{'ext' if is_ext else 'part'}_{s1['side']}_{len(walls)+1}"
-            thickness = 0.20 if is_ext else 0.15
-
+        for index, item in enumerate(atomic, 1):
+            horizontal = item["axis"] == "h"
+            x1, y1 = (item["start"], item["fixed"]) if horizontal else (item["fixed"], item["start"])
+            x2, y2 = (item["end"], item["fixed"]) if horizontal else (item["fixed"], item["end"])
+            thickness = wall_t if item["is_ext"] else min(wall_t, 0.15)
             walls.append({
-                "id": wall_id,
-                "type": "exterior" if is_ext else "interior",
-                "side": s1["side"],
-                "start": {"x": round(s1["x1"], 2), "y": round(s1["y1"], 2), "z": round(s1["z"], 2)},
-                "end": {"x": round(s1["x2"], 2), "y": round(s1["y2"], 2), "z": round(s1["z"], 2)},
-                # Center point position for viewer mapping
-                "position": {
-                    "x": round((s1["x1"] + s1["x2"]) / 2.0, 2),
-                    "y": round((s1["y1"] + s1["y2"]) / 2.0, 2),
-                    "z": round(s1["z"], 2)
-                },
+                "id": f"wall_{'ext' if item['is_ext'] else 'part'}_{index:03d}",
+                "type": "exterior" if item["is_ext"] else "interior",
+                "side": item["side"],
+                "start": {"x": round(x1, 2), "y": round(y1, 2), "z": round(item["z"], 2)},
+                "end": {"x": round(x2, 2), "y": round(y2, 2), "z": round(item["z"], 2)},
+                "position": {"x": round((x1 + x2) / 2.0, 2), "y": round((y1 + y2) / 2.0, 2), "z": round(item["z"], 2)},
                 "dimensions": {
-                    "width": round(abs(s1["x2"] - s1["x1"]), 2) if is_horizontal else thickness,
-                    "depth": thickness if is_horizontal else round(abs(s1["y2"] - s1["y1"]), 2),
-                    "height": 3.0
+                    "width": round(item["end"] - item["start"], 2) if horizontal else thickness,
+                    "depth": thickness if horizontal else round(item["end"] - item["start"], 2),
+                    "height": 3.0,
                 },
                 "thickness": thickness,
                 "height": 3.0,
-                "connected_rooms": connected,
+                "connected_rooms": item["connected"],
             })
-
         return walls
 
     # ─── Wall-Hosted Openings (Doors & Windows) ───────────────────────────────
@@ -985,96 +1129,196 @@ class ArchitecturalLayoutEngine:
         self,
         rooms: List[Dict[str, Any]],
         walls: List[Dict[str, Any]],
-        is_ground: bool
+        is_ground: bool,
+        connection_preferences: Optional[List[List[str]]] = None,
     ) -> List[Dict[str, Any]]:
-        """Places wall-hosted doors with valid wall references and CAD swing arcs."""
-        doors = []
+        """Create openings only on real shared wall segments.
 
-        for r in rooms:
-            rid = r["id"]
-            rx = r["position"]["x"]
-            ry = r["position"]["y"]
-            rz = r["position"]["z"]
-            rw = r["dimensions"]["width"]
-            rd = r["dimensions"]["depth"]
-            rtype = r["type"]
+        Door relationships are selected by room function (and explicit prompt
+        preferences), then the exact canonical wall id is recorded.  This avoids
+        the old behaviour that placed a bathroom door against the first room in
+        list order or invented a wall id that did not exist in Blender.
+        """
+        if not rooms:
+            return []
 
-            if is_ground and rtype == "living_room":
-                # Main Entrance Door on south front exterior wall
-                door_x = round(rx + rw * 0.5, 2)
-                door_y = round(ry, 2)
-                doors.append({
-                    "id": "door_main_entrance",
-                    "roomId": rid,
-                    "room_id": rid,
-                    "wall_id": "wall_ext_south_main",
-                    "wall": "front",
-                    "wall_side": "south",
-                    "type": "main_entrance",
-                    "position": {"x": door_x, "y": door_y, "z": round(rz, 2)},
-                    "width": 1.10,
-                    "height": 2.20,
-                    "swing": "inward_right",
-                })
-            elif rtype == "garage":
-                # Garage roller door on south exterior wall + passage into house
-                doors.append({
-                    "id": f"door_garage_roll_{rid}",
-                    "roomId": rid,
-                    "room_id": rid,
-                    "wall_id": "wall_ext_south_garage",
-                    "wall": "front",
-                    "wall_side": "south",
-                    "type": "garage_door",
-                    "position": {"x": round(rx + rw * 0.5, 2), "y": round(ry, 2), "z": round(rz, 2)},
-                    "width": 2.80,
-                    "height": 2.40,
-                    "swing": "overhead",
-                })
-                # Service door into living/corridor
-                doors.append({
-                    "id": f"door_garage_entry_{rid}",
-                    "roomId": rid,
-                    "room_id": rid,
-                    "wall_id": f"wall_part_garage_house",
-                    "wall": "right",
-                    "wall_side": "east",
-                    "type": "interior_door",
-                    "position": {"x": round(rx + rw, 2), "y": round(ry + rd * 0.3, 2), "z": round(rz, 2)},
-                    "width": 0.90,
-                    "height": 2.10,
-                    "swing": "inward_left",
-                })
-            elif "master_bath" in rtype:
-                # Attached bathroom door connecting to master bedroom
-                doors.append({
-                    "id": f"door_ensuite_{rid}",
-                    "roomId": rid,
-                    "room_id": rid,
-                    "wall_id": "wall_part_ensuite",
-                    "wall": "front",
-                    "wall_side": "south",
-                    "type": "interior_door",
-                    "position": {"x": round(rx + rw * 0.5, 2), "y": round(ry, 2), "z": round(rz, 2)},
-                    "width": 0.85,
-                    "height": 2.10,
-                    "swing": "inward_left",
-                })
+        doors: List[Dict[str, Any]] = []
+        room_map = {str(room["id"]): room for room in rooms}
+
+        def type_group(room: Dict[str, Any]) -> str:
+            value = str(room.get("type", "")).lower()
+            if "bath" in value or "wash" in value: return "bathroom"
+            if "bed" in value: return "bedroom"
+            if "living" in value or "lounge" in value: return "living_room"
+            if "kitchen" in value: return "kitchen"
+            if "dining" in value: return "dining_room"
+            if "corridor" in value or "hallway" in value: return "corridor"
+            if "foyer" in value or "entry" in value: return "foyer"
+            if "garage" in value: return "garage"
+            return value
+
+        def wall_length(wall: Dict[str, Any]) -> float:
+            start, end = wall.get("start", {}), wall.get("end", {})
+            return math.hypot(float(end.get("x", 0)) - float(start.get("x", 0)),
+                              float(end.get("y", 0)) - float(start.get("y", 0)))
+
+        shared: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        exterior: Dict[str, List[Dict[str, Any]]] = {}
+        for wall in walls:
+            connected = [str(value) for value in wall.get("connected_rooms", []) if str(value) in room_map]
+            if len(connected) >= 2:
+                # A narrow incidental contact is not a usable doorway. Treating
+                # it as circulation used to squeeze a door into a 0.58 m wall.
+                if wall_length(wall) < 1.05:
+                    continue
+                for index, first in enumerate(connected):
+                    for second in connected[index + 1:]:
+                        shared.setdefault(tuple(sorted((first, second))), []).append(wall)
+            elif len(connected) == 1:
+                exterior.setdefault(connected[0], []).append(wall)
+
+        def side_for(room: Dict[str, Any], wall: Dict[str, Any]) -> str:
+            pos, dim = room["position"], room["dimensions"]
+            x0, y0 = float(pos["x"]), float(pos["y"])
+            x1, y1 = x0 + float(dim["width"]), y0 + float(dim["depth"])
+            start, end = wall.get("start", {}), wall.get("end", {})
+            wx = (float(start.get("x", 0)) + float(end.get("x", 0))) / 2.0
+            wy = (float(start.get("y", 0)) + float(end.get("y", 0))) / 2.0
+            return min(((abs(wy - y0), "south"), (abs(wy - y1), "north"),
+                        (abs(wx - x0), "west"), (abs(wx - x1), "east")), key=lambda value: value[0])[1]
+
+        def opening_on_wall(wall: Dict[str, Any], room: Dict[str, Any], width: float) -> Tuple[str, Dict[str, float]]:
+            start, end = wall.get("start", {}), wall.get("end", {})
+            x1, y1 = float(start.get("x", 0)), float(start.get("y", 0))
+            x2, y2 = float(end.get("x", 0)), float(end.get("y", 0))
+            side = side_for(room, wall)
+            margin = min(0.35, max(0.12, (wall_length(wall) - width) / 4.0))
+            if abs(x2 - x1) >= abs(y2 - y1):
+                lo, hi = sorted((x1, x2))
+                center = min(max(lo + margin + width / 2.0, (lo + hi) / 2.0), hi - margin - width / 2.0)
+                position = {"x": round(center, 2), "y": round((y1 + y2) / 2.0, 2), "z": round(float(room["position"].get("z", 0)), 2)}
             else:
-                # Standard interior room door connecting to hallway / living
+                lo, hi = sorted((y1, y2))
+                center = min(max(lo + margin + width / 2.0, (lo + hi) / 2.0), hi - margin - width / 2.0)
+                position = {"x": round((x1 + x2) / 2.0, 2), "y": round(center, 2), "z": round(float(room["position"].get("z", 0)), 2)}
+            return side, position
+
+        # Main entrance belongs to a real exterior segment of the living/foyer.
+        entry = next((room for room in rooms if type_group(room) == "foyer"), None)
+        entry = entry or next((room for room in rooms if type_group(room) == "living_room"), None)
+        entry = entry or next((room for room in rooms if type_group(room) == "kitchen"), None)
+        entry = entry or next((room for room in rooms if type_group(room) != "garage"), rooms[0])
+        if is_ground and exterior.get(str(entry["id"])):
+            candidates = exterior[str(entry["id"])]
+            south = [wall for wall in candidates if side_for(entry, wall) == "south"]
+            host = max(south or candidates, key=wall_length)
+            width = min(1.10, max(0.75, wall_length(host) - 0.40))
+            side, position = opening_on_wall(host, entry, width)
+            doors.append({
+                "id": "door_main_entrance", "roomId": entry["id"], "room_id": entry["id"],
+                "connected_room_ids": [entry["id"], "exterior"], "wall_id": host["id"],
+                "wall": {"south": "front", "north": "back", "west": "left", "east": "right"}[side],
+                "wall_side": side, "type": "main_entrance", "position": position,
+                "width": width, "height": 2.20, "swing": "inward_right",
+            })
+
+        # Garage vehicle openings are exterior; pedestrian access is selected
+        # below through the same shared-wall graph as every other room.
+        for garage in (room for room in rooms if type_group(room) == "garage"):
+            candidates = exterior.get(str(garage["id"]), [])
+            if candidates:
+                south = [wall for wall in candidates if side_for(garage, wall) == "south"]
+                host = max(south or candidates, key=wall_length)
+                width = min(2.80, max(1.80, wall_length(host) - 0.40))
+                side, position = opening_on_wall(host, garage, width)
                 doors.append({
-                    "id": f"door_{rid}",
-                    "roomId": rid,
-                    "room_id": rid,
-                    "wall_id": f"wall_part_{rid}",
-                    "wall": "front",
-                    "wall_side": "south",
-                    "type": "interior_door",
-                    "position": {"x": round(rx + min(1.2, rw * 0.3), 2), "y": round(ry, 2), "z": round(rz, 2)},
-                    "width": 0.90,
-                    "height": 2.10,
-                    "swing": "inward_right",
+                    "id": f"door_garage_roll_{garage['id']}", "roomId": garage["id"], "room_id": garage["id"],
+                    "connected_room_ids": [garage["id"], "exterior"], "wall_id": host["id"],
+                    "wall": {"south": "front", "north": "back", "west": "left", "east": "right"}[side],
+                    "wall_side": side, "type": "garage_door", "position": position,
+                    "width": width, "height": 2.40, "swing": "overhead",
                 })
+
+        adjacency = {rid: [] for rid in room_map}
+        for pair, pair_walls in shared.items():
+            adjacency[pair[0]].append((pair[1], pair_walls))
+            adjacency[pair[1]].append((pair[0], pair_walls))
+
+        selected: List[Tuple[str, str]] = []
+        selected_set = set()
+
+        def select_pair(first: str, second: str) -> bool:
+            pair = tuple(sorted((first, second)))
+            if first == second or pair not in shared or pair in selected_set:
+                return False
+            selected.append(pair)
+            selected_set.add(pair)
+            return True
+
+        # Explicit prompt edits win whenever those spaces share a partition.
+        for preference in connection_preferences or []:
+            if not isinstance(preference, (list, tuple)) or len(preference) != 2:
+                continue
+            left = [room for room in rooms if type_group(room) == str(preference[0])]
+            right = [room for room in rooms if type_group(room) == str(preference[1])]
+            for first in left:
+                match = next((second for second in right if tuple(sorted((str(first["id"]), str(second["id"])))) in shared), None)
+                if match:
+                    select_pair(str(first["id"]), str(match["id"]))
+
+        priorities = {
+            "bathroom": ["bedroom", "corridor", "foyer", "living_room", "dining_room", "kitchen"],
+            "bedroom": ["corridor", "living_room", "foyer", "dining_room", "kitchen"],
+            "kitchen": ["living_room", "dining_room", "corridor", "foyer"],
+            "dining_room": ["living_room", "kitchen", "corridor", "foyer"],
+            "garage": ["corridor", "foyer", "living_room", "kitchen"],
+            "corridor": ["foyer", "living_room"],
+            "foyer": ["living_room", "corridor"],
+        }
+        for room in rooms:
+            rid, group = str(room["id"]), type_group(room)
+            if rid == str(entry["id"]):
+                continue
+            neighbors = adjacency.get(rid, [])
+            ranked = sorted(neighbors, key=lambda value: (
+                priorities.get(group, ["corridor", "living_room"]).index(type_group(room_map[value[0]]))
+                if type_group(room_map[value[0]]) in priorities.get(group, ["corridor", "living_room"]) else 99,
+                value[0],
+            ))
+            if ranked:
+                select_pair(rid, ranked[0][0])
+
+        # Ensure every room is reachable from the entrance, adding the smallest
+        # number of additional shared-wall doors needed to join components.
+        parent = {rid: rid for rid in room_map}
+        def find(value: str) -> str:
+            while parent[value] != value:
+                parent[value] = parent[parent[value]]
+                value = parent[value]
+            return value
+        def union(first: str, second: str) -> None:
+            a, b = find(first), find(second)
+            if a != b: parent[b] = a
+        for first, second in selected:
+            union(first, second)
+        for first, second in sorted(shared):
+            if find(first) != find(second):
+                select_pair(first, second)
+                union(first, second)
+
+        for index, (first, second) in enumerate(selected, 1):
+            host = max(shared[(first, second)], key=wall_length)
+            room = room_map[first]
+            width = min(0.85 if type_group(room) == "bathroom" or type_group(room_map[second]) == "bathroom" else 0.90,
+                        max(0.65, wall_length(host) - 0.40))
+            side, position = opening_on_wall(host, room, width)
+            doors.append({
+                "id": f"door_{first}_{second}", "roomId": first, "room_id": first,
+                "connected_room_ids": [first, second], "wall_id": host["id"],
+                "wall": {"south": "front", "north": "back", "west": "left", "east": "right"}[side],
+                "wall_side": side, "type": "interior_door", "position": position,
+                "width": width, "height": 2.10, "swing": "inward_right",
+            })
 
         return doors
 
@@ -1098,65 +1342,70 @@ class ArchitecturalLayoutEngine:
             rw = r["dimensions"]["width"]
             rd = r["dimensions"]["depth"]
             rtype = r["type"]
+            is_bath = "bath" in rtype
 
             # South exterior window (front facing road)
             if abs(ry - sb_front) < 0.25 and rtype != "garage":
                 is_living = "living" in rtype
-                win_w = 2.40 if is_living else 1.60
+                win_w = 2.40 if is_living else (1.00 if is_bath else 1.60)
+                # Offset if room front wall has the main entrance door
+                has_front_door = (rtype == "living_room") or (r == rooms[0])
+                win_x = round(rx + rw * 0.25, 2) if has_front_door else round(rx + rw * 0.5, 2)
                 windows.append({
                     "id": f"win_{rid}_south",
                     "roomId": rid,
                     "room_id": rid,
                     "wall": "front",
                     "wall_side": "south",
-                    "position": {"x": round(rx + rw * 0.5, 2), "y": round(ry, 2), "z": round(rz + 0.9, 2)},
+                    "position": {"x": win_x, "y": round(ry, 2), "z": round(rz + (1.2 if is_bath else 0.9), 2)},
                     "width": win_w,
-                    "height": 1.50,
-                    "sill_height": 0.80,
+                    "height": 0.90 if is_bath else 1.50,
+                    "sill_height": 1.30 if is_bath else 0.80,
                 })
 
             # North exterior window (rear facing)
             if abs((ry + rd) - (sb_front + bldg_d)) < 0.25:
-                win_w = 1.80 if "bed" in rtype else (1.40 if "office" in rtype else 0.90)
+                win_w = 1.00 if is_bath else (1.80 if "bed" in rtype else (1.40 if "office" in rtype else 0.90))
                 windows.append({
                     "id": f"win_{rid}_north",
                     "roomId": rid,
                     "room_id": rid,
                     "wall": "back",
                     "wall_side": "north",
-                    "position": {"x": round(rx + rw * 0.5, 2), "y": round(ry + rd, 2), "z": round(rz + 0.9, 2)},
+                    "position": {"x": round(rx + rw * 0.5, 2), "y": round(ry + rd, 2), "z": round(rz + (1.2 if is_bath else 0.9), 2)},
                     "width": win_w,
-                    "height": 1.40,
-                    "sill_height": 0.90,
+                    "height": 0.90 if is_bath else 1.40,
+                    "sill_height": 1.30 if is_bath else 0.90,
                 })
 
             # West exterior window (left flank)
             if abs(rx - sb_left) < 0.25 and rtype != "garage":
+                win_w = 1.00 if is_bath else 1.50
                 windows.append({
                     "id": f"win_{rid}_west",
                     "roomId": rid,
                     "room_id": rid,
                     "wall": "left",
                     "wall_side": "west",
-                    "position": {"x": round(rx, 2), "y": round(ry + rd * 0.5, 2), "z": round(rz + 0.9, 2)},
-                    "width": 1.50,
-                    "height": 1.30,
-                    "sill_height": 0.90,
+                    "position": {"x": round(rx, 2), "y": round(ry + rd * 0.5, 2), "z": round(rz + (1.2 if is_bath else 0.9), 2)},
+                    "width": win_w,
+                    "height": 0.90 if is_bath else 1.30,
+                    "sill_height": 1.30 if is_bath else 0.90,
                 })
 
             # East exterior window (right flank)
             if abs((rx + rw) - (sb_left + bldg_w)) < 0.25:
-                win_w = 1.40 if "kitchen" in rtype else 1.60
+                win_w = 1.00 if is_bath else (1.40 if "kitchen" in rtype else 1.60)
                 windows.append({
                     "id": f"win_{rid}_east",
                     "roomId": rid,
                     "room_id": rid,
                     "wall": "right",
                     "wall_side": "east",
-                    "position": {"x": round(rx + rw, 2), "y": round(ry + rd * 0.5, 2), "z": round(rz + 0.9, 2)},
+                    "position": {"x": round(rx + rw, 2), "y": round(ry + rd * 0.5, 2), "z": round(rz + (1.2 if is_bath else 0.9), 2)},
                     "width": win_w,
-                    "height": 1.30,
-                    "sill_height": 0.90,
+                    "height": 0.90 if is_bath else 1.30,
+                    "sill_height": 1.30 if is_bath else 0.90,
                 })
 
         return windows
@@ -1174,7 +1423,9 @@ class ArchitecturalLayoutEngine:
         and proper rotation angles for both 2D and 3D viewers.
         """
         furniture = []
-        floor_elev = elevation + 0.22  # top of floor slab
+        # Architectural Z is the finished-floor elevation.  The Blender slab is
+        # generated below this plane, so furniture rests exactly at elevation.
+        floor_elev = elevation
 
         for r in rooms:
             rid = r["id"]
@@ -1198,7 +1449,7 @@ class ArchitecturalLayoutEngine:
                 furniture.append(f_dict)
 
             if rtype == "living_room":
-                for item in [
+                living_items = [
                     {
                         "id": f"sofa_{rid}",
                         "asset": "sofa",
@@ -1243,11 +1494,19 @@ class ArchitecturalLayoutEngine:
                         "rotation": 180.0,
                         "dimensions": {"width": 1.8, "depth": 0.45, "height": 0.60},
                     },
-                ]:
+                ]
+                # Keep compact living rooms genuinely compact. Optional tables
+                # and media storage previously forced requested 11 x 12 m homes
+                # into a validation failure after circulation clearances were
+                # applied. The sofa and chair remain; larger rooms get the full
+                # furniture group.
+                if rw * rd < 20.0:
+                    living_items = [living_items[0]]
+                for item in living_items:
                     _add(item)
             elif "bedroom" in rtype:
                 bed_y = round(ry + rd - 1.15, 2)
-                for item in [
+                bedroom_items = [
                     {
                         "id": f"bed_{rid}",
                         "asset": "bed",
@@ -1292,7 +1551,13 @@ class ArchitecturalLayoutEngine:
                         "rotation": 90.0,
                         "dimensions": {"width": 1.2, "depth": 0.60, "height": 2.00},
                     },
-                ]:
+                ]
+                # A compact parking-side bedroom cannot safely hold a double
+                # bed, two nightstands, and a freestanding wardrobe while
+                # preserving door circulation. Keep the essential sleep zone.
+                if rw * rd < 14.0:
+                    bedroom_items = bedroom_items[:3]
+                for item in bedroom_items:
                     _add(item)
             elif rtype == "kitchen":
                 for item in [
@@ -1472,7 +1737,7 @@ class ArchitecturalLayoutEngine:
                     "id": f"car_parking_{rid}",
                     "asset": "coffee_table",
                     "asset_id": "car_clearance_marker",
-                    "category": "storage",
+                    "category": "vehicle",
                     "roomId": rid,
                     "room_id": rid,
                     "position": {"x": cx, "y": cy, "z": floor_elev},
@@ -1483,6 +1748,74 @@ class ArchitecturalLayoutEngine:
         return furniture
 
     # ─── Integration Bridge with Gemini Output ────────────────────────────────
+
+    def _rooms_for_explicit_program(
+        self,
+        raw_rooms: List[Dict[str, Any]],
+        constraints: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Reconcile Gemini rooms to the exact deterministic prompt inventory."""
+        requested_counts = constraints.get("room_counts", {})
+        bedroom_types = {"bedroom", "master_bedroom", "guest_room"}
+        bathroom_types = {"bathroom", "master_bathroom"}
+
+        def family(room_type: str) -> str:
+            normalized = self._classify_room_type(room_type)
+            if normalized in bedroom_types:
+                return "bedroom"
+            if normalized in bathroom_types:
+                return "bathroom"
+            return normalized
+
+        available = [room for room in raw_rooms if isinstance(room, dict)]
+        selected: List[Dict[str, Any]] = []
+        used_indices = set()
+        labels = {
+            "bedroom": "Bedroom",
+            "master_bedroom": "Master Bedroom",
+            "guest_room": "Guest Room",
+            "bathroom": "Bathroom",
+            "kitchen": "Kitchen",
+            "living_room": "Living Room",
+            "dining_room": "Dining Room",
+            "garage": "Garage",
+            "home_office": "Home Office",
+        }
+
+        for requested_type, raw_count in requested_counts.items():
+            count = max(0, int(raw_count))
+            output_type = requested_type
+            if requested_type == "bedroom":
+                output_type = constraints.get("bedroom_type", "bedroom")
+
+            candidates = [
+                (index, room)
+                for index, room in enumerate(available)
+                if index not in used_indices
+                and family(str(room.get("type", room.get("name", "")))) == requested_type
+            ]
+            # Prefer the exact requested bedroom kind. An unsolicited master
+            # bedroom must not become a second sleeping room.
+            candidates.sort(key=lambda value: (
+                self._classify_room_type(str(value[1].get("type", ""))) != output_type,
+                value[0],
+            ))
+
+            for ordinal in range(1, count + 1):
+                if candidates:
+                    source_index, source = candidates.pop(0)
+                    used_indices.add(source_index)
+                    room = dict(source)
+                else:
+                    room = {}
+
+                label = labels.get(output_type, output_type.replace("_", " ").title())
+                room["id"] = str(room.get("id") or f"requested_{output_type}_{ordinal:02d}")
+                room["type"] = output_type
+                room["name"] = label if count == 1 else f"{label} {ordinal}"
+                selected.append(room)
+
+        return selected
 
     def solve_or_refine_design(self, design_data: Dict[str, Any], prompt: str = "") -> Dict[str, Any]:
         """
@@ -1503,6 +1836,12 @@ class ArchitecturalLayoutEngine:
 
         # Build room requirement list
         raw_rooms = design_data.get("rooms", [])
+        strict_room_program = bool(
+            constraints.get("replace_room_program")
+            and constraints.get("room_counts")
+        )
+        if strict_room_program:
+            raw_rooms = self._rooms_for_explicit_program(raw_rooms, constraints)
         style = design_data.get("style") or house_info.get("style") or "modern"
 
         requirements = {
@@ -1512,6 +1851,8 @@ class ArchitecturalLayoutEngine:
             "plot": {"width": pw, "depth": pd},
             "floors": floors_cnt,
             "rooms": raw_rooms if raw_rooms else [],
+            "connection_preferences": constraints.get("connections", []),
+            "strict_room_program": strict_room_program,
         }
 
         # If rooms list was empty, populate from constraints

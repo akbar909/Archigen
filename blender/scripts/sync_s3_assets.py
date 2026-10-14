@@ -89,6 +89,7 @@ def upload_assets(
 
     upload_count = 0
     folders_to_upload = [
+        (os.path.join(blender_dir, "assets", "architecture"), f"{s3_prefix}architecture/"),
         (os.path.join(blender_dir, "assets", "furniture"), f"{s3_prefix}furniture/"),
         (os.path.join(blender_dir, "assets", "doors"), f"{s3_prefix}doors/"),
         (os.path.join(blender_dir, "assets", "windows"), f"{s3_prefix}windows/"),

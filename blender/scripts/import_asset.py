@@ -68,23 +68,47 @@ def load_model(file_path: str, name_prefix: Optional[str] = None) -> Any:
     if not new_objects:
         raise RuntimeError(f"No objects were imported from {file_path}")
 
-    # Primary imported object (or parent if hierarchy exists)
-    root_obj = None
-    for obj in new_objects:
-        if obj.parent is None:
-            root_obj = obj
-            break
+    # A GLB may contain several top-level objects.  Moving only the first one
+    # left the remaining meshes at the file's authored origin, creating the
+    # distant/floating geometry seen in exported houses.  Wrap every imported
+    # root in one deterministic bottom-centred transform instead.
+    imported_set = set(new_objects)
+    top_level = [obj for obj in new_objects if obj.parent not in imported_set]
+    mesh_objects = [obj for obj in new_objects if obj.type == "MESH"]
+    if not mesh_objects:
+        raise RuntimeError(f"Imported asset contains no mesh objects: {file_path}")
 
-    if root_obj is None:
-        root_obj = new_objects[0]
-
+    corners = [
+        obj.matrix_world @ mathutils.Vector(corner)
+        for obj in mesh_objects
+        for corner in obj.bound_box
+    ]
+    min_x, max_x = min(p.x for p in corners), max(p.x for p in corners)
+    min_y, max_y = min(p.y for p in corners), max(p.y for p in corners)
+    min_z = min(p.z for p in corners)
+    # Keep the wrapper itself at a clean identity transform. Parenting meshes
+    # under a wrapper already positioned at the authored bounds centre leaves
+    # a parent-inverse offset that glTF exports can apply a second time. That
+    # produced one-sided/floating doors and gates. Parent at identity, then
+    # normalize the imported roots explicitly into wrapper-local space.
+    wrapper = bpy.data.objects.new(name_prefix or "ArchGenAsset", None)
+    bpy.context.scene.collection.objects.link(wrapper)
+    normalization = mathutils.Vector(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0, min_z))
+    for obj in top_level:
+        world = obj.matrix_world.copy()
+        obj.parent = wrapper
+        obj.matrix_world = world
+    bpy.context.view_layer.update()
+    for obj in top_level:
+        obj.location -= normalization
     if name_prefix:
-        root_obj.name = f"{name_prefix}_{root_obj.name}"
+        wrapper.name = name_prefix
+        for index, obj in enumerate(new_objects, 1):
+            obj.name = f"{name_prefix}_part_{index:02d}"
 
-    # Perform automated origin centering to bottom (floor contact point)
-    adjust_origin_to_bottom(root_obj)
-
-    return root_obj
+    wrapper["archgen_asset_root"] = True
+    wrapper["archgen_source_file"] = os.path.basename(file_path)
+    return wrapper
 
 
 def adjust_origin_to_bottom(obj: Any) -> None:
