@@ -126,7 +126,7 @@ blender --background --python blender/scripts/generate_house.py -- \
 
 ### Upload changed Blender scripts to S3
 
-The focused uploader compares local script content with S3 and uploads only new or changed `.py` files. Its default destination is `s3://$AWS_S3_BUCKET/assets/scripts/`, which is the prefix used by the worker's `/sync-assets` endpoint.
+The focused uploader compares local script content with S3 and uploads only new or changed `.py` files. Normal scripts are stored below `s3://$AWS_S3_BUCKET/assets/scripts/`. The root `blender/worker_server.py` file can be selected with `worker_server.py` in `--files` and is stored separately at `s3://$AWS_S3_BUCKET/assets/worker_server.py`.
 
 ```powershell
 # Preview changes without uploading
@@ -135,11 +135,13 @@ python blender/scripts/upload_s3_scripts.py --dry-run
 # Upload new or changed scripts
 python blender/scripts/upload_s3_scripts.py
 
-# Upload only selected scripts
-python blender/scripts/upload_s3_scripts.py --files generate_house.py import_asset.py export_glb.py
+# Upload only selected scripts, including the worker server
+python blender/scripts/upload_s3_scripts.py --files generate_house.py import_asset.py worker_server.py
 ```
 
 AWS configuration is read from the current environment and then from `backend/gem_api.env` for missing values. Use `--force` to upload selected files without comparing them with S3.
+
+After downloading an updated `worker_server.py`, the `/sync-assets` response sets `restart_required` to `true`. Restart the worker container to activate that file. When enabling worker-server sync on an existing worker for the first time, call `/sync-assets` twice: the first call installs the updated sync script, and the second places `worker_server.py` in `/app/blender/worker_server.py`.
 
 ---
 

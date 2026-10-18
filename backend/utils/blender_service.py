@@ -149,6 +149,7 @@ def _canonical_blender_layout(
         "coordinate_system": {"horizontal": ["x", "y"], "vertical": "z", "origin": "plot_south_west"},
         "building": {
             "wall_height": float(building.get("floor_height", 3.0)),
+            "floor_height": float(building.get("floor_height", 3.0)),
             "wall_thickness": float(building.get("wall_thickness", 0.2)),
             "slab_thickness": float(building.get("slab_thickness", 0.22)),
             "floors": len(design_data.get("floors", [])) or 1,
@@ -182,7 +183,9 @@ def adapt_gemini_to_blender_layout(
     expected by blender/scripts/generate_house.py.
     """
     house_id = f"proj_{project_id or 'anon'}_v{version_num}_{uuid.uuid4().hex[:6]}"
-    style = design_data.get("style", "modern")
+    project = design_data.get("project") if isinstance(design_data.get("project"), dict) else {}
+    house = design_data.get("house") if isinstance(design_data.get("house"), dict) else {}
+    style = design_data.get("style") or project.get("style") or house.get("style") or "modern"
 
     # Architectural v3 floors are authoritative.  Keep the legacy adapter only
     # for stored pre-v3 projects which do not yet contain canonical floors.
@@ -264,7 +267,7 @@ def adapt_gemini_to_blender_layout(
 
             furniture_reqs.append({
                 "category": cat,
-                "preferred_id": f.get("id"),
+                "preferred_id": f.get("asset_id") or f.get("preferred_id") or f.get("id"),
                 "placement_hint": "center",
                 "anchor_wall": f.get("anchor_wall"),
                 "position": [round(abs_x, 2), round(abs_y, 2), round(target_z, 2)],

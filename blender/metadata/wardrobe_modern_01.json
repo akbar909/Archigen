@@ -1,0 +1,28 @@
+{
+  "id": "wardrobe_modern_01",
+  "name": "Modern Bedroom Wardrobe",
+  "category": "wardrobe",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "minimalist",
+    "contemporary"
+  ],
+  "width": 1.56,
+  "depth": 0.65,
+  "height": 2.06,
+  "canonical_yaw_offset_deg": 90,
+  "model_file": "assets/furniture/bedroom/wardrobes/wardrobe_modern_01.glb",
+  "format": "glb",
+  "license": "Unknown - verify before distribution",
+  "source": "User-provided asset",
+  "tags": [
+    "wardrobe",
+    "almari",
+    "closet",
+    "cupboard",
+    "cabinet",
+    "storage",
+    "bedroom"
+  ]
+}

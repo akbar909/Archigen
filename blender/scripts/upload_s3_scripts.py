@@ -1,7 +1,8 @@
 """Upload the current Blender Python scripts to Amazon S3.
 
 The worker's asset-sync endpoint downloads Python files from
-``s3://<bucket>/assets/scripts/``, so that is the default destination.
+``s3://<bucket>/assets/scripts/``. The root worker is stored separately at
+``s3://<bucket>/assets/worker_server.py``.
 
 Examples (run from the repository root):
 
@@ -11,8 +12,9 @@ Examples (run from the repository root):
     # Upload only new or changed files
     python blender/scripts/upload_s3_scripts.py
 
-    # Upload selected files, even if their content is unchanged
-    python blender/scripts/upload_s3_scripts.py --force --files generate_house.py import_asset.py
+    # Upload selected files, even if their content is unchanged. worker_server.py
+    # is resolved from the parent blender directory automatically.
+    python blender/scripts/upload_s3_scripts.py --force --files generate_house.py generate_house_runtime.py generate_house_materials.py generate_house_structure.py generate_house_opening_models.py generate_house_openings.py generate_house_vertical.py generate_house_validation.py import_asset.py place_furniture.py export_glb.py sync_s3_assets.py worker_server.py
 
 AWS settings are read from the process environment first, then from
 ``backend/gem_api.env`` for values that are not already set.
@@ -30,6 +32,7 @@ from typing import Iterable
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
+WORKER_SERVER_PATH = SCRIPT_DIR.parent / "worker_server.py"
 
 
 def load_project_env() -> None:
@@ -78,16 +81,28 @@ def file_digest(path: Path, algorithm: str) -> str:
 
 
 def discover_scripts(requested_files: Iterable[str] | None) -> list[Path]:
-    """Find Python files and keep explicitly requested paths inside SCRIPT_DIR."""
+    """Find deployable Python files, including the root worker server."""
     if not requested_files:
-        return sorted(
+        scripts = sorted(
             path
             for path in SCRIPT_DIR.rglob("*.py")
             if "__pycache__" not in path.parts
         )
+        if WORKER_SERVER_PATH.is_file():
+            scripts.append(WORKER_SERVER_PATH)
+        return scripts
 
     scripts: list[Path] = []
     for requested in requested_files:
+        normalized = requested.replace("\\", "/").lstrip("./")
+        if normalized in {"worker_server.py", "blender/worker_server.py"}:
+            if not WORKER_SERVER_PATH.is_file():
+                raise FileNotFoundError(
+                    f"Worker server does not exist: {WORKER_SERVER_PATH}"
+                )
+            scripts.append(WORKER_SERVER_PATH)
+            continue
+
         candidate = (SCRIPT_DIR / requested).resolve()
         try:
             candidate.relative_to(SCRIPT_DIR)
@@ -101,6 +116,20 @@ def discover_scripts(requested_files: Iterable[str] | None) -> list[Path]:
         scripts.append(candidate)
 
     return sorted(set(scripts))
+
+
+def deployment_relative_path(local_path: Path) -> str:
+    """Return the display path relative to its deployment location."""
+    if local_path.resolve() == WORKER_SERVER_PATH.resolve():
+        return "worker_server.py"
+    return local_path.relative_to(SCRIPT_DIR).as_posix()
+
+
+def deployment_s3_key(local_path: Path, scripts_prefix: str, worker_key: str) -> str:
+    """Return the S3 key for a Blender script or the root worker server."""
+    if local_path.resolve() == WORKER_SERVER_PATH.resolve():
+        return worker_key.strip().strip("/").replace("\\", "/")
+    return f"{scripts_prefix}{deployment_relative_path(local_path)}"
 
 
 def remote_matches(s3_client, bucket: str, key: str, local_path: Path) -> bool:
@@ -141,7 +170,9 @@ def build_s3_client(region: str | None):
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Upload new or changed blender/scripts Python files to S3."
+        description=(
+            "Upload new or changed Blender scripts and worker_server.py to S3."
+        )
     )
     parser.add_argument(
         "--bucket",
@@ -154,6 +185,14 @@ def main() -> int:
         help="Destination key prefix (default: assets/scripts/).",
     )
     parser.add_argument(
+        "--worker-key",
+        default="assets/worker_server.py",
+        help=(
+            "Destination key for worker_server.py "
+            "(default: assets/worker_server.py)."
+        ),
+    )
+    parser.add_argument(
         "--region",
         default=os.getenv("AWS_REGION"),
         help="AWS region (default: AWS_REGION or us-east-1).",
@@ -162,7 +201,10 @@ def main() -> int:
         "--files",
         nargs="+",
         metavar="FILE",
-        help="Upload only these paths relative to blender/scripts.",
+        help=(
+            "Upload only these paths relative to blender/scripts; "
+            "worker_server.py selects blender/worker_server.py."
+        ),
     )
     parser.add_argument(
         "--force",
@@ -203,8 +245,12 @@ def main() -> int:
     failed = 0
 
     for local_path in scripts:
-        relative_path = local_path.relative_to(SCRIPT_DIR).as_posix()
-        s3_key = f"{prefix}{relative_path}"
+        relative_path = deployment_relative_path(local_path)
+        s3_key = deployment_s3_key(
+            local_path,
+            prefix,
+            args.worker_key,
+        )
         destination = f"s3://{args.bucket}/{s3_key}"
 
         try:

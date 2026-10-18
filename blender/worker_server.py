@@ -16,6 +16,7 @@ import sys
 import json
 import time
 import uuid
+import hashlib
 import subprocess
 from typing import Optional
 
@@ -47,6 +48,17 @@ BLENDER_BIN = os.getenv("BLENDER_BIN", "blender")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_S3_PUBLIC_BASE_URL = os.getenv("AWS_S3_PUBLIC_BASE_URL", "")
+
+
+def file_sha256(path: str) -> Optional[str]:
+    """Returns a file digest used to detect a downloaded worker update."""
+    if not os.path.isfile(path):
+        return None
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def get_s3_client():
@@ -201,23 +213,42 @@ def generate_house_endpoint():
 
 @app.route("/sync-assets", methods=["POST"])
 def sync_assets_endpoint():
-    """Calls S3 asset sync script to download models into local container."""
+    """Downloads assets/scripts and reports when this worker needs a restart."""
     data = request.get_json(silent=True) or {}
     direction = data.get("direction", "download")
     bucket = data.get("bucket") or AWS_S3_BUCKET
+    force = bool(data.get("force", False))
 
     if not bucket:
         return jsonify({"error": "No AWS_S3_BUCKET specified"}), 400
 
     sync_script = os.path.join(SCRIPTS_DIR, "sync_s3_assets.py")
     cmd = [sys.executable, sync_script, "--direction", direction, "--bucket", bucket]
+    if force:
+        cmd.append("--force")
+    worker_path = os.path.abspath(__file__)
+    worker_digest_before = file_sha256(worker_path)
 
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        worker_digest_after = file_sha256(worker_path)
+        worker_updated = (
+            direction == "download"
+            and res.returncode == 0
+            and worker_digest_before != worker_digest_after
+        )
         return jsonify({
             "success": res.returncode == 0,
             "stdout": res.stdout,
-            "stderr": res.stderr
+            "stderr": res.stderr,
+            "worker_server_updated": worker_updated,
+            "restart_required": worker_updated,
+            "message": (
+                "worker_server.py was updated; restart the worker container "
+                "to activate it."
+                if worker_updated
+                else "Sync completed; the running worker server is unchanged."
+            ),
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -101,6 +101,9 @@ def load_model(file_path: str, name_prefix: Optional[str] = None) -> Any:
     bpy.context.view_layer.update()
     for obj in top_level:
         obj.location -= normalization
+    for obj in new_objects:
+        obj["archgen_source_object_name"] = obj.name
+
     if name_prefix:
         wrapper.name = name_prefix
         for index, obj in enumerate(new_objects, 1):

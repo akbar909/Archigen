@@ -17,10 +17,11 @@ from utils.architectural_preflight import (
     _repair_openings,
     validate_and_repair_design,
 )
-from utils.architectural_refinement import apply_targeted_refinement
+from utils.architectural_refinement import apply_targeted_refinement, is_explicit_full_redesign
 from utils.blender_service import adapt_gemini_to_blender_layout
 from utils.layout_engine import ArchitecturalLayoutEngine
 from utils.gemini_layout import _normalize_design, infer_layout_constraints
+from utils.gemini_layout import _validate_home_design_schema
 
 
 def footprint(item):
@@ -88,7 +89,129 @@ class ArchitecturalPipelineTests(unittest.TestCase):
                 if floors > 1:
                     elevations = {room["bounds"]["z"] for room in adapted["rooms"]}
                     self.assertGreater(len(elevations), 1)
-                    self.assertTrue(all(floor.get("stairs") for floor in canonical["floors"]))
+                    self.assertTrue(all(floor.get("stairs") for floor in canonical["floors"][:-1]))
+                    self.assertFalse(canonical["floors"][-1].get("stairs"))
+                    self.assertTrue(all(floor.get("stair_openings") for floor in canonical["floors"][1:]))
+
+    def test_two_three_and_four_storey_vertical_architecture(self):
+        engine = ArchitecturalLayoutEngine(unit="meters")
+        for floor_count in (2, 3, 4):
+            requested_rooms = [
+                {"id": "living", "type": "living_room", "floor": 0},
+                {"id": "kitchen", "type": "kitchen", "floor": 0},
+            ]
+            for level in range(1, floor_count):
+                requested_rooms.extend([
+                    {"id": f"bedroom_{level}", "type": "bedroom", "floor": level},
+                    {"id": f"bathroom_{level}", "type": "bathroom", "floor": level},
+                ])
+
+            with self.subTest(floors=floor_count):
+                design = engine.generate_layout({
+                    "project_name": f"{floor_count} Storey Test",
+                    "plot": {"width": 18, "depth": 24},
+                    "floors": floor_count,
+                    "rooms": requested_rooms,
+                })
+                canonical, adapted = self.assert_pipeline_valid(design)
+                self.assertEqual(floor_count, len(canonical["floors"]))
+                self.assertEqual(list(range(floor_count)), [floor["level"] for floor in canonical["floors"]])
+                self.assertEqual(
+                    [level * 3.0 for level in range(floor_count)],
+                    [floor["elevation"] for floor in canonical["floors"]],
+                )
+
+                all_room_ids = []
+                all_wall_ids = []
+                all_opening_ids = []
+                for level, floor in enumerate(canonical["floors"]):
+                    all_room_ids.extend(room["id"] for room in floor["rooms"])
+                    all_wall_ids.extend(wall["id"] for wall in floor["walls"])
+                    all_opening_ids.extend(item["id"] for item in floor["doors"] + floor["windows"])
+                    self.assertTrue(all(room["position"]["z"] == level * 3.0 for room in floor["rooms"]))
+                    self.assertTrue(all(wall["floor_level"] == level for wall in floor["walls"]))
+                    wall_ids = {wall["id"] for wall in floor["walls"]}
+                    for opening in floor["doors"] + floor["windows"]:
+                        self.assertEqual(level, opening["floor_level"])
+                        self.assertIn(opening["wall_id"], wall_ids)
+
+                    if level < floor_count - 1:
+                        self.assertEqual(1, len(floor["stairs"]))
+                        stair = floor["stairs"][0]
+                        self.assertEqual(floor["id"], stair["connects"]["lower_floor"])
+                        self.assertEqual(canonical["floors"][level + 1]["id"], stair["connects"]["upper_floor"])
+                    else:
+                        self.assertEqual([], floor["stairs"])
+                    if level > 0:
+                        self.assertEqual(1, len(floor["stair_openings"]))
+                        previous_stair = canonical["floors"][level - 1]["stairs"][0]
+                        opening = floor["stair_openings"][0]
+                        self.assertEqual(previous_stair["id"], opening["serves_stair_id"])
+                        self.assertEqual(previous_stair["position"]["x"], opening["position"]["x"])
+                        self.assertEqual(previous_stair["position"]["y"], opening["position"]["y"])
+
+                self.assertEqual(len(all_room_ids), len(set(all_room_ids)))
+                self.assertEqual(len(all_wall_ids), len(set(all_wall_ids)))
+                self.assertEqual(len(all_opening_ids), len(set(all_opening_ids)))
+                self.assertEqual(
+                    set(range(floor_count)),
+                    {room["floor_level"] for room in adapted["rooms"]},
+                )
+
+    def test_explicit_floor_prompt_is_authoritative(self):
+        constraints = infer_layout_constraints("Make this a 3-floor family house")
+        self.assertTrue(constraints["floors_explicit"])
+        self.assertEqual(3, constraints["floors_count"])
+
+        inferred = infer_layout_constraints("A spacious family house with many rooms")
+        self.assertFalse(inferred["floors_explicit"])
+
+        with self.assertRaisesRegex(ValueError, "supports 1 to 4 floors"):
+            ArchitecturalLayoutEngine(unit="meters").generate_layout({
+                "plot": {"width": 20, "depth": 25},
+                "floors": 5,
+                "rooms": [{"type": "bedroom"}] * 5,
+            })
+
+    def test_narrow_bedroom_is_repaired_before_schema_validation(self):
+        engine = ArchitecturalLayoutEngine(unit="meters")
+        rooms = [
+            engine._create_room_dict(
+                "bedroom_01", "Bedroom", "bedroom",
+                0.0, 0.0, 0.0, 0.54, 4.0,
+                engine._default_materials("bedroom"), 0,
+            ),
+            engine._create_room_dict(
+                "living_01", "Living Room", "living_room",
+                0.54, 0.0, 0.0, 4.46, 4.0,
+                engine._default_materials("living_room"), 0,
+            ),
+        ]
+
+        engine._repair_schema_minimum_room_spans(rooms)
+
+        bedroom, living = rooms
+        self.assertEqual(1.5, bedroom["dimensions"]["width"])
+        self.assertEqual(1.5, bedroom["width"])
+        self.assertEqual(1.5, living["position"]["x"])
+        self.assertEqual(3.5, living["dimensions"]["width"])
+
+        design = {"rooms": rooms, "doors": [], "windows": [], "furniture": []}
+        valid, errors = _validate_home_design_schema(design)
+        self.assertTrue(valid, errors)
+
+    def test_unrepairable_narrow_bedroom_reports_actionable_error(self):
+        engine = ArchitecturalLayoutEngine(unit="meters")
+        rooms = [
+            engine._create_room_dict(
+                "bedroom_01", "Bedroom", "bedroom",
+                0.0, 0.0, 0.0, 0.54, 4.0,
+                engine._default_materials("bedroom"), 0,
+            ),
+        ]
+
+        with self.assertRaisesRegex(ValueError, "Bedroom is only 0.54 m"):
+            engine._repair_schema_minimum_room_spans(rooms)
 
     def test_wall_backed_fixture_orientation_reaches_blender(self):
         design = self.make_design(["kitchen", "bedroom", "bathroom"], (15, 18), 1)
@@ -223,6 +346,47 @@ class ArchitecturalPipelineTests(unittest.TestCase):
             floor["furniture"][0]["position"],
             floor["furniture"][1]["position"],
         )
+
+    def test_shared_door_clearance_moves_furniture_in_secondary_room(self):
+        room_a = {
+            "id": "room_a",
+            "position": {"x": 0, "y": 0, "z": 0},
+            "dimensions": {"width": 4, "depth": 4, "height": 3},
+        }
+        room_b = {
+            "id": "room_b",
+            "position": {"x": 4, "y": 0, "z": 0},
+            "dimensions": {"width": 4, "depth": 4, "height": 3},
+        }
+        floor = {
+            "id": "ground_floor",
+            "doors": [{
+                "id": "door_shared",
+                "type": "interior_door",
+                "room_id": "room_a",
+                "connected_room_ids": ["room_a", "room_b"],
+                "wall_side": "east",
+                "position": {"x": 4, "y": 2, "z": 0},
+                "width": 0.9,
+                "swing": "inward_right",
+            }],
+            "furniture": [{
+                "id": "chair_room_b",
+                "category": "chair",
+                "room_id": "room_b",
+                "position": {"x": 4.5, "y": 2, "z": 0},
+                "dimensions": {"width": 0.8, "depth": 0.8, "height": 0.9},
+                "rotation": 0,
+            }],
+        }
+        report = {"critical_errors": [], "warnings": [], "repairs": []}
+
+        _repair_furniture(floor, {"room_a": room_a, "room_b": room_b}, report)
+
+        self.assertEqual([], report["critical_errors"], report)
+        moved = floor["furniture"][0]["position"]
+        self.assertFalse(4.0 <= moved["x"] <= 5.15 and 1.1 <= moved["y"] <= 2.9)
+        self.assertIn("Moved furniture 'chair_room_b' inside room 'room_b'.", report["repairs"])
 
     def test_same_input_is_deterministic(self):
         first = self.make_design(["living_room", "kitchen", "bedroom", "bathroom"], (14, 18), 1)
@@ -387,6 +551,543 @@ class ArchitecturalPipelineTests(unittest.TestCase):
             {window["id"] for window in refined_floor["windows"]},
             set(adapted["expected_inventory"]["window_ids"]),
         )
+
+    def test_wardrobe_direction_refinement_keeps_house_and_snaps_to_wall(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        base, report = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], report["critical_errors"], report)
+        floor = base["floors"][0]
+        bedroom = next(room for room in floor["rooms"] if room["type"] == "bedroom")
+        wardrobe = next(item for item in floor["furniture"] if item["category"] == "wardrobe")
+
+        # Simulate the bad saved placement shown by the user: the correct asset
+        # exists, but its transform points the wrong way and floats in the room.
+        wardrobe["rotation"] = 0.0
+        wardrobe["anchor_wall"] = "west"
+        wardrobe["position"] = {
+            "x": bedroom["position"]["x"] + bedroom["dimensions"]["width"] / 2,
+            "y": bedroom["position"]["y"] + bedroom["dimensions"]["depth"] / 2,
+            "z": bedroom["position"]["z"],
+        }
+        base["layout_approved"] = True
+        base["approved_at"] = "2026-10-16T00:00:00Z"
+        base["glb_url"] = "s3://old-version/house.glb"
+        original = copy.deepcopy(base)
+
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "fix the direction of wardrobe in bedroom",
+        )
+
+        self.assertTrue(refinement["handled"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual(original, base, "refinement mutated the stored base version")
+        self.assertFalse(refined["layout_approved"])
+        self.assertNotIn("approved_at", refined)
+        self.assertNotIn("glb_url", refined)
+
+        refined_floor = refined["floors"][0]
+        corrected = next(item for item in refined_floor["furniture"] if item["id"] == wardrobe["id"])
+        self.assertEqual("west", corrected["anchor_wall"])
+        self.assertEqual(90.0, corrected["rotation"])
+        expected_x = (
+            bedroom["position"]["x"]
+            + WALL_MARGIN
+            + corrected["dimensions"]["depth"] / 2
+        )
+        self.assertAlmostEqual(expected_x, corrected["position"]["x"], places=4)
+
+        for key in ("site", "building", "roof"):
+            self.assertEqual(base[key], refined[key], f"unrelated {key} data changed")
+        base_rooms = [{key: value for key, value in room.items() if key != "furniture"} for room in floor["rooms"]]
+        refined_rooms = [
+            {key: value for key, value in room.items() if key != "furniture"}
+            for room in refined_floor["rooms"]
+        ]
+        self.assertEqual(base_rooms, refined_rooms, "unrelated room geometry changed")
+        for key in ("walls", "doors", "windows", "stairs"):
+            self.assertEqual(floor.get(key), refined_floor.get(key), f"unrelated {key} changed")
+        base_other = [item for item in floor["furniture"] if item["id"] != wardrobe["id"]]
+        refined_other = [item for item in refined_floor["furniture"] if item["id"] != wardrobe["id"]]
+        self.assertEqual(base_other, refined_other, "unrelated furniture changed")
+
+        adapted = adapt_gemini_to_blender_layout(refined, project_id="refinement-test", version_num=2)
+        requirement = next(
+            item
+            for room in adapted["rooms"]
+            for item in room["furniture_requirements"]
+            if item["instance_id"] == wardrobe["id"]
+        )
+        self.assertEqual("west", requirement["anchor_wall"])
+        self.assertEqual(90.0, requirement["rotation_deg"])
+
+    def test_generic_asset_refinement_is_not_wardrobe_specific(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom"],
+            (18, 20),
+            1,
+        )
+        base, report = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], report["critical_errors"], report)
+        original = copy.deepcopy(base)
+        sofa = next(item for item in base["floors"][0]["furniture"] if item["category"] == "sofa")
+
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "rotate the sofa in the living room by 90 degrees",
+        )
+
+        self.assertTrue(refinement["handled"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual(original, base, "generic asset refinement mutated its base version")
+        corrected = next(
+            item for item in refined["floors"][0]["furniture"] if item["id"] == sofa["id"]
+        )
+        self.assertEqual((sofa["rotation"] + 90.0) % 360.0, corrected["rotation"])
+        untouched_before = [
+            item for item in base["floors"][0]["furniture"] if item["id"] != sofa["id"]
+        ]
+        untouched_after = [
+            item for item in refined["floors"][0]["furniture"] if item["id"] != sofa["id"]
+        ]
+        self.assertEqual(untouched_before, untouched_after)
+
+    def test_multiple_asset_refinements_apply_atomically(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        base, validation = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], validation["critical_errors"], validation)
+        original = copy.deepcopy(base)
+        furniture = base["floors"][0]["furniture"]
+        sofa = next(item for item in furniture if item["category"] == "sofa")
+        refrigerator = next(item for item in furniture if item["category"] == "refrigerator")
+
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "Rotate the sofa in the living room by 90 degrees\n\n"
+            "Move the refrigerator to the north wall",
+        )
+
+        self.assertTrue(refinement["handled"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual(2, len(refinement["changes"]))
+        self.assertEqual(original, base, "multi-asset refinement mutated its base version")
+        updated = {item["id"]: item for item in refined["floors"][0]["furniture"]}
+        self.assertEqual((sofa["rotation"] + 90.0) % 360.0, updated[sofa["id"]]["rotation"])
+        self.assertEqual("north", updated[refrigerator["id"]]["anchor_wall"])
+        self.assertEqual(0.0, updated[refrigerator["id"]]["rotation"])
+
+        untouched_ids = {
+            item["id"] for item in furniture
+            if item["id"] not in {sofa["id"], refrigerator["id"]}
+        }
+        before = {item["id"]: item for item in furniture if item["id"] in untouched_ids}
+        after = {
+            item["id"]: item for item in refined["floors"][0]["furniture"]
+            if item["id"] in untouched_ids
+        }
+        self.assertEqual(before, after)
+
+    def test_set_sofa_in_center_is_targeted_and_does_not_regenerate_layout(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        base, validation = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], validation["critical_errors"], validation)
+        original = copy.deepcopy(base)
+
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "set sofa in center in living room",
+        )
+
+        self.assertTrue(refinement["handled"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual(1, len(refinement["changes"]))
+        self.assertEqual(original, base, "center refinement mutated its base version")
+
+        old_floor, new_floor = base["floors"][0], refined["floors"][0]
+        old_room_geometry = [
+            {key: value for key, value in room.items() if key != "furniture"}
+            for room in old_floor["rooms"]
+        ]
+        new_room_geometry = [
+            {key: value for key, value in room.items() if key != "furniture"}
+            for room in new_floor["rooms"]
+        ]
+        self.assertEqual(old_room_geometry, new_room_geometry)
+        for key in ("site", "building", "roof"):
+            self.assertEqual(base[key], refined[key])
+
+        living = next(room for room in new_floor["rooms"] if room["type"] == "living_room")
+        sofa = next(item for item in new_floor["furniture"] if item["category"] == "sofa")
+        self.assertAlmostEqual(
+            living["position"]["x"] + living["dimensions"]["width"] / 2.0,
+            sofa["position"]["x"],
+        )
+        self.assertAlmostEqual(
+            living["position"]["y"] + living["dimensions"]["depth"] / 2.0,
+            sofa["position"]["y"],
+        )
+
+    def test_vague_unique_style_feedback_preserves_complete_layout(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        base, validation = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], validation["critical_errors"], validation)
+        base["layout_approved"] = True
+        base["approved_at"] = "2026-10-18T00:00:00Z"
+        base["glb_url"] = "s3://old-version/house.glb"
+        original = copy.deepcopy(base)
+
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "that is not unique style",
+            requested_style="modern",
+        )
+
+        self.assertTrue(refinement["handled"])
+        self.assertEqual("style_only", refinement["kind"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual(original, base, "style refinement mutated the stored base version")
+        self.assertFalse(refined["layout_approved"])
+        self.assertNotIn("approved_at", refined)
+        self.assertNotIn("glb_url", refined)
+        self.assertEqual("modern", refined["style"])
+        self.assertEqual("modern", refined["project"]["style"])
+        self.assertEqual("signature_modern", refined["exterior"]["design_concept"])
+
+        # Every architectural/spatial collection must remain exactly stable.
+        self.assertEqual(base["site"], refined["site"])
+        self.assertEqual(base["roof"], refined["roof"])
+        for key in ("width", "depth", "wall_thickness", "slab_thickness", "floors"):
+            self.assertEqual(base["building"][key], refined["building"][key])
+        for key in ("main_entrance", "gate", "entrance_path", "boundary_wall", "driveway", "landscape"):
+            self.assertEqual(base["exterior"][key], refined["exterior"][key])
+
+        for old_floor, new_floor in zip(base["floors"], refined["floors"]):
+            for key in ("id", "level", "elevation", "floor_height", "walls", "doors", "windows", "stairs", "furniture", "ceiling"):
+                self.assertEqual(old_floor.get(key), new_floor.get(key), f"style edit changed floor field {key}")
+            self.assertEqual(len(old_floor["rooms"]), len(new_floor["rooms"]))
+            for old_room, new_room in zip(old_floor["rooms"], new_floor["rooms"]):
+                for key in ("id", "name", "type", "position", "dimensions", "width", "length", "height", "floor"):
+                    self.assertEqual(old_room.get(key), new_room.get(key), f"style edit changed room field {key}")
+
+        for key in ("doors", "windows", "furniture"):
+            self.assertEqual(base[key], refined[key], f"style edit changed top-level {key}")
+        self.assertNotEqual(
+            base["floors"][0]["rooms"][0]["materials"],
+            refined["floors"][0]["rooms"][0]["materials"],
+        )
+
+    def test_explicit_style_refinement_uses_prompt_and_reaches_blender(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom"],
+            (12, 18),
+            1,
+        )
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "make the visual style industrial",
+            requested_style="modern",
+        )
+
+        self.assertTrue(refinement["handled"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual("industrial", refined["style"])
+        self.assertEqual("industrial", refined["project"]["style"])
+        self.assertEqual("brick", refined["building"]["wall_style"]["pattern"])
+        self.assertEqual(base["floors"][0]["walls"], refined["floors"][0]["walls"])
+        self.assertEqual(base["floors"][0]["doors"], refined["floors"][0]["doors"])
+
+        adapted = adapt_gemini_to_blender_layout(
+            refined, project_id="style-refinement", version_num=2
+        )
+        self.assertTrue(all(room["style"] == "industrial" for room in adapted["rooms"]))
+        self.assertTrue(all(room["walls"]["pattern"] == "brick" for room in adapted["rooms"]))
+
+    def test_varied_appearance_prompts_are_all_safe_in_place_edits(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        geometry = {
+            "site": copy.deepcopy(base["site"]),
+            "roof": copy.deepcopy(base["roof"]),
+            "rooms": [
+                (room["id"], copy.deepcopy(room["position"]), copy.deepcopy(room["dimensions"]))
+                for floor in base["floors"] for room in floor["rooms"]
+            ],
+            "walls": copy.deepcopy(base["floors"][0]["walls"]),
+            "doors": copy.deepcopy(base["floors"][0]["doors"]),
+            "windows": copy.deepcopy(base["floors"][0]["windows"]),
+        }
+
+        prompts = [
+            "make the facade more distinctive",
+            "use a coastal aesthetic",
+            "make the materials warmer and more luxurious",
+            "change the bathroom tiles to grey",
+            "use black aluminium frames",
+            "the colors look too generic",
+        ]
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                refined, report = apply_targeted_refinement(
+                    base, prompt, requested_style="modern"
+                )
+                self.assertTrue(report["handled"], report)
+                self.assertEqual("style_only", report["kind"])
+                self.assertEqual(geometry["site"], refined["site"])
+                self.assertEqual(geometry["roof"], refined["roof"])
+                self.assertEqual(geometry["walls"], refined["floors"][0]["walls"])
+                self.assertEqual(geometry["doors"], refined["floors"][0]["doors"])
+                self.assertEqual(geometry["windows"], refined["floors"][0]["windows"])
+                self.assertEqual(
+                    geometry["rooms"],
+                    [
+                        (room["id"], room["position"], room["dimensions"])
+                        for floor in refined["floors"] for room in floor["rooms"]
+                    ],
+                )
+
+    def test_mixed_style_and_geometry_request_is_not_swallowed(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        refined, refinement = apply_targeted_refinement(
+            base,
+            "make the style industrial and move the garage to the right",
+            requested_style="industrial",
+        )
+
+        self.assertIsNone(refined)
+        self.assertFalse(refinement["handled"])
+
+    def test_minimal_style_alias_is_canonical(self):
+        constraints = infer_layout_constraints("use a minimal style")
+        self.assertEqual("minimalist", constraints["preferred_style"])
+
+        design = ArchitecturalLayoutEngine(unit="meters").generate_layout({
+            "style": "minimal",
+            "plot": {"width": 12, "depth": 18},
+            "rooms": [{"type": "living_room"}, {"type": "bedroom"}],
+        })
+        self.assertEqual("minimalist", design["project"]["style"])
+
+    def test_only_explicit_full_redesign_language_authorizes_layout_rebuild(self):
+        edit_prompts = [
+            "that is not unique style",
+            "make it warmer and more luxurious",
+            "change the bathroom tiles to grey",
+            "fix the entrance",
+            "make the bedroom larger",
+            "move the kitchen behind the living room",
+            "add a bedroom",
+        ]
+        for prompt in edit_prompts:
+            with self.subTest(prompt=prompt):
+                self.assertFalse(is_explicit_full_redesign(prompt))
+
+        redesign_prompts = [
+            "redesign the entire layout",
+            "regenerate the whole house",
+            "start over from scratch",
+            "create a brand-new floor plan",
+            "rearrange all rooms",
+        ]
+        for prompt in redesign_prompts:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(is_explicit_full_redesign(prompt))
+
+    def test_fix_bedroom_repairs_active_bed_conflict_without_regeneration(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        base, clean_validation = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], clean_validation["critical_errors"], clean_validation)
+        floor = base["floors"][0]
+        bed = next(item for item in floor["furniture"] if item["category"] == "bed")
+        # Simulate a generated/catalog footprint that cannot fit in the room.
+        bed["dimensions"]["width"] = 5.0
+        bed["dimensions"]["depth"] = 5.0
+        invalid, validation = validate_and_repair_design(base, repair=True)
+        self.assertTrue(any(bed["id"] in error for error in validation["critical_errors"]))
+        base["generation_validation"] = validation
+        original = copy.deepcopy(base)
+
+        for prompt in ("fix the bedroom", "just fix the bedroom dont regenerate it"):
+            with self.subTest(prompt=prompt):
+                refined, refinement = apply_targeted_refinement(base, prompt)
+
+                self.assertTrue(refinement["handled"], refinement)
+                self.assertEqual("validation_repair", refinement["kind"])
+                self.assertEqual([], refinement["errors"], refinement)
+                self.assertEqual(original, base, "repair mutated its stored base version")
+                self.assertEqual([], refined["generation_validation"]["critical_errors"])
+                repaired_bed = next(
+                    item for item in refined["floors"][0]["furniture"]
+                    if item["id"] == bed["id"]
+                )
+                self.assertLessEqual(repaired_bed["dimensions"]["width"], 1.60)
+                self.assertLessEqual(repaired_bed["dimensions"]["depth"], 2.00)
+
+                # Site and every architectural object stay locked; only furniture
+                # transforms/dimensions may change.
+                self.assertEqual(base["site"], refined["site"])
+                self.assertEqual(base["building"], refined["building"])
+                self.assertEqual(base["roof"], refined["roof"])
+                self.assertEqual(base["exterior"], refined["exterior"])
+                for key in ("rooms", "walls", "doors", "windows", "stairs"):
+                    if key == "rooms":
+                        old = [
+                            {k: v for k, v in room.items() if k not in ("furniture",)}
+                            for room in base["floors"][0][key]
+                        ]
+                        new = [
+                            {k: v for k, v in room.items() if k not in ("furniture",)}
+                            for room in refined["floors"][0][key]
+                        ]
+                        self.assertEqual(old, new)
+                    else:
+                        self.assertEqual(
+                            base["floors"][0][key], refined["floors"][0][key],
+                            f"repair changed locked field {key}",
+                        )
+
+    def test_fix_room_without_matching_conflict_returns_actionable_error(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom"],
+            (12, 18),
+            1,
+        )
+        original = copy.deepcopy(base)
+
+        refined, refinement = apply_targeted_refinement(base, "fix the bedroom")
+
+        self.assertIsNone(refined)
+        self.assertTrue(refinement["handled"])
+        self.assertEqual("validation_repair", refinement["kind"])
+        self.assertIn("No active furniture-fit conflict", refinement["errors"][0])
+        self.assertEqual(original, base)
+
+    def test_room_width_growth_is_a_local_validated_edit(self):
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        base, validation = validate_and_repair_design(base, repair=True)
+        self.assertEqual([], validation["critical_errors"], validation)
+        original = copy.deepcopy(base)
+        old_bedroom = next(room for room in base["floors"][0]["rooms"] if room["type"] == "bedroom")
+
+        refined, refinement = apply_targeted_refinement(base, "increase the width of bedroom")
+
+        self.assertTrue(refinement["handled"], refinement)
+        self.assertEqual("room_resize", refinement["kind"])
+        self.assertEqual([], refinement["errors"], refinement)
+        self.assertEqual(original, base, "room resizing mutated its stored base version")
+        new_bedroom = next(room for room in refined["floors"][0]["rooms"] if room["type"] == "bedroom")
+        self.assertGreater(new_bedroom["dimensions"]["width"], old_bedroom["dimensions"]["width"])
+        self.assertEqual(len(base["floors"][0]["rooms"]), len(refined["floors"][0]["rooms"]))
+        self.assertEqual(base["site"], refined["site"])
+        self.assertEqual(base["building"], refined["building"])
+        self.assertEqual([], refined["generation_validation"]["critical_errors"])
+
+    def test_room_width_intent_accepts_varied_natural_wording(self):
+        prompts = (
+            "make the bedroom wider",
+            "the sleeping room needs more width",
+            "give the bedroom more horizontal space",
+            "enlarge the bedroom by 0.3 m",
+        )
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                base = self.make_design(
+                    ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+                    (12, 18),
+                    1,
+                )
+                base, validation = validate_and_repair_design(base, repair=True)
+                self.assertEqual([], validation["critical_errors"], validation)
+                old_width = next(
+                    room for room in base["floors"][0]["rooms"] if room["type"] == "bedroom"
+                )["dimensions"]["width"]
+                refined, refinement = apply_targeted_refinement(base, prompt)
+                self.assertIsNotNone(refined, refinement)
+                self.assertEqual("room_resize", refinement["kind"])
+                new_width = next(
+                    room for room in refined["floors"][0]["rooms"] if room["type"] == "bedroom"
+                )["dimensions"]["width"]
+                self.assertGreater(new_width, old_width)
+
+    def test_narrow_saved_bedroom_expands_into_available_side_space(self):
+        """Regression for the user's 2.08 m bedroom beside a shorter bathroom."""
+        engine = ArchitecturalLayoutEngine(unit="meters")
+        base = self.make_design(
+            ["living_room", "kitchen", "bedroom", "bathroom", "garage"],
+            (12, 18),
+            1,
+        )
+        floor = base["floors"][0]
+        rooms = {room["type"]: room for room in floor["rooms"]}
+        geometry = {
+            "garage": (0.96, 2.27, 3.40, 5.00),
+            "kitchen": (0.96, 7.27, 3.40, 3.82),
+            "living_room": (4.36, 2.27, 4.28, 4.06),
+            "bedroom": (4.36, 6.33, 2.08, 4.76),
+            "bathroom": (6.44, 6.33, 1.79, 3.87),
+        }
+        for room_type, (x, y, width, depth) in geometry.items():
+            room = rooms[room_type]
+            room["position"].update({"x": x, "y": y})
+            room["dimensions"].update({"width": width, "depth": depth})
+            room["width"], room["length"] = width, depth
+        base["site"]["setbacks"].update({"left": 0.96, "front": 2.27})
+        base["building"].update({"width": 7.68, "depth": 8.82})
+        floor["walls"] = engine._compute_floor_walls(
+            floor["rooms"], 0.2, 0.96, 2.27, 7.68, 8.82,
+        )
+        floor["doors"] = engine._generate_doors(floor["rooms"], floor["walls"], True)
+        floor["windows"] = engine._generate_windows(
+            floor["rooms"], floor["walls"], 7.68, 8.82, 0.96, 2.27,
+        )
+        bedroom_id = rooms["bedroom"]["id"]
+        floor["furniture"] = [
+            item for item in floor["furniture"]
+            if str(item.get("room_id")) == bedroom_id and item.get("category") in {"bed", "nightstand"}
+        ]
+        original_bath_width = rooms["bathroom"]["dimensions"]["width"]
+        original_bath_x = rooms["bathroom"]["position"]["x"]
+
+        refined, refinement = apply_targeted_refinement(base, "increase the width of bedroom")
+
+        self.assertIsNotNone(refined, refinement)
+        self.assertEqual([], refinement["errors"], refinement)
+        updated = {room["type"]: room for room in refined["floors"][0]["rooms"]}
+        self.assertGreater(updated["bedroom"]["dimensions"]["width"], 2.08)
+        self.assertEqual(original_bath_width, updated["bathroom"]["dimensions"]["width"])
+        self.assertGreater(updated["bathroom"]["position"]["x"], original_bath_x)
+        self.assertEqual([], refined["generation_validation"]["critical_errors"])
+        self.assertEqual(3, len(refined["floors"][0]["furniture"]))
 
 
 if __name__ == "__main__":

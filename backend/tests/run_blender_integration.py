@@ -27,6 +27,8 @@ SCENARIOS = [
     ("same_wall_openings", ["bedroom", "bathroom"], (12, 14), 1),
     ("multi_floor_stairs", ["living_room", "kitchen", "bedroom", "bedroom", "master_bedroom", "bathroom", "master_bathroom"], (16, 20), 2),
     ("varied_furniture", ["living_room", "dining_room", "kitchen", "home_office", "bedroom", "bathroom"], (17, 20), 1),
+    ("three_floor_vertical_core", ["living_room", "kitchen", "bedroom", "bedroom", "bedroom", "bathroom", "bathroom", "home_office"], (18, 24), 3),
+    ("four_floor_vertical_core", ["living_room", "kitchen", "bedroom", "bedroom", "bedroom", "bathroom", "bathroom", "home_office"], (18, 24), 4),
     ("wide_plot_variant", ["garage", "living_room", "dining_room", "kitchen", "bedroom", "bathroom"], (22, 16), 1),
     ("deterministic_repeat", ["living_room", "kitchen", "bedroom", "bathroom"], (14, 18), 1),
 ]

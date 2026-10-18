@@ -12,6 +12,8 @@ import math
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Tuple
 
+from utils.architectural_vertical import repair_exterior_access, validate_vertical_circulation
+
 
 EPS = 1e-6
 WALL_MARGIN = 0.12
@@ -335,23 +337,120 @@ def _candidate_centers(room: Dict[str, Any], fw: float, fd: float, desired: Tupl
     return sorted(unique, key=lambda p: ((p[0] - desired[0]) ** 2 + (p[1] - desired[1]) ** 2, p[1], p[0]))
 
 
-def _door_clearance_boxes(floor: Dict[str, Any], rid: str) -> List[Tuple[float, float, float, float]]:
+def _wall_candidate_centers(
+    room: Dict[str, Any], fw: float, fd: float, desired: Tuple[float, float], side: str
+):
+    """Generate safe positions constrained to the requested backing wall."""
+    x0, y0, x1, y1 = _room_box(room)
+    min_x, max_x = x0 + WALL_MARGIN + fw / 2, x1 - WALL_MARGIN - fw / 2
+    min_y, max_y = y0 + WALL_MARGIN + fd / 2, y1 - WALL_MARGIN - fd / 2
+    if min_x > max_x or min_y > max_y:
+        return []
+
+    if side in {"west", "east"}:
+        fixed = min_x if side == "west" else max_x
+        preferred = max(min_y, min(max_y, desired[1]))
+        values = [(fixed, preferred)]
+        step = max(0.18, min(fw, fd) / 3.0)
+        cursor = min_y
+        while cursor <= max_y + EPS:
+            values.append((fixed, cursor))
+            cursor += step
+    else:
+        fixed = min_y if side == "south" else max_y
+        preferred = max(min_x, min(max_x, desired[0]))
+        values = [(preferred, fixed)]
+        step = max(0.18, min(fw, fd) / 3.0)
+        cursor = min_x
+        while cursor <= max_x + EPS:
+            values.append((cursor, fixed))
+            cursor += step
+
+    unique = {(round(x, 4), round(y, 4)) for x, y in values}
+    return sorted(
+        unique,
+        key=lambda p: ((p[0] - desired[0]) ** 2 + (p[1] - desired[1]) ** 2, p[1], p[0]),
+    )
+
+
+def _door_clearance_boxes(
+    floor: Dict[str, Any], rid: str, rooms: Dict[str, Dict[str, Any]]
+) -> List[Tuple[float, float, float, float]]:
     result = []
+    room = rooms.get(str(rid))
+    if not room:
+        return result
+    x0, y0, x1, y1 = _room_box(room)
     for door in floor.get("doors", []):
-        if door.get("room_id") != rid:
-            continue
         if str(door.get("type", "")).lower() == "garage_door" or str(door.get("swing", "")).lower() == "overhead":
             # Vehicles intentionally occupy the approach area of an overhead
             # garage opening; treating it as a pedestrian swing is incorrect.
             continue
         pos, width = _position(door), _number(door.get("width"), 0.9)
-        side = _wall_side(door.get("wall_side"))
-        depth = max(0.75, width)
-        if side == "south": result.append((pos["x"] - width / 2, pos["y"], pos["x"] + width / 2, pos["y"] + depth))
-        elif side == "north": result.append((pos["x"] - width / 2, pos["y"] - depth, pos["x"] + width / 2, pos["y"]))
-        elif side == "west": result.append((pos["x"], pos["y"] - width / 2, pos["x"] + depth, pos["y"] + width / 2))
-        elif side == "east": result.append((pos["x"] - depth, pos["y"] - width / 2, pos["x"], pos["y"] + width / 2))
+        connected = {
+            str(value) for value in (door.get("connected_room_ids") or door.get("connected_rooms") or [])
+        }
+        direct_room = door.get("room_id") or door.get("roomId")
+        if direct_room is not None:
+            connected.add(str(direct_room))
+        on_boundary = (
+            x0 - 0.3 <= pos["x"] <= x1 + 0.3
+            and y0 - 0.3 <= pos["y"] <= y1 + 0.3
+            and min(abs(pos["x"] - x0), abs(pos["x"] - x1), abs(pos["y"] - y0), abs(pos["y"] - y1)) <= 0.35
+        )
+        if str(rid) not in connected and not on_boundary:
+            continue
+        # wall_side is defined relative to the door's primary room. Infer the
+        # side again for this room so both sides of a shared door stay clear.
+        side = min(
+            ((abs(pos["y"] - y0), "south"), (abs(pos["y"] - y1), "north"),
+             (abs(pos["x"] - x0), "west"), (abs(pos["x"] - x1), "east")),
+            key=lambda pair: pair[0],
+        )[1]
+        half_width = width / 2.0 + 0.35
+        depth = 1.15
+        if side == "south": zone = (pos["x"] - half_width, y0, pos["x"] + half_width, min(y1, y0 + depth))
+        elif side == "north": zone = (pos["x"] - half_width, max(y0, y1 - depth), pos["x"] + half_width, y1)
+        elif side == "west": zone = (x0, pos["y"] - half_width, min(x1, x0 + depth), pos["y"] + half_width)
+        else: zone = (max(x0, x1 - depth), pos["y"] - half_width, x1, pos["y"] + half_width)
+        result.append((max(x0, zone[0]), max(y0, zone[1]), min(x1, zone[2]), min(y1, zone[3])))
     return result
+
+
+def _stair_clearance_boxes(
+    floor: Dict[str, Any], rid: str, rooms: Dict[str, Dict[str, Any]]
+) -> List[Tuple[float, float, float, float]]:
+    """Return the stair/landing footprint clipped to the furniture's room."""
+    room = rooms.get(str(rid))
+    core = floor.get("stair_core")
+    if not room or not isinstance(core, dict):
+        return []
+    rx0, ry0, rx1, ry1 = _room_box(room)
+    position, dimensions = _position(core), _dimensions(core)
+    margin = 0.12
+    core_box = (
+        position["x"] - margin,
+        position["y"] - margin,
+        position["x"] + dimensions["width"] + margin,
+        position["y"] + dimensions["depth"] + margin,
+    )
+    clipped = (
+        max(rx0, core_box[0]), max(ry0, core_box[1]),
+        min(rx1, core_box[2]), min(ry1, core_box[3]),
+    )
+    return [clipped] if clipped[0] < clipped[2] and clipped[1] < clipped[3] else []
+
+
+def _is_optional_furniture(item: Dict[str, Any]) -> bool:
+    value = " ".join(
+        str(item.get(key, "")).lower()
+        for key in ("category", "asset", "asset_id", "type", "id")
+    )
+    return any(token in value for token in (
+        "coffee_table", "coffee table", "side_table", "side table",
+        "nightstand", "bedside", "armchair", "decor", "ottoman",
+        "tv_cabinet", "console", "bookshelf",
+    ))
 
 
 def _allows_integrated_overlap(item: Dict[str, Any], other: Dict[str, Any]) -> bool:
@@ -398,9 +497,19 @@ def _repair_furniture(
         pos = _position(item)
         pos["z"] = _position(room)["z"]
         fw, fd = _rotated_footprint(item)
-        door_clearances = _door_clearance_boxes(floor, rid)
+        door_clearances = _door_clearance_boxes(floor, rid, rooms)
+        stair_clearances = _stair_clearance_boxes(floor, rid, rooms)
         chosen = None
-        for cx, cy in _candidate_centers(room, fw, fd, (pos["x"], pos["y"])):
+        anchor_side = _wall_side(item.get("anchor_wall"))
+        lock_to_wall = str(item.get("placement_hint", "")).lower() in {
+            "wall", "wall_backed", "wall_exact",
+        }
+        candidates = (
+            _wall_candidate_centers(room, fw, fd, (pos["x"], pos["y"]), anchor_side)
+            if anchor_side and lock_to_wall else
+            _candidate_centers(room, fw, fd, (pos["x"], pos["y"]))
+        )
+        for cx, cy in candidates:
             box = (cx - fw / 2, cy - fd / 2, cx + fw / 2, cy + fd / 2)
             furniture_collision = any(
                 _boxes_overlap(box, other_box, FURNITURE_GAP)
@@ -408,10 +517,16 @@ def _repair_furniture(
                 for other_box, other_item in occupied[rid]
             )
             door_collision = any(_boxes_overlap(box, other, FURNITURE_GAP) for other in door_clearances)
-            if not furniture_collision and not door_collision:
+            stair_collision = any(_boxes_overlap(box, other, FURNITURE_GAP) for other in stair_clearances)
+            if not furniture_collision and not door_collision and not stair_collision:
                 chosen = (cx, cy, box)
                 break
         if chosen is None:
+            if _is_optional_furniture(item):
+                report["repairs"].append(
+                    f"Removed optional furniture '{fid}' because it cannot fit without blocking circulation."
+                )
+                continue
             report["critical_errors"].append(
                 f"Furniture '{fid}' cannot fit safely inside room '{rid}' without a collision."
             )
@@ -485,46 +600,6 @@ def _validate_floor_geometry(
         )
 
 
-def _repair_exterior_access(
-    design: Dict[str, Any], doors: List[Dict[str, Any]], report: Dict[str, Any]
-) -> None:
-    """Keep the site gate, entrance route, and wall-hosted main door connected."""
-    main_door = next(
-        (door for door in doors if str(door.get("type", "")).lower() == "main_entrance"),
-        None,
-    )
-    exterior = design.get("exterior")
-    if not main_door or not isinstance(exterior, dict):
-        return
-
-    door_position = _position(main_door)
-    canonical_entrance = {
-        "door_id": main_door.get("id"),
-        "position": door_position,
-        "width": round(_number(main_door.get("width"), 1.10), 2),
-        "height": round(_number(main_door.get("height"), 2.20), 2),
-    }
-    if exterior.get("main_entrance") != canonical_entrance:
-        exterior["main_entrance"] = canonical_entrance
-        report["repairs"].append("Aligned the exterior entrance marker with the main entrance door.")
-
-    gate = exterior.get("gate")
-    if not isinstance(gate, dict):
-        return
-    gate.setdefault("asset", "architecture/doors/exterior/Gate.glb")
-    gate_position = _position(gate)
-    gate_width = max(0.8, _number(gate.get("width"), 3.6))
-    gate_center_x = gate_position["x"] + gate_width / 2.0
-    canonical_path = {
-        "start": {"x": round(gate_center_x, 2), "y": round(gate_position["y"], 2)},
-        "end": {"x": round(door_position["x"], 2), "y": round(door_position["y"], 2)},
-        "width": 1.2,
-    }
-    if exterior.get("entrance_path") != canonical_path:
-        exterior["entrance_path"] = canonical_path
-        report["repairs"].append("Connected the main gate to the main entrance with an access path.")
-
-
 def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Return a canonical design and a generation-gating validation report."""
     doc = copy.deepcopy(design) if repair else design
@@ -537,11 +612,16 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
     all_windows: List[Dict[str, Any]] = []
     all_furniture: List[Dict[str, Any]] = []
     global_room_ids: set[str] = set()
+    floor_height = max(2.4, _number(doc.get("building", {}).get("floor_height"), 3.0))
     for floor_index, floor in enumerate(floors):
         floor.setdefault("id", f"floor_{floor_index + 1}")
         floor.setdefault("level", floor_index)
+        floor.setdefault("elevation", round(int(floor["level"]) * floor_height, 3))
+        floor.setdefault("floor_height", floor_height)
+        floor_elevation = _number(floor.get("elevation"), floor_index * floor_height)
         rooms_list = floor.get("rooms") if isinstance(floor.get("rooms"), list) else []
         rooms: Dict[str, Dict[str, Any]] = {}
+        renamed_room_ids: Dict[str, str] = {}
         for room_index, room in enumerate(rooms_list):
             if not isinstance(room, dict):
                 report["critical_errors"].append(f"Floor '{floor['id']}' contains an invalid room.")
@@ -550,10 +630,16 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
             if rid in global_room_ids:
                 new_id = f"{rid}_f{floor_index + 1}_{room_index + 1}"
                 report["repairs"].append(f"Renamed duplicate room '{rid}' to '{new_id}'.")
+                renamed_room_ids[rid] = new_id
                 rid = new_id
             global_room_ids.add(rid)
             room["id"] = rid
             room["position"] = _position(room)
+            if abs(room["position"]["z"] - floor_elevation) > EPS:
+                room["position"]["z"] = floor_elevation
+                report["repairs"].append(
+                    f"Aligned room '{rid}' to floor elevation {floor_elevation:.2f} m."
+                )
             room["dimensions"] = _dimensions(room)
             room["floor_id"] = floor["id"]
             room["floor_level"] = floor["level"]
@@ -563,6 +649,28 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
         floor.setdefault("doors", [])
         floor.setdefault("windows", [])
         floor.setdefault("furniture", [])
+        floor.setdefault("stairs", [])
+        floor.setdefault("stair_openings", [])
+        if renamed_room_ids:
+            for wall in floor["walls"]:
+                if isinstance(wall, dict):
+                    wall["connected_rooms"] = [
+                        renamed_room_ids.get(str(value), str(value))
+                        for value in wall.get("connected_rooms", [])
+                    ]
+            for collection_name in ("doors", "windows", "furniture"):
+                for item in floor[collection_name]:
+                    if not isinstance(item, dict):
+                        continue
+                    for key in ("room_id", "roomId"):
+                        value = item.get(key)
+                        if value is not None:
+                            item[key] = renamed_room_ids.get(str(value), str(value))
+                    if isinstance(item.get("connected_room_ids"), list):
+                        item["connected_room_ids"] = [
+                            renamed_room_ids.get(str(value), str(value))
+                            for value in item["connected_room_ids"]
+                        ]
         _repair_openings(floor, rooms, report)
         _repair_furniture(floor, rooms, report)
         _validate_floor_geometry(floor, rooms, doc, report)
@@ -576,11 +684,12 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
         all_windows.extend(floor["windows"])
         all_furniture.extend(floor["furniture"])
 
+    validate_vertical_circulation(floors, doc, report)
     doc["rooms"] = all_rooms
     doc["doors"] = all_doors
     doc["windows"] = all_windows
     doc["furniture"] = all_furniture
-    _repair_exterior_access(doc, all_doors, report)
+    repair_exterior_access(doc, all_doors, report)
     report["inventory"] = {
         "rooms": len(all_rooms), "doors": len(all_doors), "windows": len(all_windows),
         "furniture_expected": len(all_furniture),
