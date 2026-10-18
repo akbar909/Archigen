@@ -63,6 +63,7 @@ def export_scene_to_glb(
         "export_cameras": False,
         "export_lights": True,       # Keep ambient/point lights if defined in scene
         "export_yup": True,          # glTF / Three.js standard Y-up coordinate orientation
+        "export_extras": True,       # Preserve custom object metadata for Three.js (room_id, floor_level)
         "export_draco_mesh_compression_enable": use_draco,
         "export_draco_mesh_compression_level": 5,
         "export_draco_position_quantization": 14,

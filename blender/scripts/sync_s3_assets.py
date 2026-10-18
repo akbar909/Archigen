@@ -33,6 +33,40 @@ except ImportError:
     boto3 = None
 
 
+# Files that must travel together for the cloud Blender worker to start and
+# generate a house. Paths are relative to ``blender/`` on disk and to the
+# configured S3 asset prefix in the bucket.
+RUNTIME_BUNDLE = (
+    ("scripts/generate_house.py", "scripts/generate_house.py"),
+    ("scripts/generate_house_runtime.py", "scripts/generate_house_runtime.py"),
+    ("scripts/generate_house_materials.py", "scripts/generate_house_materials.py"),
+    ("scripts/generate_house_structure.py", "scripts/generate_house_structure.py"),
+    ("scripts/generate_house_opening_models.py", "scripts/generate_house_opening_models.py"),
+    ("scripts/generate_house_openings.py", "scripts/generate_house_openings.py"),
+    ("scripts/generate_house_vertical.py", "scripts/generate_house_vertical.py"),
+    ("scripts/generate_house_validation.py", "scripts/generate_house_validation.py"),
+    ("scripts/import_asset.py", "scripts/import_asset.py"),
+    ("scripts/place_furniture.py", "scripts/place_furniture.py"),
+    ("scripts/export_glb.py", "scripts/export_glb.py"),
+    ("scripts/sync_s3_assets.py", "scripts/sync_s3_assets.py"),
+    ("worker_server.py", "worker_server.py"),
+    (
+        "assets/furniture/bedroom/wardrobes/wardrobe_modern_01.glb",
+        "furniture/bedroom/wardrobes/wardrobe_modern_01.glb",
+    ),
+    ("metadata/wardrobe_modern_01.json", "metadata/wardrobe_modern_01.json"),
+)
+
+
+def _missing_local_runtime_files(blender_dir: str) -> list[str]:
+    """Return required runtime paths that are absent from the local bundle."""
+    return [
+        local_rel
+        for local_rel, _ in RUNTIME_BUNDLE
+        if not os.path.isfile(os.path.join(blender_dir, *local_rel.split("/")))
+    ]
+
+
 def _load_env():
     """Attempts to load AWS credentials from backend/gem_api.env if present."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -150,9 +184,19 @@ def upload_assets(
       - blender/assets/textures/  -> s3://bucket/assets/textures/
       - blender/metadata/         -> s3://bucket/assets/metadata/
       - blender/scripts/          -> s3://bucket/assets/scripts/
+      - blender/worker_server.py  -> s3://bucket/assets/worker_server.py
     """
     if s3_client is None:
         s3_client = get_s3_client()
+
+    missing_runtime = _missing_local_runtime_files(blender_dir)
+    if missing_runtime:
+        print("[ERROR] Runtime bundle is incomplete; upload cancelled.")
+        for relative_path in missing_runtime:
+            print(f"[ERROR] Missing required file: blender/{relative_path}")
+        return 0, 0, len(missing_runtime)
+
+    print(f"[BUNDLE] Verified {len(RUNTIME_BUNDLE)} required runtime files locally.")
 
     upload_count = 0
     unchanged_count = 0
@@ -216,6 +260,41 @@ def upload_assets(
                     failed_count += 1
                     print(f"[ERROR] Failed to upload {file}: {err}")
 
+    worker_server_path = os.path.join(blender_dir, "worker_server.py")
+    worker_server_key = f"{s3_prefix}worker_server.py"
+    if os.path.isfile(worker_server_path):
+        try:
+            remote_head = (
+                None
+                if force
+                else _head_object(s3_client, bucket_name, worker_server_key)
+            )
+            if not force and _local_matches_remote(worker_server_path, remote_head):
+                unchanged_count += 1
+                print(f"[SKIP] unchanged: {worker_server_key}")
+            else:
+                action = "WOULD UPLOAD" if dry_run else "UPLOAD"
+                print(
+                    f"[{action}] {worker_server_path} -> "
+                    f"s3://{bucket_name}/{worker_server_key}"
+                )
+                if not dry_run:
+                    sha256 = _file_digest(worker_server_path, "sha256")
+                    s3_client.upload_file(
+                        worker_server_path,
+                        bucket_name,
+                        worker_server_key,
+                        ExtraArgs={
+                            "ContentType": "text/x-python",
+                            "CacheControl": "no-cache",
+                            "Metadata": {"sha256": sha256},
+                        },
+                    )
+                upload_count += 1
+        except (ClientError, NoCredentialsError, OSError) as err:
+            failed_count += 1
+            print(f"[ERROR] Failed to upload worker_server.py: {err}")
+
     return upload_count, unchanged_count, failed_count
 
 
@@ -236,6 +315,7 @@ def download_assets(
     download_count = 0
     unchanged_count = 0
     failed_count = 0
+    remote_runtime_files = set()
     try:
         paginator = s3_client.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=bucket_name, Prefix=s3_prefix)
@@ -247,7 +327,10 @@ def download_assets(
                     continue
 
                 rel_key = s3_key[len(s3_prefix):]
-                if rel_key.startswith("metadata/"):
+                remote_runtime_files.add(rel_key)
+                if rel_key == "worker_server.py":
+                    local_path = os.path.join(blender_dir, "worker_server.py")
+                elif rel_key.startswith("metadata/"):
                     local_path = os.path.join(blender_dir, rel_key)
                 elif rel_key.startswith("furniture/"):
                     local_path = os.path.join(blender_dir, "assets", rel_key)
@@ -274,6 +357,26 @@ def download_assets(
     except (ClientError, NoCredentialsError) as err:
         print(f"[ERROR] S3 operation failed: {err}")
         failed_count += 1
+
+    missing_remote = [
+        remote_rel
+        for _, remote_rel in RUNTIME_BUNDLE
+        if remote_rel not in remote_runtime_files
+    ]
+    if missing_remote:
+        print("[ERROR] S3 runtime bundle is incomplete.")
+        for relative_path in missing_remote:
+            print(f"[ERROR] Missing required S3 object: {s3_prefix}{relative_path}")
+        failed_count += len(missing_remote)
+    elif not dry_run:
+        missing_local = _missing_local_runtime_files(blender_dir)
+        if missing_local:
+            print("[ERROR] Runtime bundle download did not create every local file.")
+            for relative_path in missing_local:
+                print(f"[ERROR] Missing after download: blender/{relative_path}")
+            failed_count += len(missing_local)
+        else:
+            print(f"[BUNDLE] Verified {len(RUNTIME_BUNDLE)} required runtime files after download.")
 
     return download_count, unchanged_count, failed_count
 

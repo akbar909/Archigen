@@ -28,6 +28,7 @@ export const useProjectStore = create((set, get) => ({
   // UI State
   loading: false,
   isGenerating3D: false,
+  isReloading3D: false,
   isApprovingLayout: false,
   sidebarLoading: false,
   projectAction: { type: null, projectId: null },
@@ -37,7 +38,7 @@ export const useProjectStore = create((set, get) => ({
 
   // Multi-floor & View Layers
   showRoof: true,
-  activeFloorLevel: 0,
+  activeFloorLevel: null,
   cutawayHeight: null,
 
   // Setters for UI
@@ -387,6 +388,38 @@ export const useProjectStore = create((set, get) => ({
     return null
   },
 
+  reloadSaved3D: async (versionId) => {
+    const vId = versionId || get().activeVersionId
+    if (!vId) {
+      toast.error('Cannot reload 3D: No active design version')
+      return null
+    }
+
+    set({ isReloading3D: true })
+    try {
+      // A plain version read only refreshes the temporary cloud URL. It never
+      // runs Blender or replaces the already generated model.
+      const data = await apiFetchVersion(vId)
+      const version = data?.version
+      const glbUrl = version?.glb_url || version?.design?.glb_url
+      if (!glbUrl) {
+        toast.error('No saved 3D model is available for this version')
+        return null
+      }
+      set((state) => ({
+        design: state.design
+          ? { ...state.design, glb_url: glbUrl }
+          : (version.design ? { ...version.design, glb_url: glbUrl } : null),
+      }))
+      return glbUrl
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to reload the saved 3D model'))
+      return null
+    } finally {
+      set({ isReloading3D: false })
+    }
+  },
+
   approveFloorPlan: async (projectId, versionId) => {
     const pId = projectId || get().activeProjectId
     const vId = versionId || get().activeVersionId
@@ -459,7 +492,7 @@ export const useProjectStore = create((set, get) => ({
       isGenerating3D: false,
       isApprovingLayout: false,
       showRoof: true,
-      activeFloorLevel: 0,
+      activeFloorLevel: null,
       cutawayHeight: null,
       sidebarLoading: false,
       projectAction: { type: null, projectId: null },

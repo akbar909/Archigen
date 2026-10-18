@@ -1,33 +1,23 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Environment, Html, OrbitControls } from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
-import { Loader2, Sparkles } from 'lucide-react'
 
 import { useProjectStore } from '../../store'
+import { BlenderHouseModel } from './BlenderModel'
+import ViewerStage from './ViewerStage'
 import {
-  CharacterAvatar,
-  CameraController,
-} from './CharacterAvatar'
-import { BlenderErrorBoundary, BlenderHouseModel, BlenderLoadingFallback } from './BlenderModel'
-import RoomVolume from './RoomVolume'
-import ViewerOverlay from './ViewerOverlay'
-import FloorPlanVectorViewer from '../FloorPlanVectorViewer'
+  isNavigationPointWalkable,
+  modelIdentity,
+  objectFloorLevel,
+  roomPlacement,
+} from './viewerUtils'
 
-function modelIdentity(url) {
-  if (!url) return null
-  try {
-    const parsed = new URL(url, window.location.origin)
-    return `${parsed.origin}${parsed.pathname}`
-  } catch {
-    return String(url).split('?')[0]
-  }
-}
+
 
 // ── Main Professional Viewer3D Component ─────────────────────────────
 export default function Viewer3D({ design }) {
   const {
     regenerate3D,
+    reloadSaved3D,
     isGenerating3D,
     activeProjectId,
     activeVersionId,
@@ -43,6 +33,7 @@ export default function Viewer3D({ design }) {
   // Exclusively use Cloud Blender 3D photorealistic model
   const [viewSource, setViewSource] = useState('blender')
   const [isModelRendered, setIsModelRendered] = useState(false)
+  const [modelReloadKey, setModelReloadKey] = useState(0)
 
   // Reset rendered flag whenever glbUrl changes or 3D is being re-synthesized
   useEffect(() => {
@@ -66,6 +57,13 @@ export default function Viewer3D({ design }) {
   const handleBlenderError = (err) => {
     console.warn('[Viewer3D] Model load error:', err)
     setIsModelRendered(false)
+  }
+
+  const handleReloadSavedModel = async () => {
+    BlenderHouseModel.clear(glbUrl)
+    setIsModelRendered(false)
+    setModelReloadKey((value) => value + 1)
+    await reloadSaved3D(activeVersionId)
   }
 
   const isApproved = Boolean(design?.layout_approved || design?.approved_at)
@@ -108,6 +106,24 @@ export default function Viewer3D({ design }) {
   const rooms = useMemo(() => (Array.isArray(design?.rooms) ? design.rooms : []), [design?.rooms])
   const doors = useMemo(() => (Array.isArray(design?.doors) ? design.doors : []), [design?.doors])
   const windows = useMemo(() => (Array.isArray(design?.windows) ? design.windows : []), [design?.windows])
+  const visibleRooms = useMemo(
+    () => activeFloorLevel === null || activeFloorLevel === undefined
+      ? rooms
+      : rooms.filter((room) => objectFloorLevel(room) === activeFloorLevel),
+    [rooms, activeFloorLevel],
+  )
+  const visibleDoors = useMemo(
+    () => activeFloorLevel === null || activeFloorLevel === undefined
+      ? doors
+      : doors.filter((door) => objectFloorLevel(door) === activeFloorLevel),
+    [doors, activeFloorLevel],
+  )
+  const visibleWindows = useMemo(
+    () => activeFloorLevel === null || activeFloorLevel === undefined
+      ? windows
+      : windows.filter((window) => objectFloorLevel(window) === activeFloorLevel),
+    [windows, activeFloorLevel],
+  )
   const isExteriorAccessWalkable = useMemo(() => {
     const exterior = design?.exterior || {}
     const path = exterior.entrance_path || {}
@@ -150,67 +166,42 @@ export default function Viewer3D({ design }) {
     return [{ id: 'ground_floor', level: 0, rooms }]
   }, [design?.floors, rooms])
 
-  // Real 3D detected room floor slabs from loaded GLB
+  // Real 3D detected room floor slabs and doors from loaded GLB
   const [detectedRooms, setDetectedRooms] = useState([])
+  const [detectedDoors, setDetectedDoors] = useState([])
 
   // Helper to get true 3D room position and bounds (from real GLB meshes if available)
   const getRoom3DPosition = (room) => {
-    if (!room) return { x: 0, y: 0.1, z: 0, w: 8, l: 8 }
-    // 1. Match by room id
-    let match = detectedRooms.find((d) => d.meshId === room.id || d.name.toLowerCase().endsWith(`_${String(room.id).toLowerCase()}`))
-    // 2. Match by clean type name
-    if (!match && room.type) {
-      const cleanType = String(room.type).toLowerCase().replace(/[\s_]+/g, '')
-      match = detectedRooms.find((d) => d.name.toLowerCase().replace(/[\s_]+/g, '').includes(cleanType))
-    }
-    // 3. Match by index in rooms array
-    if (!match) {
-      const roomIdx = rooms.findIndex((r) => r.id === room.id || r.type === room.type)
-      if (roomIdx >= 0 && roomIdx < detectedRooms.length) {
-        match = detectedRooms[roomIdx]
-      }
-    }
-    // 4. Match by horizontal X alignment
-    if (!match && room.position) {
-      const rx = Number(room.position.x) || 0
-      match = detectedRooms.find((d) => Math.abs(d.center.x - rx) < 1.0)
-    }
-
-    if (match) {
-      return {
-        x: match.center.x,
-        y: match.center.y,
-        z: match.center.z,
-        w: match.size.x,
-        l: match.size.z,
-      }
-    }
-
-    const canonical = room.dimensions && room.position
-    const width = Number(room.dimensions?.width ?? room.width) || 8
-    const depth = Number(room.dimensions?.depth ?? room.length) || 8
-    return canonical ? {
-      x: (Number(room.position?.x) || 0) + width / 2,
-      y: Number(room.position?.z) || 0,
-      z: (Number(room.position?.y) || 0) + depth / 2,
-      w: width,
-      l: depth,
-    } : {
-      x: Number(room.position?.x) || 0,
-      y: Number(room.position?.y) || 0,
-      z: Number(room.position?.z) || 0,
-      w: width,
-      l: depth,
-    }
+    const floorHeight = Number(design?.building?.floor_height ?? design?.house?.floorHeight) || 3
+    return roomPlacement(room, detectedRooms, floorHeight)
   }
 
-  // Collect all doors across design (top-level + per-room) for doorway passage detection
+  // When real GLB 3D rooms are detected, re-sync character position to active selected room
+  useEffect(() => {
+    if (detectedRooms.length > 0 && selectedRoomId && selectedRoomId !== 'overview') {
+      const room = rooms.find((r) => r.id === selectedRoomId)
+      if (room) {
+        const pos = getRoom3DPosition(room)
+        setCharPos({ x: pos.x, y: pos.y + 0.1, z: pos.z })
+        setCharFloorLevel(pos.level)
+      }
+    }
+  }, [detectedRooms])
+
+  // Collect all doors across design (GLB 3D doors + top-level + per-room) for doorway passage detection
   const allDoors = useMemo(() => {
-    const list = doors.map((door) => ({
-      ...door,
-      worldX: Number(door.position?.x) || 0,
-      worldZ: Number(door.position?.y ?? door.position?.z) || 0,
-    }))
+    const list = []
+    if (Array.isArray(detectedDoors) && detectedDoors.length > 0) {
+      list.push(...detectedDoors)
+    }
+    doors.forEach((door) => {
+      list.push({
+        ...door,
+        worldX: Number(door.position?.x) || 0,
+        worldZ: Number(door.position?.y ?? door.position?.z) || 0,
+        floorLevel: objectFloorLevel(door),
+      })
+    })
     rooms.forEach((r) => {
       if (Array.isArray(r.doors)) {
         r.doors.forEach((d) => {
@@ -225,12 +216,13 @@ export default function Viewer3D({ design }) {
             worldX: rx + dx,
             worldZ: rz + dz,
             width: Number(d.dimensions?.w || d.width || 1.0),
+            floorLevel: objectFloorLevel(r),
           })
         })
       }
     })
     return list
-  }, [doors, rooms, detectedRooms])
+  }, [doors, rooms, detectedRooms, detectedDoors])
 
   // House bounding box for initial & overview framing
   const houseBounds = useMemo(() => {
@@ -277,6 +269,7 @@ export default function Viewer3D({ design }) {
 
   // Character movement state
   const [charPos, setCharPos] = useState({ x: 0, y: 0.1, z: 0 })
+  const [charFloorLevel, setCharFloorLevel] = useState(0)
   const [charRot, setCharRot] = useState(0)
   const [isMoving, setIsMoving] = useState(false)
   const [walkCycle, setWalkCycle] = useState(0)
@@ -357,6 +350,7 @@ export default function Viewer3D({ design }) {
       const first = rooms[0]
       const firstPosition = getRoom3DPosition(first)
       setCharPos({ x: firstPosition.x, y: firstPosition.y + 0.1, z: firstPosition.z })
+      setCharFloorLevel(firstPosition.level)
       setSelectedRoomId('overview')
 
       const { cx, cz, maxDim } = houseBounds
@@ -432,27 +426,13 @@ export default function Viewer3D({ design }) {
             const nextCamX = curCamX + move.x
             const nextCamZ = curCamZ + move.z
 
-            // Collision check: inside room with 0.15m clearance OR passing through doorway threshold
+            const navigationRooms = rooms.map((room) => getRoom3DPosition(room))
             const isWalkable = (nx, nz, pad = 0.15) => {
-              const inRoom = (rooms.length > 0 ? rooms : detectedRooms).some((r) => {
-                const pos = getRoom3DPosition(r)
-                const rx = pos.x
-                const rz = pos.z
-                const rw = pos.w / 2 - pad
-                const rl = pos.l / 2 - pad
-                return nx >= rx - rw && nx <= rx + rw && nz >= rz - rl && nz <= rz + rl
+              return rooms.length === 0 || isNavigationPointWalkable({
+                x: nx, z: nz, level: charFloorLevel, rooms: navigationRooms,
+                doors: allDoors, exteriorAccess: isExteriorAccessWalkable, padding: pad,
+                fromX: curCamX, fromZ: curCamZ,
               })
-              if (inRoom) return true
-              if (isExteriorAccessWalkable(nx, nz, pad)) return true
-
-              const nearDoor = allDoors.some((d) => {
-                const dx = d.worldX !== undefined ? d.worldX : (Number(d.position?.x) || 0)
-                const dz = d.worldZ !== undefined ? d.worldZ : (Number(d.position?.z) || 0)
-                const dw = Math.max(Number(d.width) || 1.0, 0.9)
-                const dist = Math.hypot(nx - dx, nz - dz)
-                return dist <= dw * 0.8 + 0.35
-              })
-              return nearDoor || rooms.length === 0
             }
 
             if (isWalkable(nextCamX, nextCamZ, 0.15)) {
@@ -462,7 +442,7 @@ export default function Viewer3D({ design }) {
               targetCamPos.current.copy(cam.position)
               targetPos.current.copy(controlsRef.current.target)
 
-              setCharPos({ x: cam.position.x, y: 0.1, z: cam.position.z })
+              setCharPos({ x: cam.position.x, y: charFloorLevel * 3 + 0.1, z: cam.position.z })
             }
           }
         } else {
@@ -481,26 +461,16 @@ export default function Viewer3D({ design }) {
               const nextX = prev.x + moveX
               const nextZ = prev.z + moveZ
 
-              // Check walkable bounds with 0.15m padding or doorway corridor
-              const inRoom = (rooms.length > 0 ? rooms : detectedRooms).some((r) => {
-                const pos = getRoom3DPosition(r)
-                const rx = pos.x
-                const rz = pos.z
-                const rw = pos.w / 2 - 0.15
-                const rl = pos.l / 2 - 0.15
-                return nextX >= rx - rw && nextX <= rx + rw && nextZ >= rz - rl && nextZ <= rz + rl
-              })
-              const nearDoor = allDoors.some((d) => {
-                const dx = d.worldX !== undefined ? d.worldX : (Number(d.position?.x) || 0)
-                const dz = d.worldZ !== undefined ? d.worldZ : (Number(d.position?.z) || 0)
-                const dw = Math.max(Number(d.width) || 1.0, 0.9)
-                const dist = Math.hypot(nextX - dx, nextZ - dz)
-                return dist <= dw * 0.8 + 0.35
+              const navigationRooms = rooms.map((room) => getRoom3DPosition(room))
+              const walkable = rooms.length === 0 || isNavigationPointWalkable({
+                x: nextX, z: nextZ, level: charFloorLevel, rooms: navigationRooms,
+                doors: allDoors, exteriorAccess: isExteriorAccessWalkable, padding: 0.15,
+                fromX: prev.x, fromZ: prev.z,
               })
 
-              if (inRoom || nearDoor || isExteriorAccessWalkable(nextX, nextZ, 0.15) || rooms.length === 0) {
-                targetPos.current.set(nextX, 1.0, nextZ)
-                return { x: nextX, y: 0.1, z: nextZ }
+              if (walkable) {
+                targetPos.current.set(nextX, prev.y + 1.0, nextZ)
+                return { x: nextX, y: prev.y, z: nextZ }
               }
               return prev
             })
@@ -515,7 +485,7 @@ export default function Viewer3D({ design }) {
 
     animId = requestAnimationFrame(update)
     return () => cancelAnimationFrame(animId)
-  }, [rooms, allDoors, viewMode, currentRoom, detectedRooms, isExteriorAccessWalkable])
+  }, [rooms, allDoors, viewMode, currentRoom, detectedRooms, isExteriorAccessWalkable, charFloorLevel])
 
   // Select room camera jump (jumps directly into the true 3D room center)
   const handleSelectRoom = (room) => {
@@ -524,6 +494,8 @@ export default function Viewer3D({ design }) {
     const rx = pos.x
     const ry = pos.y
     const rz = pos.z
+    setActiveFloorLevel(pos.level)
+    setCharFloorLevel(pos.level)
     setCharPos({ x: rx, y: ry + 0.1, z: rz })
 
     if (viewMode === 'walkthrough') {
@@ -631,297 +603,21 @@ export default function Viewer3D({ design }) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        minHeight: 0,
-        borderRadius: isFullscreen ? 0 : 'var(--radius-lg)',
-        overflow: 'hidden',
-        background: isNightMode ? '#070a10' : '#0b0f17',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+    <ViewerStage
+      state={{
+        containerRef, isFullscreen, isNightMode, viewMode, planSubMode, design,
+        approveFloorPlan, activeProjectId, activeVersionId, isApprovingLayout,
+        handleSelectRoom, selectedRoomId, glbUrl, viewSource, modelReloadKey,
+        handleBlenderError, handleReloadSavedModel, setDetectedRooms, setDetectedDoors,
+        setIsModelRendered, showRoof, activeFloorLevel, visibleRooms, visibleDoors,
+        visibleWindows, dismissedSynthesisPrompt, setDismissedSynthesisPrompt,
+        isGenerating3D, regenerate3D, charPos, charRot, isMoving, walkCycle,
+        controlsRef, targetPos, targetCamPos, isModelRendered, handleModeChange,
+        setViewSource, showCallouts, setShowCallouts, isMouseLookLocked,
+        toggleMouseLook, setIsNightMode, handleResetCamera, toggleFullscreen,
+        rooms, doors, windows, isApproved, toggleShowRoof, setActiveFloorLevel,
+        floors, setPlanSubMode, charFloorLevel,
       }}
-    >
-      {/* 2D Vector CAD Floor Plan View */}
-      {viewMode === 'plan' && planSubMode === 'vector' ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden' }}>
-          <FloorPlanVectorViewer
-            design={design}
-            onApproveLayout={() => approveFloorPlan(activeProjectId, activeVersionId)}
-            isApproving={isApprovingLayout}
-            onSelectRoom={handleSelectRoom}
-            selectedRoomId={selectedRoomId}
-          />
-        </div>
-      ) : (
-        <Canvas
-          shadows
-          dpr={[1, 1.75]}
-          camera={{ position: [22, 22, 28], fov: 44, near: 0.1, far: 350 }}
-          gl={{
-            antialias: true,
-            logarithmicDepthBuffer: true,
-            toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 1.1,
-            outputColorSpace: THREE.SRGBColorSpace,
-          }}
-        >
-          <color attach="background" args={[isNightMode ? '#060911' : '#0a0e17']} />
-
-          <ambientLight intensity={isNightMode ? 0.35 : 0.75} color={isNightMode ? '#1e293b' : '#f8fafc'} />
-          <hemisphereLight
-            intensity={isNightMode ? 0.3 : 0.6}
-            groundColor="#090d16"
-            color={isNightMode ? '#334155' : '#e0f2fe'}
-          />
-
-          <directionalLight
-            position={[28, 42, 24]}
-            intensity={isNightMode ? 0.5 : 2.0}
-            color={isNightMode ? '#93c5fd' : '#fffbeb'}
-            castShadow
-            shadow-mapSize-width={2048}
-            shadow-mapSize-height={2048}
-            shadow-camera-left={-45}
-            shadow-camera-right={45}
-            shadow-camera-top={45}
-            shadow-camera-bottom={-45}
-            shadow-bias={-0.00005}
-            shadow-normalBias={0.03}
-          />
-
-          {/* ── Photorealistic Architectural House Model: Cloud Blender GLB ── */}
-          {glbUrl && viewSource !== 'threejs' ? (
-            <BlenderErrorBoundary
-              key={glbUrl}
-              onError={handleBlenderError}
-              onRetry={() => regenerate3D(activeProjectId, activeVersionId)}
-            >
-              <Suspense fallback={<BlenderLoadingFallback onRetry={() => regenerate3D(activeProjectId, activeVersionId)} />}>
-                <BlenderHouseModel
-                  url={glbUrl}
-                  onRoomsDetected={setDetectedRooms}
-                  onLoaded={() => setIsModelRendered(true)}
-                  showRoof={showRoof}
-                  activeFloorLevel={activeFloorLevel}
-                />
-              </Suspense>
-            </BlenderErrorBoundary>
-          ) : (
-            <group>
-              {rooms.map((r, idx) => (
-                <RoomVolume
-                  key={r.id || idx}
-                  room={r}
-                  viewMode={viewMode}
-                  isSelected={selectedRoomId === r.id}
-                  isNightMode={isNightMode}
-                  furniture={r.furniture}
-                  doors={doors}
-                  windows={windows}
-                />
-              ))}
-            </group>
-          )}
-
-          {!glbUrl && !dismissedSynthesisPrompt && (
-            <Html center style={{ pointerEvents: 'auto', transform: 'translate3d(-50%, -70px, 0)' }}>
-              <div
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  padding: '24px 28px',
-                  background: 'rgba(18, 18, 18, 0.95)',
-                  border: '1px solid rgba(16, 163, 127, 0.4)',
-                  borderRadius: 20,
-                  boxShadow: '0 25px 60px rgba(0,0,0,0.8), 0 0 25px rgba(16, 163, 127, 0.15)',
-                  backdropFilter: 'blur(28px)',
-                  width: 340,
-                  color: 'white',
-                  pointerEvents: 'auto',
-                }}
-              >
-                {/* Close / Dismiss button so user can inspect scene uninterrupted */}
-                <button
-                  type="button"
-                  onClick={() => setDismissedSynthesisPrompt(true)}
-                  title="Dismiss popup"
-                  style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 12,
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.45)',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    padding: 4,
-                  }}
-                >
-                  ✕
-                </button>
-
-                {isGenerating3D ? (
-                  <>
-                    <div
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: 56,
-                        height: 56,
-                        marginBottom: 14,
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          borderRadius: '50%',
-                          border: '2px dashed rgba(16, 163, 127, 0.5)',
-                          animation: 'spin 6s linear infinite',
-                        }}
-                      />
-                      <Loader2 size={28} color="#10a37f" style={{ animation: 'spin 1.2s linear infinite' }} />
-                    </div>
-                    <div style={{ fontSize: '1.02rem', fontWeight: 700, marginBottom: 6, color: '#f8fafc' }}>
-                      Synthesizing 3D Model…
-                    </div>
-                    <div style={{ fontSize: '0.80rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.5, marginBottom: 14 }}>
-                      Cloud Blender is constructing walls, applying PBR textures, and placing 3D furniture.
-                    </div>
-                    <div
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 12px',
-                        background: 'rgba(16, 163, 127, 0.15)',
-                        borderRadius: 999,
-                        border: '1px solid rgba(16, 163, 127, 0.3)',
-                        fontSize: '0.72rem',
-                        color: '#10a37f',
-                        fontWeight: 600,
-                      }}
-                    >
-                      <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#10a37f', animation: 'pulse 1.5s infinite' }} />
-                      EC2 Headless Blender Worker
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '2.2rem', marginBottom: 10 }}>🏛️</div>
-                    <div style={{ fontSize: '1.02rem', fontWeight: 700, marginBottom: 6 }}>
-                      {design?.layout_approved || design?.approved_at
-                        ? '3D Model Pending Synthesis'
-                        : 'Floor Plan Ready for 3D Synthesis'}
-                    </div>
-                    <div style={{ fontSize: '0.80rem', color: 'rgba(255,255,255,0.72)', lineHeight: 1.45, marginBottom: 16 }}>
-                      {design?.layout_approved || design?.approved_at
-                        ? 'Layout is approved. Click below to trigger or re-run the 3D model builder in Blender.'
-                        : 'Review the 2D floor plan or synthesize the complete multi-floor 3D model in Blender.'}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (design?.layout_approved || design?.approved_at) {
-                          regenerate3D(activeProjectId, activeVersionId)
-                        } else {
-                          approveFloorPlan(activeProjectId, activeVersionId)
-                        }
-                      }}
-                      disabled={isApprovingLayout || isGenerating3D}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '10px 20px',
-                        background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6c 100%)',
-                        border: '1px solid rgba(16, 163, 127, 0.5)',
-                        borderRadius: 10,
-                        color: '#ffffff',
-                        fontSize: '0.86rem',
-                        fontWeight: 600,
-                        cursor: (isApprovingLayout || isGenerating3D) ? 'not-allowed' : 'pointer',
-                        opacity: (isApprovingLayout || isGenerating3D) ? 0.7 : 1,
-                        boxShadow: '0 4px 16px rgba(2, 132, 199, 0.5)',
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
-                      {(isApprovingLayout || isGenerating3D) ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                      <span>{design?.layout_approved ? 'Synthesize 3D Model' : 'Approve & Synthesize 3D'}</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </Html>
-          )}
-
-          {/* Walkthrough Avatar (Hidden in first-person walkthrough to avoid blocking camera) */}
-          <CharacterAvatar
-            position={charPos}
-            rotation={charRot}
-            isMoving={isMoving}
-            walkCycle={walkCycle}
-            isVisible={viewMode !== 'walkthrough'}
-          />
-
-          <CameraController controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} viewMode={viewMode} />
-
-          <OrbitControls
-            ref={controlsRef}
-            enabled={viewMode !== 'walkthrough'}
-            enableDamping
-            dampingFactor={0.08}
-            minDistance={viewMode === 'walkthrough' ? 0.1 : 2}
-            maxDistance={viewMode === 'walkthrough' ? 4.5 : 95}
-            maxPolarAngle={viewMode === 'plan' ? 0.05 : Math.PI / 2.05}
-          />
-          <Environment preset={isNightMode ? 'night' : 'city'} />
-        </Canvas>
-      )}
-
-      <ViewerOverlay
-        viewMode={viewMode}
-        onModeChange={handleModeChange}
-        viewSource={viewSource}
-        onViewSourceChange={setViewSource}
-        glbUrl={glbUrl}
-        isModelRendered={isModelRendered}
-        isGenerating3D={isGenerating3D}
-        onRegenerate3D={() => regenerate3D(activeProjectId, activeVersionId)}
-        showCallouts={showCallouts}
-        onToggleCallouts={() => setShowCallouts(!showCallouts)}
-        isMouseLookLocked={isMouseLookLocked}
-        onToggleMouseLook={toggleMouseLook}
-        isNightMode={isNightMode}
-        onToggleNightMode={() => setIsNightMode(!isNightMode)}
-        onResetCamera={handleResetCamera}
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={toggleFullscreen}
-        rooms={rooms}
-        doors={doors}
-        windows={windows}
-        design={design}
-        isApproved={isApproved}
-        selectedRoomId={selectedRoomId}
-        onSelectRoom={handleSelectRoom}
-        showRoof={showRoof}
-        onToggleRoof={toggleShowRoof}
-        activeFloorLevel={activeFloorLevel}
-        onChangeFloorLevel={setActiveFloorLevel}
-        floors={floors}
-        planSubMode={planSubMode}
-        onPlanSubModeChange={setPlanSubMode}
-        onApproveLayout={() => approveFloorPlan(activeProjectId, activeVersionId)}
-        isApprovingLayout={isApprovingLayout}
-      />
-    </div>
+    />
   )
 }

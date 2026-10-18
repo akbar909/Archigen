@@ -139,7 +139,8 @@ DESIGN DECISIONS, not constructing 3D geometry.
 
 3. MATERIALS:
    - Use hex colors for floors and walls.
-   - Include accent_wall on living rooms and bedrooms (brick or wood_panel).
+   - Use one consistent wall pattern and color for every room by default.
+   - Include accent_wall only when the user explicitly requests a different finish on a specific wall.
    - Bathrooms/kitchens: use marble_tile or hex_tile floors.
    - Bedrooms/living: use wood_planks floors.
 

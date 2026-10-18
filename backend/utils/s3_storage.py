@@ -115,6 +115,14 @@ def resolve_s3_url_to_presigned(url_or_key: Optional[str], expires_in: int = 864
     if not s:
         return None
 
+    # CloudFront (and any other explicit non-S3 HTTPS URL) is already a
+    # browser-ready delivery URL. Previously the generic ``endswith('.glb')``
+    # branch treated the complete CDN URL as an S3 object key and generated an
+    # invalid presigned URL for it.
+    parsed_url = urlparse(s)
+    if parsed_url.scheme in {"http", "https"} and "amazonaws.com" not in parsed_url.netloc:
+        return s
+
     s3_key = None
     target_bucket = AWS_S3_BUCKET
 
@@ -144,6 +152,10 @@ def resolve_s3_url_to_presigned(url_or_key: Optional[str], expires_in: int = 864
     if s3_key:
         # Strip any query parameters (like previous expired signatures)
         s3_key = s3_key.split("?")[0]
+        # When a CDN is configured, also migrate previously stored S3 URLs and
+        # plain object keys to CloudFront at response time.
+        if AWS_S3_PUBLIC_BASE_URL:
+            return f"{AWS_S3_PUBLIC_BASE_URL.rstrip('/')}/{s3_key.lstrip('/')}"
         presigned = generate_presigned_url(s3_key, expires_in=expires_in, bucket=target_bucket)
         if presigned:
             return presigned
@@ -176,4 +188,3 @@ def configure_bucket_cors(bucket: Optional[str] = None) -> bool:
     except Exception as e:
         print(f"[WARN] S3 put_bucket_cors failed: {e}")
         return False
-
