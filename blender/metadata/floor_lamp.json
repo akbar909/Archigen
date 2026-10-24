@@ -1,0 +1,25 @@
+{
+  "id": "floor_lamp",
+  "name": "Floor Lamp",
+  "category": "lamp",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.45,
+  "depth": 0.45,
+  "height": 1.5,
+  "model_file": "assets/furniture/living_room/floor_lamp.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "living_room",
+    "living room",
+    "lamp",
+    "floor lamp"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "single_bed_01",
+  "name": "Single Bed 01",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.0,
+  "depth": 2.1,
+  "height": 1.1,
+  "model_file": "assets/furniture/bedroom/beds/single_bed_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bed",
+    "bedroom",
+    "beds",
+    "single bed 01"
+  ]
+}

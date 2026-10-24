@@ -1,0 +1,25 @@
+{
+  "id": "bathroom_sink_cabinet_03",
+  "name": "Bathroom Sink Cabinet 03",
+  "category": "sink",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.85,
+  "depth": 0.55,
+  "height": 0.85,
+  "model_file": "assets/furniture/bathroom/vanities/bathroom_sink_cabinet_03.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bathroom sink cabinet 03",
+    "sink",
+    "bathroom",
+    "vanities"
+  ]
+}

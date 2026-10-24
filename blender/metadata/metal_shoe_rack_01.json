@@ -1,0 +1,23 @@
+{
+  "id": "metal_shoe_rack_01",
+  "name": "Metal Shoe Rack 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/furniture/entryway/shoe_storage/metal_shoe_rack_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "metal shoe rack 01",
+    "shoe storage"
+  ]
+}

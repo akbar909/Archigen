@@ -1,0 +1,24 @@
+{
+  "id": "bookshelves_02",
+  "name": "Bookshelves 02",
+  "category": "bookshelf",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.2,
+  "depth": 0.35,
+  "height": 1.8,
+  "model_file": "assets/furniture/home_office/bookshelves/bookshelves_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bookshelves",
+    "bookshelf",
+    "bookshelves 02"
+  ]
+}

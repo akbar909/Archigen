@@ -1,0 +1,25 @@
+{
+  "id": "patio_set_01",
+  "name": "Patio Set 01",
+  "category": "outdoor_chair",
+  "room": "outdoor",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.75,
+  "depth": 0.75,
+  "height": 0.8,
+  "model_file": "assets/furniture/outdoor/lounge_seating/patio_set_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "patio set 01",
+    "outdoor",
+    "lounge seating",
+    "outdoor_chair"
+  ]
+}

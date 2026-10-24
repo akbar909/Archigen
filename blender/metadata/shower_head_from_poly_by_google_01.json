@@ -1,0 +1,25 @@
+{
+  "id": "shower_head_from_poly_by_google_01",
+  "name": "Shower Head From Poly By Google 01",
+  "category": "shower",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 1.0,
+  "height": 2.1,
+  "model_file": "assets/fixtures/plumbing/shower_head_from_poly_by_google_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "plumbing",
+    "bathroom",
+    "shower",
+    "shower head from poly by google 01"
+  ]
+}

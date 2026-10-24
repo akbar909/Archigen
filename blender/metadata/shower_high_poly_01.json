@@ -1,0 +1,25 @@
+{
+  "id": "shower_high_poly_01",
+  "name": "Shower High Poly 01",
+  "category": "shower",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 1.0,
+  "height": 2.1,
+  "model_file": "assets/furniture/bathroom/showers/shower_high_poly_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "showers",
+    "bathroom",
+    "shower high poly 01",
+    "shower"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "sofa_01",
+  "name": "Sofa 01",
+  "category": "sofa",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.2,
+  "depth": 0.95,
+  "height": 0.85,
+  "model_file": "assets/furniture/living_room/sofas/sofa_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "living_room",
+    "sofa",
+    "sofa 01",
+    "sofas"
+  ]
+}

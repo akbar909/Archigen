@@ -1,0 +1,23 @@
+{
+  "id": "shoe_rack_02",
+  "name": "Shoe Rack 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/furniture/entryway/shoe_storage/shoe_rack_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "shoe rack 02",
+    "shoe storage"
+  ]
+}

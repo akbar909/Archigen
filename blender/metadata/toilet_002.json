@@ -1,0 +1,25 @@
+{
+  "id": "toilet_002",
+  "name": "Toilet 002",
+  "category": "toilet",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.45,
+  "depth": 0.7,
+  "height": 0.8,
+  "model_file": "assets/furniture/bathroom/toilets/toilet_002.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "toilet 002",
+    "toilet",
+    "bathroom",
+    "toilets"
+  ]
+}

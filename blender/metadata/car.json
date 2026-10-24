@@ -1,0 +1,23 @@
+{
+  "id": "car",
+  "name": "Car",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.9,
+  "depth": 4.6,
+  "height": 1.55,
+  "model_file": "assets/furniture/garage/car.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "car",
+    "garage"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "single_plug_socket_02",
+  "name": "Single Plug Socket 02",
+  "category": "lamp",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.45,
+  "depth": 0.45,
+  "height": 1.5,
+  "model_file": "assets/lighting/switches_sockets/single_plug_socket_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "lamp",
+    "single plug socket 02",
+    "switches sockets"
+  ]
+}

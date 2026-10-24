@@ -1,0 +1,25 @@
+{
+  "id": "gothicbed_01",
+  "name": "Gothicbed 01",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.8,
+  "depth": 2.1,
+  "height": 1.35,
+  "model_file": "assets/furniture/bedroom/beds/GothicBed_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bed",
+    "bedroom",
+    "beds",
+    "gothicbed 01"
+  ]
+}

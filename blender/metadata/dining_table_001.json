@@ -1,6 +1,6 @@
 {
   "id": "dining_table_001",
-  "name": "Nordic Solid Wood Dining Table",
+  "name": "Dining Table 001",
   "category": "dining_table",
   "room": "dining_room",
   "style": [
@@ -11,15 +11,15 @@
   "width": 1.8,
   "depth": 0.9,
   "height": 0.76,
-  "model_file": "assets/furniture/dining_room/dining_table_001.glb",
+  "model_file": "assets/furniture/dining_room/dining_tables/dining_table_001.glb",
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
-    "dining table",
-    "table",
-    "dinner table",
-    "dining room"
+    "dining_table",
+    "dining_room",
+    "dining table 001",
+    "dining tables"
   ]
 }

@@ -1,0 +1,23 @@
+{
+  "id": "gate",
+  "name": "Gate",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 4.63,
+  "depth": 0.17,
+  "height": 2.15,
+  "model_file": "assets/architecture/doors/exterior/Gate.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "exterior",
+    "gate"
+  ]
+}

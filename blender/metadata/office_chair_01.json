@@ -1,0 +1,24 @@
+{
+  "id": "office_chair_01",
+  "name": "Office Chair 01",
+  "category": "chair",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.55,
+  "depth": 0.55,
+  "height": 0.85,
+  "model_file": "assets/furniture/home_office/office_chairs/office_chair_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "office chairs",
+    "office chair 01",
+    "chair"
+  ]
+}

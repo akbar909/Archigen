@@ -1,6 +1,6 @@
 {
   "id": "bedside_table_001",
-  "name": "Minimalist Nightstand",
+  "name": "Bedside Table 001",
   "category": "nightstand",
   "room": "bedroom",
   "style": [
@@ -11,15 +11,15 @@
   "width": 0.5,
   "depth": 0.45,
   "height": 0.55,
-  "model_file": "assets/furniture/bedroom/bedside_table_001.glb",
+  "model_file": "assets/furniture/bedroom/nightstands/bedside_table_001.glb",
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
+    "nightstands",
+    "bedroom",
     "nightstand",
-    "bedside table",
-    "end table",
-    "bedroom"
+    "bedside table 001"
   ]
 }

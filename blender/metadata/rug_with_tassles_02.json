@@ -1,0 +1,23 @@
+{
+  "id": "rug_with_tassles_02",
+  "name": "Rug With Tassles 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/carpets_rugs/rug_with_tassles_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "rug with tassles 02",
+    "carpets rugs"
+  ]
+}

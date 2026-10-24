@@ -1,0 +1,25 @@
+{
+  "id": "dining_table_with_chairs_02",
+  "name": "Dining Table With Chairs 02",
+  "category": "dining_table",
+  "room": "dining_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.8,
+  "depth": 0.9,
+  "height": 0.76,
+  "model_file": "assets/furniture/dining_room/dining_tables/dining_table_with_chairs_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "dining table with chairs 02",
+    "dining_table",
+    "dining_room",
+    "dining tables"
+  ]
+}

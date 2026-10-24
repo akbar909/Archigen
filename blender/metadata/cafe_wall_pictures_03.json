@@ -1,0 +1,23 @@
+{
+  "id": "cafe_wall_pictures_03",
+  "name": "Cafe Wall Pictures 03",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/wall_art/cafe_wall_pictures_03.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "cafe wall pictures 03",
+    "wall art"
+  ]
+}

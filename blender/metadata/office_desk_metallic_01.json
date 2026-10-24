@@ -1,0 +1,24 @@
+{
+  "id": "office_desk_metallic_01",
+  "name": "Office Desk Metallic 01",
+  "category": "desk",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.4,
+  "depth": 0.7,
+  "height": 0.76,
+  "model_file": "assets/furniture/home_office/desks/office_desk_metallic_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "office desk metallic 01",
+    "desk",
+    "desks"
+  ]
+}

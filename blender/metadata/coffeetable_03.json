@@ -1,0 +1,25 @@
+{
+  "id": "coffeetable_03",
+  "name": "Coffeetable 03",
+  "category": "coffee_table",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.1,
+  "depth": 0.65,
+  "height": 0.45,
+  "model_file": "assets/furniture/living_room/coffee_tables/CoffeeTable_03.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "living_room",
+    "coffeetable 03",
+    "coffee tables",
+    "coffee_table"
+  ]
+}

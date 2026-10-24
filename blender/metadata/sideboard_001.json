@@ -1,0 +1,25 @@
+{
+  "id": "sideboard_001",
+  "name": "Sideboard 001",
+  "category": "cabinet",
+  "room": "dining_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.2,
+  "depth": 0.45,
+  "height": 0.85,
+  "model_file": "assets/furniture/dining_room/sideboards/sideboard_001.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "sideboard 001",
+    "sideboards",
+    "dining_room",
+    "cabinet"
+  ]
+}

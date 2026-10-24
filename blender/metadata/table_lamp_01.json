@@ -1,0 +1,24 @@
+{
+  "id": "table_lamp_01",
+  "name": "Table Lamp 01",
+  "category": "lamp",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.45,
+  "depth": 0.45,
+  "height": 1.5,
+  "model_file": "assets/lighting/table_lamps/table_lamp_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "lamp",
+    "table lamp 01",
+    "table lamps"
+  ]
+}

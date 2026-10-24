@@ -1,0 +1,25 @@
+{
+  "id": "kitchen_cabinet_1",
+  "name": "Kitchen Cabinet 1",
+  "category": "cabinet",
+  "room": "kitchen",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.2,
+  "depth": 0.45,
+  "height": 0.85,
+  "model_file": "assets/furniture/kitchen/cabinets_base/kitchen_cabinet_1.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "kitchen",
+    "kitchen cabinet 1",
+    "cabinets base",
+    "cabinet"
+  ]
+}

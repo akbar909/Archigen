@@ -1,0 +1,25 @@
+{
+  "id": "modren_wooden_cabinet_01_tv_units",
+  "name": "Modren Wooden Cabinet 01",
+  "category": "cabinet",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.2,
+  "depth": 0.45,
+  "height": 0.85,
+  "model_file": "assets/furniture/living_room/tv_units/modren_wooden_cabinet_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "living_room",
+    "modren wooden cabinet 01",
+    "tv units",
+    "cabinet"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "haier_refrigerator_02",
+  "name": "Haier Refrigerator 02",
+  "category": "refrigerator",
+  "room": "kitchen",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.92,
+  "depth": 0.85,
+  "height": 1.82,
+  "model_file": "assets/appliances/kitchen/haier_refrigerator_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "kitchen",
+    "refrigerator",
+    "haier refrigerator 02"
+  ]
+}

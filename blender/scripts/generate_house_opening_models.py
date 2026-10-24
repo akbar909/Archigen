@@ -113,13 +113,16 @@ def _door_opens_toward_local_y(is_vertical: bool, wall_side: str, swing: str) ->
 def _select_door_model_path(door_dir: str, preferred_asset: Optional[str] = None) -> Optional[str]:
     """Select one stable house door, or an explicitly requested door asset."""
     candidates = []
-    if os.path.isdir(door_dir):
-        candidates = sorted(
-            os.path.join(root, name)
-            for root, _, names in os.walk(door_dir)
-            for name in names
-            if os.path.splitext(name)[1].lower() in {".glb", ".gltf"}
-        )
+    search_dirs = [
+        os.path.join(BLENDER_ROOT, "assets", "architecture", "doors"),
+        os.path.join(BLENDER_ROOT, "assets", "doors"),
+    ]
+    for s_dir in search_dirs:
+        if os.path.isdir(s_dir):
+            for root, _, names in os.walk(s_dir):
+                for name in names:
+                    if os.path.splitext(name)[1].lower() in {".glb", ".gltf"}:
+                        candidates.append(os.path.join(root, name))
 
     requested = str(preferred_asset or "").strip().replace("\\", "/").lower()
     if requested:
@@ -136,7 +139,8 @@ def _select_door_model_path(door_dir: str, preferred_asset: Optional[str] = None
                 return candidate
         print(f"[WARN] Requested door asset '{preferred_asset}' was not found; using the house default.")
     for candidate in candidates:
-        if os.path.basename(candidate).lower() == "door_standard.glb":
+        cand_lower = os.path.basename(candidate).lower()
+        if "interior_door" in cand_lower or cand_lower == "door_standard.glb":
             return candidate
     return candidates[0] if candidates else None
 
@@ -154,13 +158,9 @@ def _try_import_door_model(
     preferred_asset: Optional[str] = None,
 ) -> Optional[Any]:
     """Import the one default door, unless this opening names an override."""
-    door_dir = os.path.join(BLENDER_ROOT, "assets", "doors")
+    door_dir = os.path.join(BLENDER_ROOT, "assets", "architecture", "doors")
     requested = str(preferred_asset or "").strip().replace("\\", "/").lower()
     selected = _select_door_model_path(door_dir, preferred_asset)
-
-    # Do not cycle through every downloaded file by door index. One selected
-    # source is used consistently; a bad source falls back to the procedural
-    # door instead of silently changing to another style.
     door_candidates = [selected] if selected else []
 
     for p in door_candidates:
@@ -282,11 +282,18 @@ def _try_import_window_model(
     wx: float, wy: float, wz: float, ww: float, wh: float, idx: int, is_vertical: bool = False
 ) -> Optional[Any]:
     """Attempts to import a real 3D window GLB model into the opening cutout, rotated and scaled to match wall."""
-    win_candidates = [
-        os.path.join(BLENDER_ROOT, "assets", "windows", "window_standard_01.glb"),
-        os.path.join(BLENDER_ROOT, "assets", "windows", "window_standard_02.glb"),
-        os.path.join(BLENDER_ROOT, "assets", "windows", "window_standard_03.glb"),
+    win_dirs = [
+        os.path.join(BLENDER_ROOT, "assets", "architecture", "windows"),
+        os.path.join(BLENDER_ROOT, "assets", "windows"),
     ]
+    win_candidates = []
+    for wd in win_dirs:
+        if os.path.isdir(wd):
+            for root, _, files in os.walk(wd):
+                for f in sorted(files):
+                    if f.lower().endswith((".glb", ".gltf")):
+                        win_candidates.append(os.path.join(root, f))
+
     for p in win_candidates:
         if os.path.isfile(p):
             try:
@@ -377,7 +384,31 @@ def _try_import_gate_model(
 def _create_garage_door_model(
     dx: float, dy: float, dz: float, dw: float, dh: float, is_vertical: bool
 ) -> Any:
-    """Build a correctly oriented sectional garage shutter, not a stretched room door."""
+    """Build or import a 3D sectional garage shutter instead of procedural cubes."""
+    garage_model_candidates = [
+        os.path.join(BLENDER_ROOT, "assets", "architecture", "doors", "exterior", "roller_garager_door_01.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "architecture", "doors", "exterior", "roller_garage_door_01.glb"),
+        os.path.join(BLENDER_ROOT, "assets", "doors", "roller_garager_door_01.glb"),
+    ]
+    for g_path in garage_model_candidates:
+        if os.path.isfile(g_path) and import_asset is not None:
+            try:
+                door_obj = import_asset.load_model(g_path, name_prefix="Garage_Rollup_Door")
+                cur_w, cur_d, cur_h = import_asset.get_bounding_dimensions(door_obj)
+                cur_w = max(cur_w, 0.001)
+                cur_d = max(cur_d, 0.001)
+                cur_h = max(cur_h, 0.001)
+                door_obj.location = (dx, dy, dz)
+                if is_vertical:
+                    door_obj.rotation_euler = (0.0, 0.0, math.radians(90.0))
+                    door_obj.scale = (0.20 / cur_d, dw / cur_w, dh / cur_h)
+                else:
+                    door_obj.rotation_euler = (0.0, 0.0, 0.0)
+                    door_obj.scale = (dw / cur_w, 0.20 / cur_d, dh / cur_h)
+                return door_obj
+            except Exception as e:
+                print(f"[WARN] Failed to load 3D garage door model {g_path}: {e}")
+
     root = bpy.data.objects.new("Garage_Rollup_Door", None)
     bpy.context.scene.collection.objects.link(root)
     root.location = (dx, dy, dz)

@@ -1,0 +1,25 @@
+{
+  "id": "armchair_01_armchairs",
+  "name": "Armchair 01",
+  "category": "armchair",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.88,
+  "depth": 0.88,
+  "height": 0.84,
+  "model_file": "assets/furniture/living_room/armchairs/ArmChair_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "living_room",
+    "armchairs",
+    "armchair 01",
+    "armchair"
+  ]
+}

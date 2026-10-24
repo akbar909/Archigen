@@ -1,0 +1,23 @@
+{
+  "id": "countertop_dishwasher_built_in_01",
+  "name": "Countertop Dishwasher Built In 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/furniture/kitchen/countertops/countertop-dishwasher-built-in_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "countertop-dishwasher-built-in 01",
+    "countertops"
+  ]
+}
