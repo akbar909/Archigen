@@ -1,0 +1,23 @@
+{
+  "id": "roller_garager_door_01",
+  "name": "Roller Garager Door 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.8,
+  "depth": 0.1,
+  "height": 2.4,
+  "model_file": "assets/architecture/doors/exterior/roller_garager_door_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "exterior",
+    "roller garager door 01"
+  ]
+}

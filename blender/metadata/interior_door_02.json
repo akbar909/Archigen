@@ -1,0 +1,23 @@
+{
+  "id": "interior_door_02",
+  "name": "Interior Door 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/architecture/doors/interior/interior_door_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "interior",
+    "interior door 02"
+  ]
+}

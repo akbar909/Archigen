@@ -1,0 +1,23 @@
+{
+  "id": "led_tv_01",
+  "name": "Led Tv 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/appliances/electronics/led_tv_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "led tv 01",
+    "electronics"
+  ]
+}

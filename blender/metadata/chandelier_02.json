@@ -1,0 +1,24 @@
+{
+  "id": "chandelier_02",
+  "name": "Chandelier 02",
+  "category": "lamp",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.45,
+  "depth": 0.45,
+  "height": 1.5,
+  "model_file": "assets/lighting/ceiling_lights/chandelier_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "chandelier 02",
+    "lamp",
+    "ceiling lights"
+  ]
+}

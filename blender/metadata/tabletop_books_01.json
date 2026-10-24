@@ -1,0 +1,23 @@
+{
+  "id": "tabletop_books_01",
+  "name": "Tabletop Books 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/tabletop_decor/tableTop_books_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "tabletop books 01",
+    "tabletop decor"
+  ]
+}

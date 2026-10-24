@@ -1,0 +1,23 @@
+{
+  "id": "sliding_door_01",
+  "name": "Sliding Door 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/architecture/doors/sliding/sliding_door_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "sliding door 01",
+    "sliding"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "electrical_switch_board__power_socket_01",
+  "name": "Electrical Switch Board Power Socket 01",
+  "category": "lamp",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.45,
+  "depth": 0.45,
+  "height": 1.5,
+  "model_file": "assets/lighting/switches_sockets/electrical_switch_board__power_socket_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "lamp",
+    "electrical switch board  power socket 01",
+    "switches sockets"
+  ]
+}

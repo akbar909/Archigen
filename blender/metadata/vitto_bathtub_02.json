@@ -1,0 +1,25 @@
+{
+  "id": "vitto_bathtub_02",
+  "name": "Vitto Bathtub 02",
+  "category": "bathtub",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.75,
+  "depth": 0.85,
+  "height": 0.65,
+  "model_file": "assets/furniture/bathroom/bathtubs/vitto_bathtub_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bathtub",
+    "vitto bathtub 02",
+    "bathroom",
+    "bathtubs"
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "id": "desk_001",
-  "name": "Modern Executive Study Desk",
+  "name": "Desk 001",
   "category": "desk",
   "room": "bedroom",
   "style": [
@@ -15,12 +15,10 @@
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
+    "bedroom",
     "desk",
-    "study desk",
-    "workstation",
-    "office desk",
-    "table"
+    "desk 001"
   ]
 }

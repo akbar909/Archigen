@@ -1,0 +1,23 @@
+{
+  "id": "luxury_gold_carved_mirror_04",
+  "name": "Luxury Gold Carved Mirror 04",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/mirrors/luxury_gold_carved_mirror_04.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "luxury gold carved mirror 04",
+    "mirrors"
+  ]
+}

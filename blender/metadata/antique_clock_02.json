@@ -1,0 +1,23 @@
+{
+  "id": "antique_clock_02",
+  "name": "Antique Clock 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/clocks/antique_clock_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "clocks",
+    "antique clock 02"
+  ]
+}

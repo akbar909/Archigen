@@ -1,0 +1,25 @@
+{
+  "id": "vanity_table_02",
+  "name": "Vanity Table 02",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.0,
+  "depth": 2.1,
+  "height": 1.1,
+  "model_file": "assets/furniture/bedroom/vanity_tables/vanity_table_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bed",
+    "bedroom",
+    "vanity table 02",
+    "vanity tables"
+  ]
+}

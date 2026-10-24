@@ -1,0 +1,25 @@
+{
+  "id": "indoor_plant_01",
+  "name": "Indoor Plant 01",
+  "category": "plant",
+  "room": "living_room",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.5,
+  "depth": 0.5,
+  "height": 1.4,
+  "model_file": "assets/decorations/plants_greenery/indoor_plant_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "living_room",
+    "plant",
+    "indoor plant 01",
+    "plants greenery"
+  ]
+}

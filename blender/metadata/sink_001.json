@@ -1,0 +1,25 @@
+{
+  "id": "sink_001",
+  "name": "Sink 001",
+  "category": "sink",
+  "room": "bathroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.9,
+  "depth": 0.55,
+  "height": 0.85,
+  "model_file": "assets/furniture/bathroom/vanities/sink_001.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "sink",
+    "bathroom",
+    "sink 001",
+    "vanities"
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "id": "dining_chair_001",
-  "name": "Ergonomic Scandinavian Dining Chair",
+  "name": "Dining Chair 001",
   "category": "chair",
   "room": "dining_room",
   "style": [
@@ -8,18 +8,18 @@
     "contemporary",
     "scandinavian"
   ],
-  "width": 0.5,
-  "depth": 0.52,
+  "width": 0.55,
+  "depth": 0.55,
   "height": 0.85,
-  "model_file": "assets/furniture/dining_room/dining_chair_001.glb",
+  "model_file": "assets/furniture/dining_room/dining_chairs/dining_chair_001.glb",
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
-    "chair",
-    "dining chair",
-    "side chair",
-    "dining room"
+    "dining chair 001",
+    "dining chairs",
+    "dining_room",
+    "chair"
   ]
 }

@@ -1,0 +1,25 @@
+{
+  "id": "garden_urn_01",
+  "name": "Garden Urn 01",
+  "category": "plant",
+  "room": "outdoor",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.5,
+  "depth": 0.5,
+  "height": 1.4,
+  "model_file": "assets/furniture/outdoor/planters/garden_urn_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "planters",
+    "plant",
+    "outdoor",
+    "garden urn 01"
+  ]
+}

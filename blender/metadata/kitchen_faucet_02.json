@@ -1,0 +1,23 @@
+{
+  "id": "kitchen_faucet_02",
+  "name": "Kitchen Faucet 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/fixtures/plumbing/kitchen_faucet_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "plumbing",
+    "kitchen faucet 02"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "curtains_03",
+  "name": "Curtains 03",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/curtains_blinds/curtains_03.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "curtains blinds",
+    "curtains 03"
+  ]
+}

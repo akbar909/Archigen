@@ -1,0 +1,24 @@
+{
+  "id": "modren_wooden_cabinet_01",
+  "name": "Modren Wooden Cabinet 01",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.0,
+  "depth": 2.1,
+  "height": 1.1,
+  "model_file": "assets/furniture/bedroom/modren_wooden_cabinet_01.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bed",
+    "bedroom",
+    "modren wooden cabinet 01"
+  ]
+}

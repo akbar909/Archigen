@@ -1,6 +1,6 @@
 {
   "id": "refrigerator_001",
-  "name": "French Door Stainless Steel Refrigerator",
+  "name": "Refrigerator 001",
   "category": "refrigerator",
   "room": "kitchen",
   "style": [
@@ -11,16 +11,14 @@
   "width": 0.92,
   "depth": 0.85,
   "height": 1.82,
-  "model_file": "assets/furniture/kitchen/refrigerator_001.glb",
+  "model_file": "assets/appliances/kitchen/refrigerator_001.glb",
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
-    "refrigerator",
-    "fridge",
-    "freezer",
-    "appliance",
-    "kitchen"
+    "kitchen",
+    "refrigerator 001",
+    "refrigerator"
   ]
 }

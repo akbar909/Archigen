@@ -1,0 +1,23 @@
+{
+  "id": "small_drain_cover_decal_1",
+  "name": "Small Drain Cover Decal 1",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/fixtures/plumbing/small_drain_cover_decal_1.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "plumbing",
+    "small drain cover decal 1"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "shr_head_02",
+  "name": "Shr Head 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/fixtures/plumbing/shr_head_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "shr head 02",
+    "plumbing"
+  ]
+}

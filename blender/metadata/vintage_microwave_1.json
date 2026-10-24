@@ -1,0 +1,24 @@
+{
+  "id": "vintage_microwave_1",
+  "name": "Vintage Microwave 1",
+  "category": "stove",
+  "room": "kitchen",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.6,
+  "depth": 0.6,
+  "height": 0.85,
+  "model_file": "assets/appliances/kitchen/vintage_microwave_1.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "kitchen",
+    "vintage microwave 1",
+    "stove"
+  ]
+}

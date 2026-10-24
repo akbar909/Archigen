@@ -1,0 +1,25 @@
+{
+  "id": "dressers_02",
+  "name": "Dressers 02",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.0,
+  "depth": 2.1,
+  "height": 1.1,
+  "model_file": "assets/furniture/bedroom/dressers/dressers_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bed",
+    "bedroom",
+    "dressers",
+    "dressers 02"
+  ]
+}

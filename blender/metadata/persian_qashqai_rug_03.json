@@ -1,0 +1,23 @@
+{
+  "id": "persian_qashqai_rug_03",
+  "name": "Persian Qashqai Rug 03",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/carpets_rugs/persian_qashqai_rug_03.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "carpets rugs",
+    "persian qashqai rug 03"
+  ]
+}

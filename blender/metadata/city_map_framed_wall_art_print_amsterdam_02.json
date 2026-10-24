@@ -1,0 +1,23 @@
+{
+  "id": "city_map_framed_wall_art_print_amsterdam_02",
+  "name": "City Map Framed Wall Art Print Amsterdam 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/wall_art/city_map_framed_wall_art_print_amsterdam_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "city map framed wall art print amsterdam 02",
+    "wall art"
+  ]
+}

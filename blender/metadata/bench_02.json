@@ -1,0 +1,24 @@
+{
+  "id": "bench_02",
+  "name": "Bench 02",
+  "category": "chair",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 0.55,
+  "depth": 0.55,
+  "height": 0.85,
+  "model_file": "assets/furniture/entryway/benches/bench_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "benches",
+    "bench 02",
+    "chair"
+  ]
+}

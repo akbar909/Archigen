@@ -1,299 +1,200 @@
 """
 generate_metadata.py
 ====================
-Auto-cataloging script that generates metadata JSON files for all 3D furniture
-assets found in blender/assets/furniture/. Adheres to blender/metadata/furniture.schema.json.
+Auto-cataloging script that dynamically discovers and generates metadata JSON files
+for all 3D assets found in blender/assets/. Adheres to blender/metadata/furniture.schema.json.
 """
 
 import os
+import re
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BLENDER_ROOT = os.path.dirname(SCRIPT_DIR)
-ASSETS_DIR = os.path.join(BLENDER_ROOT, "assets", "furniture")
+ASSETS_ROOT = os.path.join(BLENDER_ROOT, "assets")
 METADATA_DIR = os.path.join(BLENDER_ROOT, "metadata")
 
-# Known catalog mapping for downloaded assets
-ASSET_DEFINITIONS = [
-    # ── Bathroom ──────────────────────────────────────────────
-    {
-        "id": "bathtub_001",
-        "name": "Modern Free-Standing Bathtub",
-        "category": "bathtub",
-        "room": "bathroom",
-        "width": 1.75,
-        "depth": 0.85,
-        "height": 0.65,
-        "rel_path": "assets/furniture/bathroom/bathtub_001.glb",
-        "tags": ["bathtub", "bath", "bathroom", "soaking tub", "modern"]
-    },
-    {
-        "id": "bathroom_sink_001",
-        "name": "Contemporary Vanity Sink",
-        "category": "sink",
-        "room": "bathroom",
-        "width": 0.90,
-        "depth": 0.55,
-        "height": 0.85,
-        "rel_path": "assets/furniture/bathroom/sink_001.glb",
-        "tags": ["sink", "vanity", "bathroom", "washbasin"]
-    },
-    {
-        "id": "toilet_001",
-        "name": "Modern Ceramic Toilet",
-        "category": "toilet",
-        "room": "bathroom",
-        "width": 0.45,
-        "depth": 0.70,
-        "height": 0.80,
-        "rel_path": "assets/furniture/bathroom/toilet_001.glb",
-        "tags": ["toilet", "commode", "bathroom", "wc"]
-    },
+CATEGORY_DEFAULTS = {
+    "sofa": (2.20, 0.95, 0.85, "living_room"),
+    "armchair": (0.88, 0.88, 0.84, "living_room"),
+    "chair": (0.55, 0.55, 0.85, "dining_room"),
+    "coffee_table": (1.10, 0.65, 0.45, "living_room"),
+    "dining_table": (1.80, 0.90, 0.76, "dining_room"),
+    "desk": (1.40, 0.70, 0.76, "general"),
+    "bed": (2.00, 2.10, 1.10, "bedroom"),
+    "nightstand": (0.50, 0.45, 0.55, "bedroom"),
+    "wardrobe": (1.60, 0.60, 2.00, "bedroom"),
+    "bookshelf": (1.20, 0.35, 1.80, "living_room"),
+    "cabinet": (1.20, 0.45, 0.85, "living_room"),
+    "kitchen_counter": (2.20, 1.00, 0.92, "kitchen"),
+    "refrigerator": (0.92, 0.85, 1.82, "kitchen"),
+    "stove": (0.60, 0.60, 0.85, "kitchen"),
+    "sink": (0.85, 0.55, 0.85, "kitchen"),
+    "toilet": (0.45, 0.70, 0.80, "bathroom"),
+    "bathtub": (1.75, 0.85, 0.65, "bathroom"),
+    "shower": (1.00, 1.00, 2.10, "bathroom"),
+    "lamp": (0.45, 0.45, 1.50, "living_room"),
+    "plant": (0.50, 0.50, 1.40, "living_room"),
+    "outdoor_chair": (0.75, 0.75, 0.80, "outdoor"),
+    "outdoor_table": (1.40, 0.80, 0.75, "outdoor"),
+    "general": (1.00, 0.50, 1.00, "general"),
+}
 
-    # ── Bedroom ───────────────────────────────────────────────
-    {
-        "id": "bed_02",
-        "name": "Modern Platform Double Bed",
-        "category": "bed",
-        "room": "bedroom",
-        "width": 2.10,
-        "depth": 2.20,
-        "height": 1.10,
-        "rel_path": "assets/furniture/bedroom/bed_02.glb",
-        "tags": ["bed", "double bed", "queen bed", "king bed", "platform bed", "bedroom"]
-    },
-    {
-        "id": "bed_gothic_01",
-        "name": "Classic Upholstered Bed",
-        "category": "bed",
-        "room": "bedroom",
-        "width": 1.80,
-        "depth": 2.10,
-        "height": 1.35,
-        "rel_path": "assets/furniture/bedroom/GothicBed_01.glb",
-        "tags": ["bed", "gothic bed", "single bed", "classic", "bedroom"]
-    },
-    {
-        "id": "bedside_table_001",
-        "name": "Minimalist Nightstand",
-        "category": "nightstand",
-        "room": "bedroom",
-        "width": 0.50,
-        "depth": 0.45,
-        "height": 0.55,
-        "rel_path": "assets/furniture/bedroom/bedside_table_001.glb",
-        "tags": ["nightstand", "bedside table", "end table", "bedroom"]
-    },
-    {
-        "id": "desk_001",
-        "name": "Modern Executive Study Desk",
-        "category": "desk",
-        "room": "bedroom",
-        "width": 1.40,
-        "depth": 0.70,
-        "height": 0.76,
-        "rel_path": "assets/furniture/bedroom/desk_001.glb",
-        "tags": ["desk", "study desk", "workstation", "office desk", "table"]
-    },
-    {
-        "id": "bedroom_cabinet_01",
-        "name": "Modern Wooden Wardrobe Cabinet",
-        "category": "wardrobe",
-        "room": "bedroom",
-        "width": 1.20,
-        "depth": 0.60,
-        "height": 1.95,
-        "rel_path": "assets/furniture/bedroom/modren_wooden_cabinet_01.glb",
-        "tags": ["wardrobe", "closet", "cabinet", "dresser", "storage", "bedroom"]
-    },
-    {
-        "id": "bedroom_armchair_01",
-        "name": "Cozy Accent Armchair",
-        "category": "armchair",
-        "room": "bedroom",
-        "width": 0.85,
-        "depth": 0.85,
-        "height": 0.82,
-        "rel_path": "assets/furniture/bedroom/ArmChair_01.glb",
-        "tags": ["armchair", "chair", "accent chair", "lounge chair", "bedroom"]
-    },
-
-    # ── Living Room ───────────────────────────────────────────
-    {
-        "id": "living_armchair_01",
-        "name": "Modern Living Lounge Armchair",
-        "category": "armchair",
-        "room": "living_room",
-        "width": 0.88,
-        "depth": 0.88,
-        "height": 0.84,
-        "rel_path": "assets/furniture/living_room/ArmChair_01.glb",
-        "tags": ["armchair", "chair", "lounge", "living room", "seating"]
-    },
-    {
-        "id": "coffee_table_01",
-        "name": "Sculptural Low Coffee Table",
-        "category": "coffee_table",
-        "room": "living_room",
-        "width": 1.10,
-        "depth": 0.65,
-        "height": 0.42,
-        "rel_path": "assets/furniture/living_room/CoffeeTable_01.glb",
-        "tags": ["coffee table", "center table", "tea table", "living room"]
-    },
-    {
-        "id": "floor_lamp_01",
-        "name": "Contemporary Arch Floor Lamp",
-        "category": "lamp",
-        "room": "living_room",
-        "width": 0.50,
-        "depth": 0.50,
-        "height": 1.85,
-        "rel_path": "assets/furniture/living_room/floor_lamp.glb",
-        "tags": ["lamp", "floor lamp", "standing lamp", "lighting", "living room"]
-    },
-    {
-        "id": "living_tv_cabinet_01",
-        "name": "Media Console & Storage Credenza",
-        "category": "cabinet",
-        "room": "living_room",
-        "width": 1.80,
-        "depth": 0.45,
-        "height": 0.60,
-        "rel_path": "assets/furniture/living_room/modren_wooden_cabinet_01.glb",
-        "tags": ["cabinet", "tv unit", "media console", "credenza", "living room"]
-    },
-
-    # ── Dining Room ───────────────────────────────────────────
-    {
-        "id": "dining_table_001",
-        "name": "Nordic Solid Wood Dining Table",
-        "category": "dining_table",
-        "room": "dining_room",
-        "width": 1.80,
-        "depth": 0.90,
-        "height": 0.76,
-        "rel_path": "assets/furniture/dining_room/dining_table_001.glb",
-        "tags": ["dining table", "table", "dinner table", "dining room"]
-    },
-    {
-        "id": "dining_chair_001",
-        "name": "Ergonomic Scandinavian Dining Chair",
-        "category": "chair",
-        "room": "dining_room",
-        "width": 0.50,
-        "depth": 0.52,
-        "height": 0.85,
-        "rel_path": "assets/furniture/dining_room/dining_chair_001.glb",
-        "tags": ["chair", "dining chair", "side chair", "dining room"]
-    },
-    {
-        "id": "dining_sideboard_001",
-        "name": "Modern Dining Buffet Sideboard",
-        "category": "cabinet",
-        "room": "dining_room",
-        "width": 1.50,
-        "depth": 0.48,
-        "height": 0.85,
-        "rel_path": "assets/furniture/dining_room/sideboard_001.glb",
-        "tags": ["sideboard", "buffet", "cabinet", "credenza", "dining room"]
-    },
-
-    # ── Kitchen ───────────────────────────────────────────────
-    {
-        "id": "refrigerator_001",
-        "name": "French Door Stainless Steel Refrigerator",
-        "category": "refrigerator",
-        "room": "kitchen",
-        "width": 0.92,
-        "depth": 0.85,
-        "height": 1.82,
-        "rel_path": "assets/furniture/kitchen/refrigerator_001.glb",
-        "tags": ["refrigerator", "fridge", "freezer", "appliance", "kitchen"]
-    },
-    {
-        "id": "kitchen_island_001",
-        "name": "Modern Marble Top Kitchen Island",
-        "category": "kitchen_counter",
-        "room": "kitchen",
-        "width": 2.20,
-        "depth": 1.00,
-        "height": 0.92,
-        "rel_path": "assets/furniture/kitchen/kitchen_island_001.glb",
-        "tags": ["kitchen island", "island", "counter", "kitchen counter", "breakfast bar"]
-    },
-    {
-        "id": "kitchen_sink_001",
-        "name": "Undermount Double Basin Kitchen Sink",
-        "category": "sink",
-        "room": "kitchen",
-        "width": 0.85,
-        "depth": 0.55,
-        "height": 0.88,
-        "rel_path": "assets/furniture/kitchen/sink_001.glb",
-        "tags": ["kitchen sink", "sink", "faucet", "counter sink", "kitchen"]
-    },
-    {
-        "id": "kitchen_cabinet_001",
-        "name": "Modular Overhead Kitchen Cabinet",
-        "category": "cabinet",
-        "room": "kitchen",
-        "width": 1.20,
-        "depth": 0.40,
-        "height": 0.80,
-        "rel_path": "assets/furniture/kitchen/cabinet_001.glb",
-        "tags": ["cabinet", "kitchen cabinet", "pantry", "wall cabinet", "kitchen"]
-    },
-    {
-        "id": "microwave_001",
-        "name": "Retro Countertop Microwave Oven",
-        "category": "stove",
-        "room": "kitchen",
-        "width": 0.55,
-        "depth": 0.42,
-        "height": 0.35,
-        "rel_path": "assets/furniture/kitchen/vintage_microwave_1.glb",
-        "tags": ["microwave", "oven", "vintage microwave", "appliance", "kitchen"]
-    },
-]
+KNOWN_PRESETS: Dict[str, Dict[str, Any]] = {
+    "bathtub_001": {"category": "bathtub", "room": "bathroom", "width": 1.75, "depth": 0.85, "height": 0.65},
+    "sink_001": {"category": "sink", "room": "bathroom", "width": 0.90, "depth": 0.55, "height": 0.85},
+    "toilet_001": {"category": "toilet", "room": "bathroom", "width": 0.45, "depth": 0.70, "height": 0.80},
+    "bed_02": {"category": "bed", "room": "bedroom", "width": 2.10, "depth": 2.20, "height": 1.10},
+    "gothicbed_01": {"category": "bed", "room": "bedroom", "width": 1.80, "depth": 2.10, "height": 1.35},
+    "bedside_table_001": {"category": "nightstand", "room": "bedroom", "width": 0.50, "depth": 0.45, "height": 0.55},
+    "desk_001": {"category": "desk", "room": "bedroom", "width": 1.40, "depth": 0.70, "height": 0.76},
+    "car": {"category": "general", "room": "general", "width": 1.90, "depth": 4.60, "height": 1.55},
+    "gate": {"category": "general", "room": "general", "width": 4.63, "depth": 0.17, "height": 2.15},
+    "roller_garager_door_01": {"category": "general", "room": "general", "width": 2.80, "depth": 0.10, "height": 2.40},
+}
 
 
-def generate_catalog():
-    """Builds and writes all asset metadata JSON files."""
+def infer_category_and_room(rel_path: str, filename: str) -> Tuple[str, str, Tuple[float, float, float]]:
+    """Infers category, room, and default dimensions from relative folder path and filename."""
+    norm_path = rel_path.lower().replace("\\", "/")
+    base_name = os.path.splitext(filename)[0].lower()
+
+    if base_name in KNOWN_PRESETS:
+        p = KNOWN_PRESETS[base_name]
+        return p["category"], p["room"], (p["width"], p["depth"], p["height"])
+
+    cat = "general"
+    room = "general"
+
+    if "sofa" in norm_path or "couch" in norm_path:
+        cat, room = "sofa", "living_room"
+    elif "armchair" in norm_path:
+        cat, room = "armchair", "living_room"
+    elif "coffee_table" in norm_path or "center_table" in norm_path:
+        cat, room = "coffee_table", "living_room"
+    elif "side_table" in norm_path or "sidetable" in norm_path:
+        cat, room = "coffee_table", "living_room"
+    elif "tv_unit" in norm_path or "tv_wall" in norm_path or "tv_stand" in norm_path:
+        cat, room = "cabinet", "living_room"
+    elif "bookshel" in norm_path or "shelf" in norm_path:
+        cat, room = "bookshelf", "general"
+    elif "dining_table" in norm_path or ("dining" in norm_path and "table" in norm_path):
+        cat, room = "dining_table", "dining_room"
+    elif "dining_chair" in norm_path or "bar_stool" in norm_path:
+        cat, room = "chair", "dining_room"
+    elif "sideboard" in norm_path:
+        cat, room = "cabinet", "dining_room"
+    elif "bed" in norm_path and "side" not in norm_path:
+        cat, room = "bed", "bedroom"
+    elif "nightstand" in norm_path or "bedside" in norm_path:
+        cat, room = "nightstand", "bedroom"
+    elif "wardrobe" in norm_path or "closet" in norm_path or "dresser" in norm_path:
+        cat, room = "wardrobe", "bedroom"
+    elif "vanity_table" in norm_path:
+        cat, room = "desk", "bedroom"
+    elif "kitchen_island" in norm_path or "island" in norm_path:
+        cat, room = "kitchen_counter", "kitchen"
+    elif "refrigerator" in norm_path or "fridge" in norm_path:
+        cat, room = "refrigerator", "kitchen"
+    elif "microwave" in norm_path or "oven" in norm_path or "stove" in norm_path:
+        cat, room = "stove", "kitchen"
+    elif "bathtub" in norm_path:
+        cat, room = "bathtub", "bathroom"
+    elif "shower" in norm_path:
+        cat, room = "shower", "bathroom"
+    elif "toilet" in norm_path:
+        cat, room = "toilet", "bathroom"
+    elif "vanity" in norm_path or "sink" in norm_path or "wash_basin" in norm_path:
+        cat, room = "sink", "bathroom" if "bathroom" in norm_path else "kitchen"
+    elif "lamp" in norm_path or "chandelier" in norm_path or "light" in norm_path or "sconce" in norm_path:
+        cat, room = "lamp", "living_room" if "floor" in norm_path else "general"
+    elif "plant" in norm_path or "planter" in norm_path:
+        cat, room = "plant", "outdoor" if "outdoor" in norm_path else "living_room"
+    elif "patio" in norm_path or "outdoor" in norm_path:
+        cat, room = "outdoor_chair" if "seating" in norm_path else "outdoor_table", "outdoor"
+    elif "office" in norm_path and "desk" in norm_path:
+        cat, room = "desk", "general"
+    elif "office" in norm_path and "chair" in norm_path:
+        cat, room = "chair", "general"
+    elif "bench" in norm_path:
+        cat, room = "chair", "general"
+    elif "kitchen" in norm_path and "cabinet" in norm_path:
+        cat, room = "cabinet", "kitchen"
+
+    w, d, h, _ = CATEGORY_DEFAULTS.get(cat, CATEGORY_DEFAULTS["general"])
+    return cat, room, (w, d, h)
+
+
+def sanitize_id(raw_name: str) -> str:
+    """Produces a clean alphanumeric + underscore asset id."""
+    clean = re.sub(r"[^a-zA-Z0-9_]+", "_", raw_name).strip("_").lower()
+    return clean or "asset_unnamed"
+
+
+def human_name(raw_name: str) -> str:
+    """Formats raw asset name into clean Title Case."""
+    name = re.sub(r"[_\-]+", " ", raw_name).strip()
+    return " ".join(word.capitalize() for word in name.split())
+
+
+def generate_all_metadata():
+    """Scans blender/assets/ and creates metadata JSON files for all 3D models."""
     os.makedirs(METADATA_DIR, exist_ok=True)
     generated = 0
+    seen_ids = set()
 
-    for item in ASSET_DEFINITIONS:
-        asset_id = item["id"]
-        meta_filename = f"{asset_id}.json"
-        meta_filepath = os.path.join(METADATA_DIR, meta_filename)
+    for root, _, files in os.walk(ASSETS_ROOT):
+        for f in files:
+            if not f.lower().endswith((".glb", ".gltf")):
+                continue
 
-        meta_content = {
-            "id": asset_id,
-            "name": item["name"],
-            "category": item["category"],
-            "room": item["room"],
-            "style": ["modern", "contemporary", "scandinavian"],
-            "width": float(item["width"]),
-            "depth": float(item["depth"]),
-            "height": float(item["height"]),
-            "model_file": item["rel_path"].replace("\\", "/"),
-            "format": "glb",
-            "license": "CC0",
-            "source": "ArchGen Curated Asset Library",
-            "source_url": "https://polyhaven.com",
-            "tags": item.get("tags", [item["category"], item["room"]])
-        }
+            full_path = os.path.join(root, f)
+            rel_path = os.path.relpath(full_path, BLENDER_ROOT).replace("\\", "/")
+            base_name = os.path.splitext(f)[0]
 
-        with open(meta_filepath, "w", encoding="utf-8") as f:
-            json.dump(meta_content, f, indent=2)
+            asset_id = sanitize_id(base_name)
+            if asset_id in seen_ids:
+                folder_tag = sanitize_id(os.path.basename(root))
+                asset_id = f"{asset_id}_{folder_tag}"
+            seen_ids.add(asset_id)
 
-        generated += 1
-        print(f"[CATALOG] Generated: {meta_filename} -> category='{item['category']}', room='{item['room']}'")
+            category, room, (width, depth, height) = infer_category_and_room(rel_path, f)
 
-    print(f"\nSuccessfully generated {generated} asset metadata catalog files in {METADATA_DIR}")
+            tags = list(set([
+                category,
+                room,
+                base_name.lower().replace("_", " "),
+                os.path.basename(root).lower().replace("_", " "),
+            ]))
+
+            meta_content = {
+                "id": asset_id,
+                "name": human_name(base_name),
+                "category": category,
+                "room": room,
+                "style": ["modern", "contemporary", "scandinavian"],
+                "width": round(float(width), 2),
+                "depth": round(float(depth), 2),
+                "height": round(float(height), 2),
+                "model_file": rel_path,
+                "format": "gltf" if f.lower().endswith(".gltf") else "glb",
+                "license": "CC0",
+                "source": "ArchGen Curated Asset Library",
+                "source_url": "https://cgtrader.com",
+                "tags": [t for t in tags if t and t != "general"],
+            }
+
+            meta_filename = f"{asset_id}.json"
+            meta_filepath = os.path.join(METADATA_DIR, meta_filename)
+
+            with open(meta_filepath, "w", encoding="utf-8") as out_f:
+                json.dump(meta_content, out_f, indent=2)
+
+            generated += 1
+
+    print(f"[CATALOG] Successfully scanned and generated {generated} asset metadata files in {METADATA_DIR}")
 
 
 if __name__ == "__main__":
-    generate_catalog()
+    generate_all_metadata()

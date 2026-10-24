@@ -1,0 +1,23 @@
+{
+  "id": "french_door_02",
+  "name": "French Door 02",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/architecture/doors/glass_french/french_door_02.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "french door 02",
+    "glass french"
+  ]
+}

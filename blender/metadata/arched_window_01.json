@@ -1,0 +1,23 @@
+{
+  "id": "arched_window_01",
+  "name": "Arched Window 01",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/architecture/windows/arched/arched_window_01.gltf",
+  "format": "gltf",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "arched window 01",
+    "arched"
+  ]
+}

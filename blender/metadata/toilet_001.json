@@ -1,6 +1,6 @@
 {
   "id": "toilet_001",
-  "name": "Modern Ceramic Toilet",
+  "name": "Toilet 001",
   "category": "toilet",
   "room": "bathroom",
   "style": [
@@ -11,15 +11,15 @@
   "width": 0.45,
   "depth": 0.7,
   "height": 0.8,
-  "model_file": "assets/furniture/bathroom/toilet_001.glb",
+  "model_file": "assets/furniture/bathroom/toilets/toilet_001.glb",
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
+    "toilets",
     "toilet",
-    "commode",
     "bathroom",
-    "wc"
+    "toilet 001"
   ]
 }

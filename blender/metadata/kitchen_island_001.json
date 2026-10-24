@@ -1,6 +1,6 @@
 {
   "id": "kitchen_island_001",
-  "name": "Modern Marble Top Kitchen Island",
+  "name": "Kitchen Island 001",
   "category": "kitchen_counter",
   "room": "kitchen",
   "style": [
@@ -11,16 +11,15 @@
   "width": 2.2,
   "depth": 1.0,
   "height": 0.92,
-  "model_file": "assets/furniture/kitchen/kitchen_island_001.glb",
+  "model_file": "assets/furniture/kitchen/islands/kitchen_island_001.glb",
   "format": "glb",
   "license": "CC0",
   "source": "ArchGen Curated Asset Library",
-  "source_url": "https://polyhaven.com",
+  "source_url": "https://cgtrader.com",
   "tags": [
-    "kitchen island",
-    "island",
-    "counter",
-    "kitchen counter",
-    "breakfast bar"
+    "kitchen",
+    "kitchen island 001",
+    "kitchen_counter",
+    "islands"
   ]
 }

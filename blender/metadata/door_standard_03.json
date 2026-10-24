@@ -1,0 +1,23 @@
+{
+  "id": "door_standard_03",
+  "name": "Door Standard 03",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/doors/door_standard_03.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "doors",
+    "door standard 03"
+  ]
+}

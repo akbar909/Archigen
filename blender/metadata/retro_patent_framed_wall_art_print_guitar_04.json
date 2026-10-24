@@ -1,0 +1,23 @@
+{
+  "id": "retro_patent_framed_wall_art_print_guitar_04",
+  "name": "Retro Patent Framed Wall Art Print Guitar 04",
+  "category": "general",
+  "room": "general",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 1.0,
+  "depth": 0.5,
+  "height": 1.0,
+  "model_file": "assets/decorations/wall_art/retro_patent_framed_wall_art_print_guitar_04.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "retro patent framed wall art print guitar 04",
+    "wall art"
+  ]
+}

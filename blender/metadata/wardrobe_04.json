@@ -1,0 +1,25 @@
+{
+  "id": "wardrobe_04",
+  "name": "Wardrobe 04",
+  "category": "bed",
+  "room": "bedroom",
+  "style": [
+    "modern",
+    "contemporary",
+    "scandinavian"
+  ],
+  "width": 2.0,
+  "depth": 2.1,
+  "height": 1.1,
+  "model_file": "assets/furniture/bedroom/wardrobes/wardrobe_04.glb",
+  "format": "glb",
+  "license": "CC0",
+  "source": "ArchGen Curated Asset Library",
+  "source_url": "https://cgtrader.com",
+  "tags": [
+    "bed",
+    "bedroom",
+    "wardrobes",
+    "wardrobe 04"
+  ]
+}
