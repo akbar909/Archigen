@@ -244,6 +244,31 @@ class OpeningsMixin:
             selected_set.add(pair)
             return True
 
+        def private_ensuite_owner(room_id: str) -> Optional[str]:
+            room = room_map[room_id]
+            if str(room.get("access", "")).lower() != "ensuite_only":
+                return None
+            owner = str(room.get("ensuite_for_room_id", ""))
+            return owner or None
+
+        # Attached bathrooms are hard instance-level relationships, not type
+        # preferences. Each must share a wall and open only to its owner room.
+        # Failing here is safer than emitting a bathroom bank or pass-through
+        # ensuite that happens to make the generic circulation graph connected.
+        for ensuite in (room for room in rooms if private_ensuite_owner(str(room["id"]))):
+            ensuite_id = str(ensuite["id"])
+            owner_id = private_ensuite_owner(ensuite_id)
+            if owner_id not in room_map:
+                raise ValueError(
+                    f"Ensuite '{ensuite_id}' references missing bedroom '{owner_id}'."
+                )
+            pair = tuple(sorted((ensuite_id, owner_id)))
+            if pair not in shared:
+                raise ValueError(
+                    f"Ensuite '{ensuite_id}' must share a wall with its bedroom '{owner_id}'."
+                )
+            select_pair(ensuite_id, owner_id)
+
         # Explicit prompt edits win whenever those spaces share a partition.
         for preference in connection_preferences or []:
             if not isinstance(preference, (list, tuple)) or len(preference) != 2:
@@ -255,30 +280,10 @@ class OpeningsMixin:
                 if match:
                     select_pair(str(first["id"]), str(match["id"]))
 
-        priorities = {
-            "bathroom": ["bedroom", "corridor", "foyer", "living_room", "dining_room", "kitchen"],
-            "bedroom": ["corridor", "living_room", "foyer", "dining_room", "kitchen"],
-            "kitchen": ["living_room", "dining_room", "corridor", "foyer"],
-            "dining_room": ["living_room", "kitchen", "corridor", "foyer"],
-            "garage": ["corridor", "foyer", "living_room", "kitchen"],
-            "corridor": ["foyer", "living_room"],
-            "foyer": ["living_room", "corridor"],
-        }
-        for room in rooms:
-            rid, group = str(room["id"]), type_group(room)
-            if rid == str(entry["id"]):
-                continue
-            neighbors = adjacency.get(rid, [])
-            ranked = sorted(neighbors, key=lambda value: (
-                priorities.get(group, ["corridor", "living_room"]).index(type_group(room_map[value[0]]))
-                if type_group(room_map[value[0]]) in priorities.get(group, ["corridor", "living_room"]) else 99,
-                value[0],
-            ))
-            if ranked:
-                select_pair(rid, ranked[0][0])
-
-        # Ensure every room is reachable from the entrance, adding the smallest
-        # number of additional shared-wall doors needed to join components.
+        # Build one intentional circulation tree instead of selecting a door
+        # independently for every room. Independent selection produced cycles
+        # and placed two or three doors in compact bedrooms/garages, leaving no
+        # viable furniture wall. Explicit user connections are retained first.
         parent = {rid: rid for rid in room_map}
         def find(value: str) -> str:
             while parent[value] != value:
@@ -290,10 +295,80 @@ class OpeningsMixin:
             if a != b: parent[b] = a
         for first, second in selected:
             union(first, second)
-        for first, second in sorted(shared):
-            if find(first) != find(second):
+
+        circulation_groups = {"stair_lobby", "hallway", "corridor", "foyer"}
+
+        def edge_score(pair: Tuple[str, str]) -> Tuple[float, str, str]:
+            first, second = pair
+            left, right = type_group(room_map[first]), type_group(room_map[second])
+            groups = {left, right}
+            if groups & circulation_groups:
+                functional_penalty = 0.0
+            elif groups == {"bedroom", "bathroom"}:
+                functional_penalty = 1.0
+            elif groups == {"bathroom", "kitchen"}:
+                # A bathroom should open to its bedroom or circulation space,
+                # never through the kitchen when another shared-wall route is
+                # available.
+                functional_penalty = 9.0
+            elif groups <= {"living_room", "drawing_room", "dining_room", "kitchen"}:
+                functional_penalty = 1.5
+            elif "garage" in groups:
+                functional_penalty = 6.0
+            elif "bedroom" in groups:
+                functional_penalty = 4.0
+            else:
+                functional_penalty = 3.0
+            longest_wall = max(wall_length(wall) for wall in shared[pair])
+            return functional_penalty - min(longest_wall, 6.0) * 0.01, first, second
+
+        def edge_allowed(pair: Tuple[str, str]) -> bool:
+            first, second = pair
+            first_owner = private_ensuite_owner(first)
+            second_owner = private_ensuite_owner(second)
+            if first_owner and second != first_owner:
+                return False
+            if second_owner and first != second_owner:
+                return False
+            # Bathrooms are destination rooms, never circulation between one
+            # another. This is a hard architectural rule for generated plans.
+            return not (
+                type_group(room_map[first]) == "bathroom"
+                and type_group(room_map[second]) == "bathroom"
+            )
+
+        # Powder rooms and stores are destinations, never corridors. Their one
+        # public door is enough; private ensuite links are handled separately.
+        terminal_types = {"bathroom", "storage_room"}
+        public_degree = {rid: 0 for rid in room_map}
+        for first, second in selected:
+            if private_ensuite_owner(first) == second or private_ensuite_owner(second) == first:
+                continue
+            public_degree[first] += 1
+            public_degree[second] += 1
+
+        def terminal_capacity_available(pair: Tuple[str, str]) -> bool:
+            return all(
+                type_group(room_map[room_id]) not in terminal_types
+                or public_degree[room_id] < 1
+                for room_id in pair
+            )
+
+        for first, second in sorted(
+            (pair for pair in shared if edge_allowed(pair)), key=edge_score
+        ):
+            if find(first) != find(second) and terminal_capacity_available((first, second)):
                 select_pair(first, second)
                 union(first, second)
+                public_degree[first] += 1
+                public_degree[second] += 1
+
+        disconnected = {find(room_id) for room_id in room_map}
+        if len(disconnected) > 1:
+            raise ValueError(
+                "The packed floor cannot provide direct circulation to every room "
+                "without using a bathroom or storage room as a passage."
+            )
 
         for index, (first, second) in enumerate(selected, 1):
             host = max(shared[(first, second)], key=wall_length)
@@ -398,5 +473,3 @@ class OpeningsMixin:
                 })
 
         return windows
-
-

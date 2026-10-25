@@ -193,9 +193,9 @@ def generate_house_from_layout(
     # 11. Physical Lighting
     setup_lighting()
 
-    # 12. Export to High-Quality GLB
+    # 12. Export to High-Quality GLB with Draco Compression enabled
     print(f"[ARCHGEN] Exporting scene to: {output_glb_path}")
-    final_path = export_glb.export_scene_to_glb(output_glb_path)
+    final_path = export_glb.export_scene_to_glb(output_glb_path, use_draco=True)
 
     print("[ARCHGEN] Hyperrealistic 3D house generation completed successfully!")
     return final_path

@@ -324,7 +324,12 @@ def _candidate_centers(room: Dict[str, Any], fw: float, fd: float, desired: Tupl
     if min_x > max_x or min_y > max_y:
         return []
     clamped = (max(min_x, min(max_x, desired[0])), max(min_y, min(max_y, desired[1])))
-    values = [clamped]
+    values = [
+        clamped,
+        (min_x, min_y), (min_x, max_y), (max_x, min_y), (max_x, max_y),
+        (clamped[0], min_y), (clamped[0], max_y),
+        (min_x, clamped[1]), (max_x, clamped[1]),
+    ]
     step = max(0.18, min(fw, fd) / 3.0)
     y = min_y
     while y <= max_y + EPS:
@@ -350,7 +355,7 @@ def _wall_candidate_centers(
     if side in {"west", "east"}:
         fixed = min_x if side == "west" else max_x
         preferred = max(min_y, min(max_y, desired[1]))
-        values = [(fixed, preferred)]
+        values = [(fixed, preferred), (fixed, min_y), (fixed, max_y)]
         step = max(0.18, min(fw, fd) / 3.0)
         cursor = min_y
         while cursor <= max_y + EPS:
@@ -359,7 +364,7 @@ def _wall_candidate_centers(
     else:
         fixed = min_y if side == "south" else max_y
         preferred = max(min_x, min(max_x, desired[0]))
-        values = [(preferred, fixed)]
+        values = [(preferred, fixed), (min_x, fixed), (max_x, fixed)]
         step = max(0.18, min(fw, fd) / 3.0)
         cursor = min_x
         while cursor <= max_x + EPS:
@@ -417,6 +422,35 @@ def _door_clearance_boxes(
     return result
 
 
+def _window_clearance_boxes(
+    floor: Dict[str, Any], rid: str, rooms: Dict[str, Dict[str, Any]]
+) -> List[Tuple[float, float, float, float]]:
+    """Keep tall/headboard-backed furniture off glazed wall openings."""
+    result = []
+    room = rooms.get(str(rid))
+    if not room:
+        return result
+    x0, y0, x1, y1 = _room_box(room)
+    for window in floor.get("windows", []):
+        direct_room = str(window.get("room_id") or window.get("roomId") or "")
+        if direct_room != str(rid):
+            continue
+        pos, width = _position(window), _number(window.get("width"), 1.2)
+        side = min(
+            ((abs(pos["y"] - y0), "south"), (abs(pos["y"] - y1), "north"),
+             (abs(pos["x"] - x0), "west"), (abs(pos["x"] - x1), "east")),
+            key=lambda pair: pair[0],
+        )[1]
+        half_width = width / 2.0 + 0.12
+        depth = 0.45
+        if side == "south": zone = (pos["x"] - half_width, y0, pos["x"] + half_width, min(y1, y0 + depth))
+        elif side == "north": zone = (pos["x"] - half_width, max(y0, y1 - depth), pos["x"] + half_width, y1)
+        elif side == "west": zone = (x0, pos["y"] - half_width, min(x1, x0 + depth), pos["y"] + half_width)
+        else: zone = (max(x0, x1 - depth), pos["y"] - half_width, x1, pos["y"] + half_width)
+        result.append((max(x0, zone[0]), max(y0, zone[1]), min(x1, zone[2]), min(y1, zone[3])))
+    return result
+
+
 def _stair_clearance_boxes(
     floor: Dict[str, Any], rid: str, rooms: Dict[str, Dict[str, Any]]
 ) -> List[Tuple[float, float, float, float]]:
@@ -442,6 +476,8 @@ def _stair_clearance_boxes(
 
 
 def _is_optional_furniture(item: Dict[str, Any]) -> bool:
+    if str(item.get("category", "")).strip().lower() == "vehicle":
+        return False
     value = " ".join(
         str(item.get(key, "")).lower()
         for key in ("category", "asset", "asset_id", "type", "id")
@@ -449,7 +485,9 @@ def _is_optional_furniture(item: Dict[str, Any]) -> bool:
     return any(token in value for token in (
         "coffee_table", "coffee table", "side_table", "side table",
         "nightstand", "bedside", "armchair", "decor", "ottoman",
-        "tv_cabinet", "console", "bookshelf",
+        "tv_cabinet", "console", "bookshelf", "dining_chair",
+        "dining chair", "kitchen_island", "kitchen island",
+        "shower",
     ))
 
 
@@ -474,7 +512,32 @@ def _repair_furniture(
     occupied: Dict[str, List[Tuple[Tuple[float, float, float, float], Dict[str, Any]]]] = defaultdict(list)
     seen: set[str] = set()
     valid_items: List[Dict[str, Any]] = []
-    for index, item in enumerate(floor.get("furniture", [])):
+    preserve_source_order = bool(floor.pop("_preserve_furniture_order", False))
+    source_items = list(enumerate(floor.get("furniture", [])))
+    # Reserve circulation-safe positions for essential fixtures first. Optional
+    # chairs/tables can then fill the remaining space or be omitted cleanly.
+    if not preserve_source_order:
+        def placement_priority(item: Dict[str, Any]) -> int:
+            """Place constrained wall storage before movable room furniture.
+
+            A wardrobe has only four narrow wall runs available, while a bed can
+            use the remaining wall and move along it.  Placing the bed first can
+            consume the only wardrobe run even in an otherwise adequate room.
+            """
+            if _is_optional_furniture(item):
+                return 4
+            category = str(item.get("category", "")).strip().lower()
+            if category in {"wardrobe", "closet", "cabinet"}:
+                return 0
+            if category in {"bed"}:
+                return 2
+            return 1
+
+        source_items.sort(key=lambda pair: (
+            placement_priority(pair[1]) if isinstance(pair[1], dict) else 3,
+            pair[0],
+        ))
+    for index, item in source_items:
         if not isinstance(item, dict):
             report["critical_errors"].append(f"Floor {floor.get('id')}: invalid furniture entry")
             continue
@@ -496,32 +559,75 @@ def _repair_furniture(
         item["dimensions"] = _dimensions(item)
         pos = _position(item)
         pos["z"] = _position(room)["z"]
-        fw, fd = _rotated_footprint(item)
         door_clearances = _door_clearance_boxes(floor, rid, rooms)
+        window_clearances = _window_clearance_boxes(floor, rid, rooms)
         stair_clearances = _stair_clearance_boxes(floor, rid, rooms)
         chosen = None
         anchor_side = _wall_side(item.get("anchor_wall"))
         lock_to_wall = str(item.get("placement_hint", "")).lower() in {
             "wall", "wall_backed", "wall_exact",
         }
-        candidates = (
-            _wall_candidate_centers(room, fw, fd, (pos["x"], pos["y"]), anchor_side)
-            if anchor_side and lock_to_wall else
-            _candidate_centers(room, fw, fd, (pos["x"], pos["y"]))
-        )
-        for cx, cy in candidates:
-            box = (cx - fw / 2, cy - fd / 2, cx + fw / 2, cy + fd / 2)
-            furniture_collision = any(
-                _boxes_overlap(box, other_box, FURNITURE_GAP)
-                and not _allows_integrated_overlap(item, other_item)
-                for other_box, other_item in occupied[rid]
+        original_rotation = item["rotation"]
+        placement_options = [(original_rotation, anchor_side)]
+        window_fallback = None
+        rotatable_categories = {
+            "dining_table", "kitchen_island", "kitchen_counter", "desk", "table", "sofa",
+        }
+        if lock_to_wall and anchor_side and str(item.get("placement_hint", "")).lower() != "wall_exact":
+            side_angle = {"north": 0.0, "west": 90.0, "south": 180.0, "east": 270.0}
+            base_angle = side_angle[anchor_side]
+            for alternate_side in ("north", "east", "south", "west"):
+                if alternate_side == anchor_side:
+                    continue
+                alternate_rotation = (
+                    original_rotation + side_angle[alternate_side] - base_angle
+                ) % 360.0
+                placement_options.append((alternate_rotation, alternate_side))
+        elif not lock_to_wall and str(item.get("category", "")).lower() in rotatable_categories:
+            perpendicular = (original_rotation + 90.0) % 360.0
+            if perpendicular != original_rotation:
+                placement_options.append((perpendicular, anchor_side))
+
+        for rotation, candidate_side in placement_options:
+            item["rotation"] = rotation
+            fw, fd = _rotated_footprint(item)
+            candidates = (
+                _wall_candidate_centers(room, fw, fd, (pos["x"], pos["y"]), candidate_side)
+                if candidate_side and lock_to_wall else
+                _candidate_centers(room, fw, fd, (pos["x"], pos["y"]))
             )
-            door_collision = any(_boxes_overlap(box, other, FURNITURE_GAP) for other in door_clearances)
-            stair_collision = any(_boxes_overlap(box, other, FURNITURE_GAP) for other in stair_clearances)
-            if not furniture_collision and not door_collision and not stair_collision:
-                chosen = (cx, cy, box)
+            for cx, cy in candidates:
+                box = (cx - fw / 2, cy - fd / 2, cx + fw / 2, cy + fd / 2)
+                furniture_collision = any(
+                    _boxes_overlap(box, other_box, FURNITURE_GAP)
+                    and not _allows_integrated_overlap(item, other_item)
+                    for other_box, other_item in occupied[rid]
+                )
+                door_collision = any(_boxes_overlap(box, other, FURNITURE_GAP) for other in door_clearances)
+                category = str(item.get("category", "")).strip().lower()
+                window_collision = (
+                    category in {"bed", "wardrobe", "closet", "bookshelf"}
+                    and any(_boxes_overlap(box, other, 0.02) for other in window_clearances)
+                )
+                stair_collision = any(_boxes_overlap(box, other, FURNITURE_GAP) for other in stair_clearances)
+                if (
+                    window_collision and not furniture_collision
+                    and not door_collision and not stair_collision
+                    and window_fallback is None
+                ):
+                    window_fallback = (cx, cy, box, rotation, candidate_side)
+                if not furniture_collision and not door_collision and not window_collision and not stair_collision:
+                    chosen = (cx, cy, box, rotation, candidate_side)
+                    break
+            if chosen is not None:
                 break
+        if chosen is None and window_fallback is not None:
+            chosen = window_fallback
+            report["warnings"].append(
+                f"Furniture '{fid}' overlaps a window wall because no other collision-free wall is available."
+            )
         if chosen is None:
+            item["rotation"] = original_rotation
             if _is_optional_furniture(item):
                 report["repairs"].append(
                     f"Removed optional furniture '{fid}' because it cannot fit without blocking circulation."
@@ -532,7 +638,17 @@ def _repair_furniture(
             )
             valid_items.append(item)
             continue
-        cx, cy, box = chosen
+        cx, cy, box, chosen_rotation, chosen_side = chosen
+        if abs(chosen_rotation - original_rotation) > 0.01:
+            report["repairs"].append(
+                f"Rotated furniture '{fid}' to {chosen_rotation:.0f} degrees to fit room '{rid}'."
+            )
+        item["rotation"] = chosen_rotation
+        if chosen_side and chosen_side != anchor_side:
+            item["anchor_wall"] = chosen_side
+            report["repairs"].append(
+                f"Moved furniture '{fid}' to the {chosen_side} wall to preserve door clearance."
+            )
         if abs(cx - pos["x"]) > 0.01 or abs(cy - pos["y"]) > 0.01:
             report["repairs"].append(f"Moved furniture '{fid}' inside room '{rid}'.")
         item["position"] = {"x": cx, "y": cy, "z": pos["z"]}
@@ -570,6 +686,7 @@ def _validate_floor_geometry(
     graph = {str(room["id"]): set() for room in room_values}
     entrance_room = None
     walls_by_id = {str(wall.get("id")): wall for wall in floor.get("walls", []) if isinstance(wall, dict)}
+    interior_door_pairs: List[Tuple[str, str]] = []
     for door in floor.get("doors", []):
         dtype = str(door.get("type", "")).lower()
         rid = str(door.get("room_id") or door.get("roomId") or "")
@@ -584,6 +701,45 @@ def _validate_floor_geometry(
         if len(connected) >= 2:
             for first in connected:
                 graph[first].update(value for value in connected if value != first)
+            interior_door_pairs.append((connected[0], connected[1]))
+
+    def is_bathroom(room_id: str) -> bool:
+        return "bath" in str(rooms.get(room_id, {}).get("type", "")).lower()
+
+    for first, second in interior_door_pairs:
+        if is_bathroom(first) and is_bathroom(second):
+            report["critical_errors"].append(
+                f"Bathrooms '{first}' and '{second}' must not connect directly."
+            )
+
+    for room in room_values:
+        if str(room.get("access", "")).lower() != "ensuite_only":
+            continue
+        ensuite_id = str(room["id"])
+        owner_id = str(room.get("ensuite_for_room_id", ""))
+        if owner_id not in graph:
+            report["critical_errors"].append(
+                f"Ensuite '{ensuite_id}' references missing bedroom '{owner_id}'."
+            )
+            continue
+        direct_count = sum(
+            1 for first, second in interior_door_pairs
+            if {first, second} == {ensuite_id, owner_id}
+        )
+        if direct_count != 1:
+            report["critical_errors"].append(
+                f"Ensuite '{ensuite_id}' requires exactly one direct door to bedroom '{owner_id}'."
+            )
+        other_access = graph[ensuite_id] - {owner_id}
+        if other_access:
+            report["critical_errors"].append(
+                f"Ensuite '{ensuite_id}' must be private to bedroom '{owner_id}', not connected to {sorted(other_access)}."
+            )
+        owner = rooms[owner_id]
+        if str(owner.get("ensuite_id", "")) != ensuite_id:
+            report["critical_errors"].append(
+                f"Bedroom '{owner_id}' and ensuite '{ensuite_id}' have inconsistent ownership metadata."
+            )
 
     start = entrance_room if entrance_room in graph else next(iter(graph))
     visited, pending = set(), [start]

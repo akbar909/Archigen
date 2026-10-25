@@ -17,7 +17,9 @@ if BACKEND_ROOT not in sys.path:
 from utils.architectural_preflight import validate_and_repair_design
 from utils.architectural_refinement import apply_targeted_refinement
 from utils.blender_service import adapt_gemini_to_blender_layout
+from utils.gemini import generate_home_design
 from utils.layout_engine import ArchitecturalLayoutEngine
+from utils.wizard_constraints import build_wizard_layout_constraints
 
 
 SCENARIOS = [
@@ -31,17 +33,59 @@ SCENARIOS = [
     ("four_floor_vertical_core", ["living_room", "kitchen", "bedroom", "bedroom", "bedroom", "bathroom", "bathroom", "home_office"], (18, 24), 4),
     ("wide_plot_variant", ["garage", "living_room", "dining_room", "kitchen", "bedroom", "bathroom"], (22, 16), 1),
     ("deterministic_repeat", ["living_room", "kitchen", "bedroom", "bathroom"], (14, 18), 1),
+    ("balanced_two_storey_wizard", [], (12.19, 18.29), 2),
 ]
 
 
 def make_layout(name, room_types, plot, floors):
-    requirements = {
-        "project_name": name,
-        "plot": {"width": plot[0], "depth": plot[1]},
-        "floors": floors,
-        "rooms": [{"id": f"{name}_room_{index}", "type": room_type} for index, room_type in enumerate(room_types, 1)],
-    }
-    design = ArchitecturalLayoutEngine(unit="meters").generate_layout(requirements)
+    if name == "balanced_two_storey_wizard":
+        wizard = {
+            "plot": {
+                "width": "40", "length": "60", "unit": "ft", "floors": 2,
+                "buildingType": "house", "orientation": "north", "roadAccess": "front",
+                "coverage": "60", "setbacks": {"front": "10", "rear": "6", "left": "4", "right": "4"},
+            },
+            "design": {
+                "architecturalStyle": "modern", "roofType": "flat", "exteriorColor": "white",
+                "wallMaterial": "plaster", "interiorStyle": "contemporary", "flooringMaterial": "tile",
+                "furniture": "fully_furnished", "designPriority": "balanced", "budget": "standard",
+            },
+            "rooms": [
+                {"type": "living_room", "count": 1, "floor": 0, "preferredSize": "large", "preferredLocation": "front"},
+                {"type": "drawing_room", "count": 1, "floor": 0, "preferredSize": "medium", "preferredLocation": "front"},
+                {"type": "dining_room", "count": 1, "floor": 0},
+                {"type": "kitchen", "count": 1, "floor": 0, "preferredSize": "medium", "preferredLocation": "back"},
+                {"type": "master_bedroom", "count": 1, "floor": 0, "preferredSize": "large", "preferredLocation": "back", "attachedBathroom": True},
+                {"type": "bathroom", "count": 1, "floor": 0, "preferredSize": "small"},
+                {"type": "garage", "count": 1, "floor": 0, "preferredSize": "medium", "preferredLocation": "front"},
+                {"type": "storage_room", "count": 1, "floor": 0, "preferredSize": "small"},
+                {"type": "bedroom", "count": 3, "floor": 1, "preferredSize": "medium", "attachedBathroom": True},
+                {"type": "study_room", "count": 1, "floor": 1, "preferredSize": "medium", "preferredLocation": "front"},
+                {"type": "prayer_room", "count": 1, "floor": 1, "preferredSize": "small"},
+                {"type": "laundry_room", "count": 1, "floor": 1, "preferredSize": "small", "preferredLocation": "back"},
+                {"type": "balcony", "count": 1, "floor": 1, "preferredSize": "medium", "preferredLocation": "front"},
+                {"type": "terrace", "count": 1, "floor": 1, "preferredSize": "medium", "preferredLocation": "back"},
+            ],
+            "features": {
+                "front_garden": True, "boundary_wall": True, "entrance_gate": True,
+                "car_parking": True, "exterior_lighting": True, "solar_panels": True,
+            },
+            "featureConfigs": {"car_parking": {"parkingSpaces": 1}},
+            "specialRequirements": "",
+        }
+        design = generate_home_design(
+            "Balanced two-storey wizard integration test",
+            constraints_prompt="Ground + 1 Floor",
+            layout_constraints=build_wizard_layout_constraints(wizard),
+        )
+    else:
+        requirements = {
+            "project_name": name,
+            "plot": {"width": plot[0], "depth": plot[1]},
+            "floors": floors,
+            "rooms": [{"id": f"{name}_room_{index}", "type": room_type} for index, room_type in enumerate(room_types, 1)],
+        }
+        design = ArchitecturalLayoutEngine(unit="meters").generate_layout(requirements)
     if name == "same_wall_openings":
         floor = design["floors"][0]
         source = floor["doors"][0]
@@ -74,7 +118,7 @@ def main():
     start = max(0, min(args.start - 1, end - 1))
     scenarios = SCENARIOS[start:end]
 
-    with tempfile.TemporaryDirectory(prefix="archigen_blender_test_") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=".archigen_blender_test_", dir=REPO_ROOT) as temp_dir:
         for index, (name, rooms, plot, floors) in enumerate(scenarios, start + 1):
             layout = make_layout(name, rooms, plot, floors)
             input_path = os.path.join(temp_dir, f"{name}.json")
@@ -82,12 +126,17 @@ def main():
             with open(input_path, "w", encoding="utf-8") as handle:
                 json.dump(layout, handle)
             print(f"[{index}/{end}] {name}: Blender generation started", flush=True)
+            process_env = os.environ.copy()
+            process_env["TEMP"] = temp_dir
+            process_env["TMP"] = temp_dir
+            process_env["TMPDIR"] = temp_dir
             process = subprocess.run(
                 [args.blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python", generate_script,
                  "--", "--input", input_path, "--output", output_path],
                 capture_output=True,
                 text=True,
-                timeout=240,
+                timeout=600,
+                env=process_env,
             )
             if process.returncode != 0:
                 raise RuntimeError(f"{name}: Blender failed\n{process.stdout[-3000:]}\n{process.stderr[-3000:]}")

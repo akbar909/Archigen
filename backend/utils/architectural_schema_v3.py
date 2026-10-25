@@ -30,7 +30,8 @@ VALID_ROOM_TYPES = [
     "living_room", "bedroom", "master_bedroom", "guest_room", "kitchen",
     "dining_room", "bathroom", "master_bathroom", "powder_room",
     "home_office", "hallway", "corridor", "foyer", "laundry", "garage",
-    "balcony", "terrace", "pantry", "closet"
+    "balcony", "terrace", "pantry", "closet", "drawing_room",
+    "prayer_room", "storage_room", "servant_room", "garden", "stair_lobby"
 ]
 
 VALID_ORIENTATIONS = ["north", "south", "east", "west"]
@@ -40,11 +41,13 @@ VALID_ROOF_TYPES = ["flat", "parapet", "gable", "hip", "shed"]
 # Minimum room dimensions in meters [width, depth]
 MIN_ROOM_DIMENSIONS = {
     "living_room": (3.6, 3.6),
-    "bedroom": (3.0, 3.0),
-    "master_bedroom": (3.6, 3.8),
+    # These spans include a usable door approach and furniture circulation,
+    # not just the bare object footprint.
+    "bedroom": (3.6, 3.6),
+    "master_bedroom": (3.8, 3.8),
     "guest_room": (2.8, 3.0),
-    "kitchen": (2.4, 2.7),
-    "dining_room": (2.7, 3.0),
+    "kitchen": (3.0, 3.0),
+    "dining_room": (3.0, 3.2),
     "bathroom": (1.5, 2.0),
     "master_bathroom": (1.8, 2.4),
     "powder_room": (1.2, 1.4),
@@ -53,10 +56,20 @@ MIN_ROOM_DIMENSIONS = {
     "corridor": (1.0, 2.0),
     "foyer": (1.5, 1.8),
     "laundry": (1.5, 1.8),
-    "garage": (3.2, 5.5),
-    "balcony": (1.2, 2.4),
+    # A standard single-car bay is 5.0 m deep; longer vehicles can request a
+    # large garage. Keeping the standard minimum at 5.0 m leaves room for an
+    # explicit circulation hall in dense residential programs.
+    "garage": (3.2, 4.9),
+    "balcony": (1.5, 2.4),
     "pantry": (1.2, 1.5),
     "closet": (1.2, 1.5),
+    "drawing_room": (3.2, 3.2),
+    "prayer_room": (2.0, 2.4),
+    "storage_room": (1.5, 1.8),
+    "servant_room": (2.7, 3.0),
+    "garden": (2.0, 2.4),
+    "terrace": (1.5, 2.4),
+    "stair_lobby": (2.7, 4.0),
 }
 
 # ─── Architectural JSON Schema v3.0 (Draft-07) ────────────────────────────────

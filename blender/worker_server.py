@@ -18,6 +18,7 @@ import time
 import uuid
 import hashlib
 import subprocess
+import tempfile
 from typing import Optional
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -45,6 +46,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Configuration from environment
 PORT = int(os.getenv("PORT", 5001))
 BLENDER_BIN = os.getenv("BLENDER_BIN", "blender")
+BLENDER_GENERATION_TIMEOUT_SECONDS = int(os.getenv("BLENDER_GENERATION_TIMEOUT_SECONDS", "600"))
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_S3_PUBLIC_BASE_URL = os.getenv("AWS_S3_PUBLIC_BASE_URL", "")
@@ -155,6 +157,7 @@ def generate_house_endpoint():
     cmd = [
         BLENDER_BIN,
         "--background",
+        "--factory-startup",
         "--python-exit-code", "1",
         "--python", GENERATE_SCRIPT,
         "--",
@@ -165,7 +168,21 @@ def generate_house_endpoint():
     print(f"[WORKER] Starting Blender generation for {house_id}...")
     start_time = time.time()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+        # Keep Blender's texture-export scratch files on the worker volume. On
+        # Windows and hardened containers, the process-global temp directory can
+        # be inaccessible during glTF cleanup and otherwise looks like a timeout.
+        with tempfile.TemporaryDirectory(prefix=f"{house_id}_", dir=OUTPUT_DIR) as blender_temp:
+            process_env = os.environ.copy()
+            process_env["TEMP"] = blender_temp
+            process_env["TMP"] = blender_temp
+            process_env["TMPDIR"] = blender_temp
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=BLENDER_GENERATION_TIMEOUT_SECONDS,
+                env=process_env,
+            )
         elapsed_ms = int((time.time() - start_time) * 1000)
 
         if proc.returncode != 0:
@@ -177,7 +194,9 @@ def generate_house_endpoint():
             }), 500
 
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "Blender generation timed out (limit: 240s)"}), 504
+        return jsonify({
+            "error": f"Blender generation timed out (limit: {BLENDER_GENERATION_TIMEOUT_SECONDS}s)"
+        }), 504
     except Exception as e:
         return jsonify({"error": f"Failed to execute Blender: {str(e)}"}), 500
 

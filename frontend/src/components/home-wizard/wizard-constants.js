@@ -19,7 +19,6 @@ export const ROOM_TYPES = [
   { id: 'laundry_room', label: 'Laundry Room', icon: '🧺', category: 'utility', maxCount: 1 },
   { id: 'storage_room', label: 'Storage Room', icon: '📦', category: 'utility', maxCount: 2 },
   { id: 'servant_room', label: 'Servant Room', icon: '🏠', category: 'special', maxCount: 2 },
-  { id: 'garden', label: 'Garden', icon: '🌿', category: 'outdoor', maxCount: 2 },
   { id: 'terrace', label: 'Terrace', icon: '☀️', category: 'outdoor', maxCount: 2 },
 ]
 
@@ -145,16 +144,11 @@ export const EXTRA_FEATURES = [
   { id: 'back_garden', label: 'Back Garden', icon: '🌿' },
   { id: 'boundary_wall', label: 'Boundary Wall', icon: '🧱' },
   { id: 'entrance_gate', label: 'Entrance Gate', icon: '🚪' },
-  { id: 'car_parking', label: 'Car Parking', icon: '🅿️', hasConfig: true, configLabel: 'Number of vehicles', configKey: 'parkingSpaces', configDefault: 1, configMax: 4 },
+  { id: 'car_parking', label: 'Open Parking / Carport', icon: '🅿️', hasConfig: true, configLabel: 'Number of vehicles', configKey: 'parkingSpaces', configDefault: 1, configMax: 4 },
   { id: 'swimming_pool', label: 'Swimming Pool', icon: '🏊' },
-  { id: 'rooftop_terrace', label: 'Rooftop Terrace', icon: '🌇' },
-  { id: 'balcony', label: 'Balcony', icon: '🌅' },
   { id: 'outdoor_seating', label: 'Outdoor Seating', icon: '🪑' },
   { id: 'exterior_lighting', label: 'Exterior Lighting', icon: '💡' },
   { id: 'solar_panels', label: 'Solar Panels', icon: '☀️' },
-  { id: 'storage_area', label: 'Storage Area', icon: '📦' },
-  { id: 'laundry_area', label: 'Laundry Area', icon: '🧺' },
-  { id: 'servant_quarters', label: 'Servant Quarters', icon: '🏠' },
 ]
 
 // ── Wizard steps ──

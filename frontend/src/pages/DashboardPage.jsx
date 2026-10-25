@@ -7,6 +7,7 @@ import ChatInput from '../components/ChatInput'
 import StatsRow from '../components/StatsRow'
 import JsonViewer from '../components/JsonViewer'
 import HomeWizard from '../components/home-wizard/HomeWizard'
+import { DEFAULT_WIZARD_STATE } from '../components/home-wizard/wizard-constants'
 import { useAuthStore, useProjectStore } from '../store'
 import { Sparkles, MessageSquare } from 'lucide-react'
 
@@ -20,6 +21,7 @@ export default function DashboardPage() {
     activeVersionId,
     design,
     loading,
+    isVersionLoading,
     activeTab,
     loadProjectsList,
     selectProject,
@@ -31,6 +33,11 @@ export default function DashboardPage() {
   const [wizardActive, setWizardActive] = useState(true)
   // Track modal wizard when viewing an existing 3D design
   const [showWizardModal, setShowWizardModal] = useState(false)
+  // Keep wizard entries for this page session. They reset only when the page
+  // itself is refreshed, not when generation fails or the wizard is closed.
+  const [wizardDraft, setWizardDraft] = useState(() =>
+    structuredClone(DEFAULT_WIZARD_STATE)
+  )
 
   useEffect(() => {
     if (isAuthed) {
@@ -79,11 +86,12 @@ export default function DashboardPage() {
   }, [design, projects])
 
   const handleGenerate = async (params) => {
-    setShowWizardModal(false)
     const result = await generate(params)
     if (result?.projectId && result?.versionId) {
+      setShowWizardModal(false)
       navigate(`/app/projects/${result.projectId}/versions/${result.versionId}`)
     }
+    return result
   }
 
   const handleOpenWizard = () => {
@@ -106,8 +114,38 @@ export default function DashboardPage() {
 
         {/* Content Area */}
         <div className="content-area" style={{ position: 'relative' }}>
-          {/* No Design loaded & not loading */}
-          {!design && !loading && (
+          {/* Loading State when switching versions or generating */}
+          {(isVersionLoading || (loading && (!wizardActive || design))) && (
+            <div className="empty-state">
+              <div style={{ fontSize: '2.5rem', animation: 'pulse-dot 1.5s ease-in-out infinite' }}>⚡</div>
+              <div className="empty-state-title">
+                {isVersionLoading ? 'Loading design layout…' : 'Generating your architectural layout…'}
+              </div>
+              <div className="empty-state-sub">
+                {isVersionLoading
+                  ? 'Retrieving 3D geometry and room specifications.'
+                  : 'Calculating room geometry, openings, and furniture placement.'}
+              </div>
+              {/* Loading skeleton */}
+              <div style={{ width: '100%', maxWidth: 600, marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[100, 80, 65].map((w) => (
+                  <div
+                    key={w}
+                    style={{
+                      height: 14,
+                      borderRadius: 7,
+                      width: `${w}%`,
+                      background: 'var(--bg-secondary)',
+                      animation: 'pulse-dot 1.5s ease-in-out infinite',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* No Design loaded & not loading anything */}
+          {!design && !loading && !isVersionLoading && !activeVersionId && (
             <>
               {wizardActive ? (
                 <div className="flex flex-col flex-1 h-full min-h-0 w-full overflow-hidden">
@@ -115,6 +153,8 @@ export default function DashboardPage() {
                     <HomeWizard
                       onGenerate={handleGenerate}
                       loading={loading}
+                      initialState={wizardDraft}
+                      onStateChange={setWizardDraft}
                       onSwitchToPrompt={() => setWizardActive(false)}
                     />
                   </div>
@@ -156,32 +196,8 @@ export default function DashboardPage() {
             </>
           )}
 
-          {/* Loading State */}
-          {loading && (
-            <div className="empty-state">
-              <div style={{ fontSize: '2.5rem', animation: 'pulse-dot 1.5s ease-in-out infinite' }}>⚡</div>
-              <div className="empty-state-title">Generating your architectural layout…</div>
-              <div className="empty-state-sub">Calculating room geometry, openings, and furniture placement.</div>
-              {/* Loading skeleton */}
-              <div style={{ width: '100%', maxWidth: 600, marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[100, 80, 65].map((w) => (
-                  <div
-                    key={w}
-                    style={{
-                      height: 14,
-                      borderRadius: 7,
-                      width: `${w}%`,
-                      background: 'var(--bg-secondary)',
-                      animation: 'pulse-dot 1.5s ease-in-out infinite',
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Loaded Design (3D Viewer / JSON) */}
-          {design && !loading && (
+          {design && !loading && !isVersionLoading && (
             <div className="viewer-stage-container fade-up" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
               {activeTab === 'json' && (
                 <div style={{ marginBottom: 6, flexShrink: 0 }}>
@@ -220,6 +236,8 @@ export default function DashboardPage() {
             <HomeWizard
               onGenerate={handleGenerate}
               loading={loading}
+              initialState={wizardDraft}
+              onStateChange={setWizardDraft}
               onClose={() => setShowWizardModal(false)}
             />
           </div>

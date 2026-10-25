@@ -25,6 +25,7 @@ from utils.architectural_validator import ArchitecturalValidator
 from utils.architectural_preflight import validate_and_repair_design
 from utils.architectural_refinement import apply_targeted_refinement, is_explicit_full_redesign
 from utils.architectural_schema_v3 import validate_schema_v3
+from utils.wizard_constraints import build_prompt_layout_constraints, build_wizard_layout_constraints
 
 
 
@@ -92,6 +93,11 @@ def generate_version(project_id: str):
     style  = data.get("style", project.get("style", "modern"))
     base_version_id = data.get("base_version_id")
 
+    try:
+        wizard_constraints = build_wizard_layout_constraints(data.get("wizard"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if not prompt:
         return jsonify({"error": "'prompt' is required"}), 400
 
@@ -121,8 +127,17 @@ def generate_version(project_id: str):
             sort=[("version_num", -1)]
         )
 
-    prompt_constraints = infer_layout_constraints(prompt)
-    replace_room_program = bool(prompt_constraints.get("replace_room_program"))
+    try:
+        structured_prompt_constraints = (
+            None if wizard_constraints else build_prompt_layout_constraints(prompt)
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    prompt_constraints = structured_prompt_constraints or infer_layout_constraints(prompt)
+    effective_layout_constraints = wizard_constraints or structured_prompt_constraints
+    replace_room_program = bool(
+        wizard_constraints or prompt_constraints.get("replace_room_program")
+    )
 
     design = None
     refinement_report = None
@@ -177,6 +192,7 @@ def generate_version(project_id: str):
                 generation_prompt,
                 timeout=120,
                 constraints_prompt=prompt,
+                layout_constraints=effective_layout_constraints,
             )
         except GeminiTemporaryUnavailableError as exc:
             return jsonify({"success": False, "error": str(exc)}), 503
@@ -253,6 +269,11 @@ def generate_design_legacy():
     style  = data.get("style", "modern")
     timeout = data.get("timeout", 120)
 
+    try:
+        wizard_constraints = build_wizard_layout_constraints(data.get("wizard"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if not prompt:
         return jsonify({"error": "'prompt' is required and must be a non-empty string."}), 400
 
@@ -260,10 +281,18 @@ def generate_design_legacy():
         timeout = 120
 
     try:
+        structured_prompt_constraints = (
+            None if wizard_constraints else build_prompt_layout_constraints(prompt)
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+    try:
         design = generate_home_design(
             build_generation_prompt(prompt, style=style),
             timeout=timeout,
             constraints_prompt=prompt,
+            layout_constraints=wizard_constraints or structured_prompt_constraints,
         )
     except GeminiTemporaryUnavailableError as exc:
         return jsonify({"success": False, "error": str(exc)}), 503

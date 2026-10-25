@@ -11,7 +11,11 @@ from utils.gemini_schema import HOME_DESIGN_SCHEMA, VALID_FURNITURE_ASSETS
 from utils.layout_engine import ArchitecturalLayoutEngine
 
 
-def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str, Any]:
+def _normalize_design(
+    design: dict[str, Any],
+    user_prompt: str = "",
+    layout_constraints: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Ensure design has all required fields, valid coordinates, and character metadata.
     Supports both old format (room-level furniture/doors/windows) and new format (top-level)."""
     if not isinstance(design, dict):
@@ -200,7 +204,11 @@ def _normalize_design(design: dict[str, Any], user_prompt: str = "") -> dict[str
     # constructor default is feet, which used to convert an 11 m plot as if it
     # were 11 ft and then silently expand it to its fallback minimum.
     engine = ArchitecturalLayoutEngine(unit="meters")
-    design = engine.solve_or_refine_design(design, user_prompt)
+    design = engine.solve_or_refine_design(
+        design,
+        user_prompt,
+        constraints_override=layout_constraints,
+    )
 
     # Floors are the canonical source for both renderers.  Preflight synchronizes
     # compatibility views, repairs safe transform issues, and records any
@@ -295,5 +303,4 @@ def _validate_home_design_schema(design: dict[str, Any], user_prompt: str = "") 
                 errors.append(f"Furniture '{f.get('id', '?')}' references non-existent room '{f['roomId']}'")
 
     return len(errors) == 0, errors
-
 

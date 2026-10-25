@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Footprints,
   Grid3X3,
@@ -16,6 +16,7 @@ import {
   Building2,
   Eye,
   EyeOff,
+  ChevronDown,
 } from 'lucide-react'
 
 import RoomNavigator from './RoomNavigator'
@@ -74,6 +75,27 @@ export default function ViewerOverlay({
   ]
 
 
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
+  const viewMenuRef = useRef(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (viewMenuRef.current && !viewMenuRef.current.contains(event.target)) {
+        setIsViewMenuOpen(false)
+      }
+    }
+    if (isViewMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isViewMenuOpen])
+
+  const currentModeObj = viewModes.find((m) => m.id === viewMode) || viewModes[0]
+  const CurrentIcon = currentModeObj.icon
+
   return (
     <>
       {/* ── Top Left Controls: Responsive Navigation & Layer Bar ── */}
@@ -85,58 +107,106 @@ export default function ViewerOverlay({
           display: 'flex',
           gap: 6,
           alignItems: 'center',
-          zIndex: 10,
-          flexWrap: 'wrap',
-          maxWidth: 'calc(100% - 150px)',
+          zIndex: 20,
           pointerEvents: 'auto',
         }}
       >
-        {/* Navigation Mode Bar: Only displayed once 3D model is rendered in Three.js scene */}
+        {/* Compact View Mode Dropdown */}
         {is3DReady && (
-          <div
-            style={{
-              display: 'flex',
-              gap: 2,
-              background: 'rgba(18, 18, 18, 0.92)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: 999,
-              padding: 3,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-              overflowX: 'auto',
-              maxWidth: '100%',
-            }}
-          >
-            {viewModes.map((mode) => {
-              const IconComp = mode.icon
-              const isActive = viewMode === mode.id
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => onModeChange(mode.id)}
-                  title={mode.label}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '5px 10px',
-                    borderRadius: 999,
-                    border: 'none',
-                    background: isActive ? 'var(--accent)' : 'transparent',
-                    color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                    fontSize: '0.74rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <IconComp size={13} />
-                  <span>{mode.label}</span>
-                </button>
-              )
-            })}
+          <div ref={viewMenuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setIsViewMenuOpen((prev) => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(18, 18, 18, 0.92)',
+                backdropFilter: 'blur(16px)',
+                border: isViewMenuOpen ? '1px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: 999,
+                padding: '5px 12px',
+                color: '#ffffff',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <CurrentIcon size={14} className="text-emerald-400" />
+              <span>{currentModeObj.label}</span>
+              <ChevronDown
+                size={13}
+                style={{
+                  transition: 'transform 0.2s ease',
+                  transform: isViewMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  color: 'var(--text-muted)',
+                }}
+              />
+            </button>
+
+            {/* Dropdown Menu Options */}
+            {isViewMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  minWidth: 175,
+                  background: 'rgba(18, 18, 18, 0.96)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: 14,
+                  padding: 4,
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 15px rgba(0,0,0,0.3)',
+                  zIndex: 50,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                }}
+              >
+                {viewModes.map((mode) => {
+                  const IconComp = mode.icon
+                  const isActive = viewMode === mode.id
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => {
+                        onModeChange(mode.id)
+                        setIsViewMenuOpen(false)
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '7px 10px',
+                        borderRadius: 9,
+                        border: 'none',
+                        background: isActive ? 'rgba(16, 163, 127, 0.2)' : 'transparent',
+                        color: isActive ? '#34d399' : 'rgba(255, 255, 255, 0.85)',
+                        fontSize: '0.76rem',
+                        fontWeight: isActive ? 600 : 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.12s ease',
+                        width: '100%',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'transparent'
+                      }}
+                    >
+                      <IconComp size={14} style={{ color: isActive ? '#34d399' : 'var(--text-muted)' }} />
+                      <span>{mode.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -193,8 +263,8 @@ export default function ViewerOverlay({
           </div>
         )}
 
-        {/* Layer Visibility: Roof Toggle (ONLY visible once 3D model is actually rendered) */}
-        {is3DReady && viewMode !== 'plan' && onToggleRoof && (
+        {/* Layer Visibility: Roof Toggle (Visible in all 3D modes including 3D Top-Down Floor Plan) */}
+        {is3DReady && !is2DVectorMode && onToggleRoof && (
           <button
             type="button"
             onClick={onToggleRoof}
@@ -282,157 +352,9 @@ export default function ViewerOverlay({
           </div>
         )}
 
-        {/* Saved cloud model opens directly; regeneration is a separate action. */}
-        {isApproved && (
-        <div
-          style={{
-            display: 'flex',
-            background: 'rgba(18, 18, 18, 0.88)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            borderRadius: 999,
-            padding: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-            alignItems: 'center',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              if (isGenerating3D || is3DLoading) return
-              if (glbUrl) {
-                onViewSourceChange?.('blender')
-                onModeChange?.('dollhouse')
-              } else if (onRegenerate3D) {
-                onRegenerate3D()
-              }
-            }}
-            disabled={isGenerating3D || is3DLoading}
-            title={
-              is3DReady
-                ? 'Open the saved cloud Blender model'
-                : isGenerating3D
-                ? 'Blender 3D is synthesizing in cloud...'
-                : is3DLoading
-                ? 'Rendering 3D model into viewport...'
-                : glbUrl
-                ? 'Open the previously generated cloud model'
-                : 'Generate a new Blender 3D model'
-            }
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 12px',
-              borderRadius: 999,
-              border: 'none',
-              background: is3DReady
-                ? 'rgba(16, 163, 127, 0.18)'
-                : (isGenerating3D || is3DLoading)
-                ? 'rgba(234, 179, 8, 0.2)'
-                : 'rgba(16, 163, 127, 0.35)',
-              color: is3DReady
-                ? '#10a37f'
-                : (isGenerating3D || is3DLoading)
-                ? '#eab308'
-                : '#ffffff',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: (isGenerating3D || is3DLoading) ? 'wait' : 'pointer',
-              transition: 'all 0.15s ease',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {isGenerating3D || is3DLoading ? (
-              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-            ) : (
-              <Sparkles size={13} />
-            )}
-            <span>Blender 3D</span>
-            {isGenerating3D ? (
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '1px 5px',
-                  borderRadius: 999,
-                  background: 'rgba(234, 179, 8, 0.3)',
-                  color: '#eab308',
-                  marginLeft: 2,
-                }}
-              >
-                Rendering…
-              </span>
-            ) : is3DLoading ? (
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '1px 5px',
-                  borderRadius: 999,
-                  background: 'rgba(16, 163, 127, 0.25)',
-                  color: '#10a37f',
-                  marginLeft: 2,
-                }}
-              >
-                Loading 3D…
-              </span>
-            ) : glbUrl ? (
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '1px 5px',
-                  borderRadius: 999,
-                  background: 'rgba(16, 163, 127, 0.25)',
-                  color: '#10a37f',
-                  marginLeft: 2,
-                }}
-              >
-                {is3DReady ? 'HD ✓' : 'View'}
-              </span>
-            ) : (
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '1px 5px',
-                  borderRadius: 999,
-                  background: '#10a37f',
-                  color: '#ffffff',
-                  marginLeft: 2,
-                }}
-              >
-                Generate ⚡
-              </span>
-            )}
-          </button>
-          {glbUrl && is3DReady && onRegenerate3D && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm('Regenerate this model from the approved layout? This can take several minutes.')) {
-                  onRegenerate3D()
-                }
-              }}
-              title="Regenerate the Blender model"
-              aria-label="Regenerate the Blender model"
-              style={{
-                display: 'grid',
-                placeItems: 'center',
-                width: 28,
-                height: 28,
-                border: 'none',
-                borderRadius: '50%',
-                background: 'transparent',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-              }}
-            >
-              <RotateCcw size={13} />
-            </button>
-          )}
-        </div>
-        )}
       </div>
 
-      {/* ── Top Right: Tools + Day/Night + Stats ── */}
+      {/* ── Top Right: Blender 3D Status + Day/Night + Tools ── */}
       <div
         style={{
           position: 'absolute',
@@ -440,10 +362,158 @@ export default function ViewerOverlay({
           right: 12,
           display: 'flex',
           alignItems: 'center',
-          gap: 5,
+          gap: 6,
           zIndex: 10,
         }}
       >
+        {/* Saved cloud model opens directly; regeneration is a separate action. */}
+        {isApproved && (
+          <div
+            style={{
+              display: 'flex',
+              background: 'rgba(18, 18, 18, 0.88)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: 999,
+              padding: 3,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+              alignItems: 'center',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (isGenerating3D || is3DLoading) return
+                if (glbUrl) {
+                  onViewSourceChange?.('blender')
+                  onModeChange?.('dollhouse')
+                } else if (onRegenerate3D) {
+                  onRegenerate3D()
+                }
+              }}
+              disabled={isGenerating3D || is3DLoading}
+              title={
+                is3DReady
+                  ? 'Open the saved cloud Blender model'
+                  : isGenerating3D
+                  ? 'Blender 3D is synthesizing in cloud...'
+                  : is3DLoading
+                  ? 'Rendering 3D model into viewport...'
+                  : glbUrl
+                  ? 'Open the previously generated cloud model'
+                  : 'Generate a new Blender 3D model'
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 12px',
+                borderRadius: 999,
+                border: 'none',
+                background: is3DReady
+                  ? 'rgba(16, 163, 127, 0.18)'
+                  : (isGenerating3D || is3DLoading)
+                  ? 'rgba(234, 179, 8, 0.2)'
+                  : 'rgba(16, 163, 127, 0.35)',
+                color: is3DReady
+                  ? '#10a37f'
+                  : (isGenerating3D || is3DLoading)
+                  ? '#eab308'
+                  : '#ffffff',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: (isGenerating3D || is3DLoading) ? 'wait' : 'pointer',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isGenerating3D || is3DLoading ? (
+                <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <Sparkles size={13} />
+              )}
+              <span>Blender 3D</span>
+              {isGenerating3D ? (
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    padding: '1px 5px',
+                    borderRadius: 999,
+                    background: 'rgba(234, 179, 8, 0.3)',
+                    color: '#eab308',
+                    marginLeft: 2,
+                  }}
+                >
+                  Rendering…
+                </span>
+              ) : is3DLoading ? (
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    padding: '1px 5px',
+                    borderRadius: 999,
+                    background: 'rgba(16, 163, 127, 0.25)',
+                    color: '#10a37f',
+                    marginLeft: 2,
+                  }}
+                >
+                  Loading 3D…
+                </span>
+              ) : glbUrl ? (
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    padding: '1px 5px',
+                    borderRadius: 999,
+                    background: 'rgba(16, 163, 127, 0.25)',
+                    color: '#10a37f',
+                    marginLeft: 2,
+                  }}
+                >
+                  {is3DReady ? 'HD ✓' : 'View'}
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    padding: '1px 5px',
+                    borderRadius: 999,
+                    background: '#10a37f',
+                    color: '#ffffff',
+                    marginLeft: 2,
+                  }}
+                >
+                  Generate ⚡
+                </span>
+              )}
+            </button>
+            {glbUrl && is3DReady && onRegenerate3D && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Regenerate this model from the approved layout? This can take several minutes.')) {
+                    onRegenerate3D()
+                  }
+                }}
+                title="Regenerate the Blender model"
+                aria-label="Regenerate the Blender model"
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  width: 28,
+                  height: 28,
+                  border: 'none',
+                  borderRadius: '50%',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                <RotateCcw size={13} />
+              </button>
+            )}
+          </div>
+        )}
         {/* Mouse Look Direction Toggle Button for Walkthrough */}
         {viewMode === 'walkthrough' && (
           <button

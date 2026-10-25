@@ -15,6 +15,249 @@ from utils.architectural_schema_v3 import (
 )
 
 class RoomPlacementMixin:
+    def _layout_room_grid(
+        self,
+        room_types: List[Dict[str, Any]],
+        bldg_w: float,
+        bldg_d: float,
+        sb_left: float,
+        sb_front: float,
+        floor_idx: int,
+    ) -> List[Dict[str, Any]]:
+        """Pack a large exact room program into contiguous dimensioned bands.
+
+        The specialized residential zoning below is intentionally opinionated
+        and works well for small programs, but historically it kept only the
+        first two rear rooms. This deterministic shelf packer is used for large
+        floors so no wizard-selected room can disappear.
+        """
+        elevation = floor_idx * 3.0
+
+        def minimums(room: Dict[str, Any]) -> Tuple[float, float]:
+            return MIN_ROOM_DIMENSIONS.get(room["type"], (1.5, 1.8))
+
+        # Treat a bedroom and its explicitly attached bathroom as one planning
+        # module. Packing every room independently previously produced a bank of
+        # remote bathrooms and forced nonsensical bathroom-to-bathroom doors.
+        indexed_by_id = {
+            str(room.get("raw", {}).get("id")): (index, room)
+            for index, room in enumerate(room_types)
+            if room.get("raw", {}).get("id")
+        }
+        consumed: set[str] = set()
+        units: List[Dict[str, Any]] = []
+        for index, room in enumerate(room_types):
+            raw = room.get("raw", {})
+            room_id = str(raw.get("id", ""))
+            if room_id and room_id in consumed:
+                continue
+            members = [(index, room)]
+            ensuite_id = str(raw.get("ensuite_id", ""))
+            ensuite_entry = indexed_by_id.get(ensuite_id)
+            if ensuite_entry and ensuite_id not in consumed:
+                members.append(ensuite_entry)
+                consumed.add(ensuite_id)
+            if room_id:
+                consumed.add(room_id)
+            units.append({"members": members, "suite": len(members) == 2})
+
+        def unit_minimum(unit: Dict[str, Any]) -> Tuple[float, float]:
+            members = unit["members"]
+            if unit["suite"]:
+                first_w, first_d = minimums(members[0][1])
+                second_w, second_d = minimums(members[1][1])
+                return first_w + second_w, max(first_d, second_d)
+            return minimums(members[0][1])
+
+        # Tall/deep modules establish bands first; smaller support rooms fill
+        # the remaining width. Location preferences are used to order equal
+        # modules so front-facing spaces remain toward the road-facing bands.
+        location_rank = {"front": 0, "no_preference": 1, "center": 1, "back": 2}
+        circulation_order = {
+            "stair_lobby": 0,
+            "foyer": 1,
+            "living_room": 1,
+            "garage": 2,
+        }
+        ordered = sorted(
+            units,
+            key=lambda unit: (
+                circulation_order.get(unit["members"][0][1]["type"], 3),
+                location_rank.get(
+                    str(unit["members"][0][1].get("raw", {}).get("preferred_location", "no_preference")),
+                    1,
+                ),
+                -unit_minimum(unit)[1],
+                -unit_minimum(unit)[0],
+                unit["members"][0][0],
+            ),
+        )
+        # On bedroom levels, reserve the width beside the stair lobby for one
+        # neutral-location suite before smaller front amenities consume it.
+        # Back-requested suites remain in the private rear zone.
+        if ordered and ordered[0]["members"][0][1]["type"] == "stair_lobby":
+            first_suite = next((
+                index for index, unit in enumerate(ordered[1:], 1)
+                if unit["suite"]
+                and str(unit["members"][0][1].get("raw", {}).get("preferred_location", "no_preference"))
+                in {"", "no_preference", "center"}
+            ), None)
+            if first_suite is not None:
+                ordered.insert(1, ordered.pop(first_suite))
+        rows: List[List[Dict[str, Any]]] = []
+        row_widths: List[float] = []
+        for unit in ordered:
+            min_w, _ = unit_minimum(unit)
+            target = next(
+                (
+                    index for index, used_width in enumerate(row_widths)
+                    if used_width + min_w <= bldg_w + 1e-6
+                ),
+                None,
+            )
+            if target is None:
+                rows.append([unit])
+                row_widths.append(min_w)
+            else:
+                rows[target].append(unit)
+                row_widths[target] += min_w
+
+        # In a rear band containing both kitchen and a bedroom suite, keep the
+        # kitchen on the public-side edge and the suite at the quieter exterior
+        # edge. This gives the kitchen a direct vertical link to dining/drawing
+        # spaces and prevents the bedroom from becoming the route to storage.
+        for row in rows:
+            if any(unit["members"][0][1]["type"] == "kitchen" for unit in row) and any(
+                unit["suite"] for unit in row
+            ):
+                row.sort(key=lambda unit: (unit["suite"], unit["members"][0][0]))
+            row_types = {unit["members"][0][1]["type"] for unit in row}
+            if {"dining_room", "bathroom", "storage_room"} <= row_types:
+                support_order = {
+                    "drawing_room": 0,
+                    "storage_room": 1,
+                    "dining_room": 2,
+                    "bathroom": 3,
+                }
+                row.sort(key=lambda unit: (
+                    support_order.get(unit["members"][0][1]["type"], 2),
+                    unit["members"][0][0],
+                ))
+
+        minimum_depths = [max(unit_minimum(unit)[1] for unit in row) for row in rows]
+        # Dense three-band plans need a real shared circulation strip between
+        # the middle and rear zones. Without it, a spanning-tree door graph has
+        # no choice but to route through a bedroom or utility room.
+        hall_depth = 1.50 if len(rows) >= 3 else 0.0
+        required_depth = sum(minimum_depths) + hall_depth
+        if required_depth > bldg_d + 1e-6:
+            raise ValueError(
+                f"The {len(room_types)} requested rooms need at least {required_depth:.2f} m "
+                f"of building depth, but only {bldg_d:.2f} m is available. "
+                "Increase the plot, reduce rooms on this floor, or add another floor."
+            )
+
+        depth_bonus = (bldg_d - required_depth) / len(rows)
+        y = round(sb_front, 2)
+        result: List[Dict[str, Any]] = []
+        for row_index, row in enumerate(rows):
+            row_depth = minimum_depths[row_index] + depth_bonus
+            next_y = round(y + row_depth, 2)
+            if row_index == len(rows) - 1:
+                next_y = round(sb_front + bldg_d, 2)
+            row_depth = round(next_y - y, 2)
+            minimum_width = sum(unit_minimum(unit)[0] for unit in row)
+            width_bonus = (bldg_w - minimum_width) / len(row)
+            x = round(sb_left, 2)
+            for cell_index, unit in enumerate(row):
+                unit_width = unit_minimum(unit)[0] + width_bonus
+                next_x = (
+                    round(sb_left + bldg_w, 2)
+                    if cell_index == len(row) - 1
+                    else round(x + unit_width, 2)
+                )
+                unit_width = round(next_x - x, 2)
+                members = list(unit["members"])
+                # At the start of a band, keep the bedroom beside the next
+                # public/circulation space and place its private ensuite on the
+                # exterior side. When a suite follows a stair lobby, keep the
+                # bedroom against the lobby. This prevents the ensuite from
+                # becoming the only bridge to the rest of the floor.
+                if unit["suite"] and cell_index == 0 and len(row) > 1:
+                    members.reverse()
+                member_x = x
+                for member_index, (_, room) in enumerate(members):
+                    raw = room.get("raw", {})
+                    is_ensuite = bool(raw.get("ensuite_for_room_id"))
+                    if unit["suite"] and is_ensuite:
+                        member_width = minimums(room)[0]
+                    elif unit["suite"]:
+                        ensuite_width = sum(
+                            minimums(value[1])[0] for value in members
+                            if value[1].get("raw", {}).get("ensuite_for_room_id")
+                        )
+                        member_width = unit_width - ensuite_width
+                    else:
+                        member_width = unit_width
+                    member_width = round(member_width, 2)
+                    created = self._create_room_dict(
+                        room_id=raw.get("id", f"{room['type']}_{row_index + 1}_{cell_index + 1}"),
+                        name=room["name"],
+                        room_type=room["type"],
+                        x=member_x,
+                        y=y,
+                        z=elevation,
+                        w=member_width,
+                        d=round(row_depth, 2),
+                        materials=self._default_materials(room["type"]),
+                        floor_idx=floor_idx,
+                    )
+                    result.append(created)
+                    member_x = round(member_x + member_width, 2)
+                x = next_x
+            y = next_y
+            if hall_depth and row_index == len(rows) - 2:
+                hall_id = f"circulation_hall_f{floor_idx + 1}_01"
+                result.append(self._create_room_dict(
+                    room_id=hall_id,
+                    name="Circulation Hall",
+                    room_type="hallway",
+                    x=round(sb_left, 2),
+                    y=round(y, 2),
+                    z=elevation,
+                    w=round(bldg_w, 2),
+                    d=hall_depth,
+                    materials=self._default_materials("hallway"),
+                    floor_idx=floor_idx,
+                ))
+                y = round(y + hall_depth, 2)
+
+        self._copy_requested_room_metadata(result, room_types)
+        self._repair_schema_minimum_room_spans([
+            room for room in result if room.get("type") != "hallway"
+        ])
+        return result
+
+    @staticmethod
+    def _copy_requested_room_metadata(
+        rooms: List[Dict[str, Any]], room_types: List[Dict[str, Any]]
+    ) -> None:
+        """Carry semantic relationships from requested rooms into geometry."""
+        requested = {
+            str(spec.get("raw", {}).get("id")): spec.get("raw", {})
+            for spec in room_types
+            if spec.get("raw", {}).get("id")
+        }
+        semantic_keys = (
+            "ensuite_id", "ensuite_for_room_id", "access",
+            "preferred_size", "preferred_location", "notes",
+        )
+        for room in rooms:
+            source = requested.get(str(room.get("id")), {})
+            for key in semantic_keys:
+                if key in source:
+                    room[key] = copy.deepcopy(source[key])
+
     def _layout_floor_rooms(
         self,
         room_types: List[Dict[str, Any]],
@@ -46,6 +289,14 @@ class RoomPlacementMixin:
         other_beds = [r for r in room_types if r["type"] == "bedroom"]
         baths = [r for r in room_types if "bath" in r["type"]]
         misc_rooms = [r for r in room_types if r not in ([garage, living, dining, kitchen, office, master_bed] + other_beds + baths)]
+
+        # Larger exact programs need a general packer. The handcrafted zoning
+        # path below is optimized for compact family homes and cannot represent
+        # an arbitrary number of bedrooms/support rooms without dropping some.
+        if len(room_types) > 6 or any(room["type"] == "stair_lobby" for room in room_types):
+            return self._layout_room_grid(
+                room_types, bldg_w, bldg_d, sb_left, sb_front, floor_idx,
+            ), stair_def
 
         # The primary bedroom belongs in the main habitable wing.
         # If no explicit master bedroom is labeled, promote the first
@@ -504,6 +755,7 @@ class RoomPlacementMixin:
         # Repair narrow layout slivers before walls, openings, and furniture are
         # derived from these rectangles. This also keeps canonical dimensions
         # synchronized with the legacy width/length schema fields.
+        self._copy_requested_room_metadata(rooms, room_types)
         self._repair_schema_minimum_room_spans(rooms)
 
         # Architectural sanity check: A bathroom must NEVER be larger than any bedroom on the floor
@@ -604,6 +856,3 @@ class RoomPlacementMixin:
             "floor": {"pattern": "wood_planks", "color": "#7A5C3D"},
             "walls": {"pattern": "plain", "color": "#F4F1EA"},
         }
-
-
-

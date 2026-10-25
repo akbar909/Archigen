@@ -186,6 +186,11 @@ def _finalize_refinement(
     design.pop("glb_url", None)
     design.pop("approved_at", None)
     design["layout_approved"] = False
+    for floor in design.get("floors", []):
+        # Direction-only edits deliberately put the target after its fixed
+        # context. Preserve that order through preflight so unrelated assets
+        # remain byte-for-byte unchanged.
+        floor["_preserve_furniture_order"] = True
     design, validation = validate_and_repair_design(design, repair=True)
     if validation["critical_errors"]:
         report["errors"].extend(validation["critical_errors"])

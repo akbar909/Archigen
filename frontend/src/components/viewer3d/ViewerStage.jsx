@@ -10,6 +10,14 @@ import RoomVolume from './RoomVolume'
 import ViewerOverlay from './ViewerOverlay'
 import FloorPlanVectorViewer from '../FloorPlanVectorViewer'
 
+// Preload HDRI environment maps so toggling Day / Night is instantaneous
+try {
+  Environment.preload?.({ preset: 'city' })
+  Environment.preload?.({ preset: 'night' })
+} catch {
+  // Ignore if preload is not available or offline
+}
+
 export default function ViewerStage({ state }) {
   const {
     containerRef,
@@ -97,11 +105,11 @@ export default function ViewerStage({ state }) {
       ) : (
         <Canvas
           shadows
-          dpr={[1, 1.75]}
+          dpr={[1, 1.25]}
           camera={{ position: [22, 22, 28], fov: 44, near: 0.1, far: 350 }}
           gl={{
             antialias: true,
-            logarithmicDepthBuffer: true,
+            powerPreference: 'high-performance',
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.1,
             outputColorSpace: THREE.SRGBColorSpace,
@@ -121,8 +129,8 @@ export default function ViewerStage({ state }) {
             intensity={isNightMode ? 0.5 : 2.0}
             color={isNightMode ? '#93c5fd' : '#fffbeb'}
             castShadow
-            shadow-mapSize-width={2048}
-            shadow-mapSize-height={2048}
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
             shadow-camera-left={-45}
             shadow-camera-right={45}
             shadow-camera-top={45}
@@ -146,6 +154,7 @@ export default function ViewerStage({ state }) {
                   onLoaded={() => setIsModelRendered(true)}
                   showRoof={showRoof}
                   activeFloorLevel={activeFloorLevel}
+                  viewMode={viewMode}
                 />
               </Suspense>
             </BlenderErrorBoundary>
@@ -326,7 +335,10 @@ export default function ViewerStage({ state }) {
             maxDistance={viewMode === 'walkthrough' ? 4.5 : 95}
             maxPolarAngle={viewMode === 'plan' ? 0.05 : Math.PI / 2.05}
           />
-          <Environment preset={isNightMode ? 'night' : 'city'} />
+          {/* Isolate Environment loading so preset changes (Day/Night) don't trigger the model loader or blank screen */}
+          <Suspense fallback={null}>
+            <Environment preset={isNightMode ? 'night' : 'city'} />
+          </Suspense>
         </Canvas>
       )}
 

@@ -161,7 +161,13 @@ export function buildPromptFromWizard(wizardState) {
 
   // Floors
   const floorOption = FLOOR_OPTIONS.find((f) => f.value === plot.floors)
-  if (floorOption) parts.push(`${floorOption.label}.`)
+  if (floorOption) {
+    // Keep this sentence machine-readable as well as friendly. The backend's
+    // constraint parser understands "2 floors"; "Ground + 1 Floor" alone is
+    // only a display label and previously collapsed multi-floor wizard plans
+    // back to one storey.
+    parts.push(`${plot.floors} floors total (${floorOption.label}).`)
+  }
 
   // Road access
   parts.push(`Road access from ${plot.roadAccess.replace('_', ' ')}.`)
@@ -173,15 +179,19 @@ export function buildPromptFromWizard(wizardState) {
   if (plot.setbacks.left) setbackParts.push(`left: ${plot.setbacks.left}${plot.unit}`)
   if (plot.setbacks.right) setbackParts.push(`right: ${plot.setbacks.right}${plot.unit}`)
   if (setbackParts.length > 0) parts.push(`Setbacks: ${setbackParts.join(', ')}.`)
+  if (plot.coverage) parts.push(`Maximum coverage: ${plot.coverage}%.`)
 
   // Rooms
   if (rooms.length > 0) {
     const roomDescriptions = rooms.map((room) => {
       const label = getLabelForRoom(room.type)
-      let desc = `${room.count}x ${label}`
+      // Put the count, room type and floor next to one another so this prompt
+      // remains compatible with natural-language generation outside the
+      // structured wizard payload.
+      let desc = `${room.count} ${label}`
+      if (room.floor !== undefined && plot.floors > 1) desc += ` on ${getFloorLabel(room.floor)}`
       if (room.preferredSize) desc += ` (${room.preferredSize})`
       if (room.attachedBathroom) desc += ' with attached bathroom'
-      if (room.floor !== undefined && plot.floors > 1) desc += ` on ${getFloorLabel(room.floor)}`
       if (room.preferredLocation && room.preferredLocation !== 'no_preference') desc += ` at ${room.preferredLocation}`
       return desc
     })
@@ -202,6 +212,13 @@ export function buildPromptFromWizard(wizardState) {
 
   const prioPref = DESIGN_PRIORITIES.find((p) => p.id === design.designPriority)
   if (prioPref) parts.push(`Design priority: ${prioPref.label}.`)
+
+  if (design.budget) {
+    const budgetLabel = design.budget === 'custom' && design.customBudget
+      ? `Custom (${design.customBudget})`
+      : design.budget.charAt(0).toUpperCase() + design.budget.slice(1)
+    parts.push(`Budget: ${budgetLabel}.`)
+  }
 
   // Features
   const enabledFeatures = Object.entries(features)
