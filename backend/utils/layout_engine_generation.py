@@ -57,14 +57,27 @@ class LayoutGenerationMixin:
                 f"Plot {plot_w:.2f} x {plot_d:.2f} m is too small for a safe residential layout."
             )
 
-        # Standard residential setbacks
-        sb_front = round(min(plot_d * 0.18, 3.5), 2)
-        sb_back = round(min(plot_d * 0.12, 2.5), 2)
-        sb_left = round(min(plot_w * 0.10, 1.5), 2)
-        sb_right = round(min(plot_w * 0.10, 1.5), 2)
+        # Use explicit wizard setbacks when supplied; otherwise use safe
+        # residential defaults. Structured constraints are canonical metres.
+        requested_setbacks = requirements.get("setbacks")
+        requested_setbacks = requested_setbacks if isinstance(requested_setbacks, dict) else {}
+        sb_front = round(float(requested_setbacks.get("front", min(plot_d * 0.18, 3.5))), 2)
+        sb_back = round(float(requested_setbacks.get("back", min(plot_d * 0.12, 2.5))), 2)
+        sb_left = round(float(requested_setbacks.get("left", min(plot_w * 0.10, 1.5))), 2)
+        sb_right = round(float(requested_setbacks.get("right", min(plot_w * 0.10, 1.5))), 2)
 
         bldg_w = round(plot_w - sb_left - sb_right, 2)
         bldg_d = round(plot_d - sb_front - sb_back, 2)
+        max_coverage = requirements.get("max_coverage")
+        if max_coverage not in (None, ""):
+            allowed_area = plot_w * plot_d * float(max_coverage) / 100.0
+            if bldg_w > 0 and bldg_w * bldg_d > allowed_area:
+                bldg_d = round(allowed_area / bldg_w, 2)
+                sb_back = round(plot_d - sb_front - bldg_d, 2)
+        if bldg_w < 3.0 or bldg_d < 3.0:
+            raise ValueError(
+                "The selected setbacks and maximum coverage leave too little buildable area."
+            )
         wall_t = 0.20
         slab_t = 0.22
         floor_h = 3.0
@@ -152,7 +165,7 @@ class LayoutGenerationMixin:
         ground_doors = floors_data[0]["doors"]
 
         # 5. Roof Structure
-        roof_type = requirements.get("roof_type", "parapet" if style in ["modern", "minimalist"] else "gable")
+        roof_type = requirements.get("roof_type") or ("parapet" if style in ["modern", "minimalist"] else "gable")
         top_elevation = floor_h * floors_count
         roof_data = {
             "type": roof_type,
@@ -340,6 +353,22 @@ class LayoutGenerationMixin:
         s = s.lower().replace(" ", "_")
         if "garage" in s:
             return "garage"
+        if "stair_lobby" in s or "stair lobby" in s:
+            return "stair_lobby"
+        if "drawing" in s:
+            return "drawing_room"
+        if "prayer" in s:
+            return "prayer_room"
+        if "storage" in s or "store_room" in s:
+            return "storage_room"
+        if "servant" in s:
+            return "servant_room"
+        if "balcony" in s:
+            return "balcony"
+        if "terrace" in s:
+            return "terrace"
+        if "garden" in s:
+            return "garden"
         if "master" in s and "bed" in s:
             return "master_bedroom"
         if "master" in s and ("bath" in s or "wash" in s or "toilet" in s):
@@ -465,12 +494,25 @@ class LayoutGenerationMixin:
     @staticmethod
     def _namespace_floor_room_ids(rooms: List[Dict[str, Any]], level: int) -> None:
         seen: Dict[str, int] = {}
+        id_map: Dict[str, str] = {}
         for room in rooms:
-            base = str(room.get("id") or room.get("type") or "room")
+            original = str(room.get("id") or room.get("type") or "room")
+            base = original
             if level > 0 and not base.endswith(f"_l{level}"):
                 base = f"{base}_l{level}"
             seen[base] = seen.get(base, 0) + 1
-            room["id"] = base if seen[base] == 1 else f"{base}_{seen[base]:02d}"
+            namespaced = base if seen[base] == 1 else f"{base}_{seen[base]:02d}"
+            room["id"] = namespaced
+            id_map[original] = namespaced
+
+        # Relationship endpoints must follow the canonical floor-scoped IDs.
+        # Otherwise upper-floor ensuite ownership points at pre-normalized room
+        # IDs and silently becomes unverifiable.
+        for room in rooms:
+            for key in ("ensuite_id", "ensuite_for_room_id"):
+                endpoint = str(room.get(key, ""))
+                if endpoint in id_map:
+                    room[key] = id_map[endpoint]
 
     @staticmethod
     def _namespace_floor_wall_ids(walls: List[Dict[str, Any]], level: int) -> None:
@@ -518,7 +560,7 @@ class LayoutGenerationMixin:
                     containing.append(host)
                 if containing:
                     penalties = {
-                        "hallway": 0, "corridor": 0, "foyer": 0, "living_room": 1,
+                        "hallway": 0, "corridor": 0, "foyer": 0, "stair_lobby": 0, "living_room": 1,
                         "dining_room": 2, "home_office": 3, "bedroom": 7,
                         "master_bedroom": 8, "kitchen": 9, "bathroom": 12, "garage": 12,
                     }
@@ -562,5 +604,3 @@ class LayoutGenerationMixin:
         return stair
 
     # ─── Dynamic Contiguous Spatial Placement ─────────────────────────────────
-
-

@@ -3,6 +3,7 @@ import * as THREE from 'three'
 
 import { useProjectStore } from '../../store'
 import { BlenderHouseModel } from './BlenderModel'
+import { getCachedModelUrl } from '../../utils/modelCache'
 import ViewerStage from './ViewerStage'
 import {
   isNavigationPointWalkable,
@@ -29,7 +30,37 @@ export default function Viewer3D({ design }) {
     isApprovingLayout,
   } = useProjectStore()
 
-  const glbUrl = design?.glb_url || design?.model_url || null
+  const rawGlbUrl = design?.glb_url || design?.model_url || null
+  const [effectiveGlbUrl, setEffectiveGlbUrl] = useState(rawGlbUrl)
+
+  // Check IndexedDB local cache first for instant model retrieval
+  useEffect(() => {
+    let isCancelled = false
+    if (!rawGlbUrl) {
+      setEffectiveGlbUrl(null)
+      return
+    }
+
+    getCachedModelUrl(rawGlbUrl)
+      .then((cachedBlobUrl) => {
+        if (!isCancelled) {
+          if (cachedBlobUrl) {
+            setEffectiveGlbUrl(cachedBlobUrl)
+          } else {
+            setEffectiveGlbUrl(rawGlbUrl)
+          }
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) setEffectiveGlbUrl(rawGlbUrl)
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [rawGlbUrl])
+
+  const glbUrl = effectiveGlbUrl
   // Exclusively use Cloud Blender 3D photorealistic model
   const [viewSource, setViewSource] = useState('blender')
   const [isModelRendered, setIsModelRendered] = useState(false)
@@ -176,6 +207,12 @@ export default function Viewer3D({ design }) {
     return roomPlacement(room, detectedRooms, floorHeight)
   }
 
+  // Pre-cached navigation rooms for instant collision detection without per-frame recomputation
+  const navigationRooms = useMemo(() => {
+    const floorHeight = Number(design?.building?.floor_height ?? design?.house?.floorHeight) || 3
+    return rooms.map((room) => roomPlacement(room, detectedRooms, floorHeight))
+  }, [rooms, detectedRooms, design?.building?.floor_height, design?.house?.floorHeight])
+
   // When real GLB 3D rooms are detected, re-sync character position to active selected room
   useEffect(() => {
     if (detectedRooms.length > 0 && selectedRoomId && selectedRoomId !== 'overview') {
@@ -269,6 +306,7 @@ export default function Viewer3D({ design }) {
 
   // Character movement state
   const [charPos, setCharPos] = useState({ x: 0, y: 0.1, z: 0 })
+  const charPosRef = useRef({ x: 0, y: 0.1, z: 0 })
   const [charFloorLevel, setCharFloorLevel] = useState(0)
   const [charRot, setCharRot] = useState(0)
   const [isMoving, setIsMoving] = useState(false)
@@ -390,20 +428,29 @@ export default function Viewer3D({ design }) {
     }
   }, [viewMode])
 
-  // Movement loop with non-inverted natural WASD strafe & forward/back
+  // High-performance movement loop with delta time, wall sliding, and zero React re-renders in walkthrough
   useEffect(() => {
     let animId
-    const speed = 0.14
+    let lastTime = performance.now()
+    let isMovingLocal = false
 
     const update = () => {
-      const { w, a, s, d } = keysRef.current
+      const now = performance.now()
+      const delta = Math.min((now - lastTime) / 1000, 0.08)
+      lastTime = now
 
-      if (w || s || a || d) {
-        setIsMoving(true)
-        setWalkCycle((c) => c + 0.28)
+      const { w, a, s, d } = keysRef.current
+      const hasInput = w || s || a || d
+
+      if (hasInput) {
+        if (!isMovingLocal) {
+          isMovingLocal = true
+          setIsMoving(true)
+        }
 
         if (viewMode === 'walkthrough' && controlsRef.current?.object) {
           const cam = controlsRef.current.object
+          const speed = 4.2 * delta // Natural walking speed: 4.2 meters/second
 
           const forward = new THREE.Vector3()
           cam.getWorldDirection(forward)
@@ -426,7 +473,6 @@ export default function Viewer3D({ design }) {
             const nextCamX = curCamX + move.x
             const nextCamZ = curCamZ + move.z
 
-            const navigationRooms = rooms.map((room) => getRoom3DPosition(room))
             const isWalkable = (nx, nz, pad = 0.15) => {
               return rooms.length === 0 || isNavigationPointWalkable({
                 x: nx, z: nz, level: charFloorLevel, rooms: navigationRooms,
@@ -435,17 +481,45 @@ export default function Viewer3D({ design }) {
               })
             }
 
+            let finalX = curCamX
+            let finalZ = curCamZ
+
+            // 1. Direct step
             if (isWalkable(nextCamX, nextCamZ, 0.15)) {
-              cam.position.add(move)
+              finalX = nextCamX
+              finalZ = nextCamZ
+            } else {
+              // 2. Wall-slide along X axis
+              if (isWalkable(nextCamX, curCamZ, 0.15)) {
+                finalX = nextCamX
+              }
+              // 3. Wall-slide along Z axis
+              if (isWalkable(curCamX, nextCamZ, 0.15)) {
+                finalZ = nextCamZ
+              }
+            }
+
+            if (finalX !== curCamX || finalZ !== curCamZ) {
+              const dx = finalX - curCamX
+              const dz = finalZ - curCamZ
+              cam.position.x = finalX
+              cam.position.z = finalZ
               cam.position.y = eyeHeightRef.current
-              controlsRef.current.target.add(move)
+              controlsRef.current.target.x += dx
+              controlsRef.current.target.z += dz
               targetCamPos.current.copy(cam.position)
               targetPos.current.copy(controlsRef.current.target)
 
-              setCharPos({ x: cam.position.x, y: charFloorLevel * 3 + 0.1, z: cam.position.z })
+              charPosRef.current.x = finalX
+              charPosRef.current.y = charFloorLevel * 3 + 0.1
+              charPosRef.current.z = finalZ
             }
           }
         } else {
+          // 3rd-person avatar movement (only when avatar is visible in dollhouse / topdown)
+          const speed = 4.2 * delta
+          setWalkCycle((c) => c + delta * 8.5)
+
           let moveX = 0
           let moveZ = 0
           if (w) moveZ -= speed
@@ -461,7 +535,6 @@ export default function Viewer3D({ design }) {
               const nextX = prev.x + moveX
               const nextZ = prev.z + moveZ
 
-              const navigationRooms = rooms.map((room) => getRoom3DPosition(room))
               const walkable = rooms.length === 0 || isNavigationPointWalkable({
                 x: nextX, z: nextZ, level: charFloorLevel, rooms: navigationRooms,
                 doors: allDoors, exteriorAccess: isExteriorAccessWalkable, padding: 0.15,
@@ -470,6 +543,7 @@ export default function Viewer3D({ design }) {
 
               if (walkable) {
                 targetPos.current.set(nextX, prev.y + 1.0, nextZ)
+                charPosRef.current = { x: nextX, y: prev.y, z: nextZ }
                 return { x: nextX, y: prev.y, z: nextZ }
               }
               return prev
@@ -477,7 +551,12 @@ export default function Viewer3D({ design }) {
           }
         }
       } else {
-        setIsMoving(false)
+        if (isMovingLocal) {
+          isMovingLocal = false
+          setIsMoving(false)
+          // Sync charPos to React state once on movement stop so avatar is accurate
+          setCharPos({ ...charPosRef.current })
+        }
       }
 
       animId = requestAnimationFrame(update)
@@ -485,7 +564,7 @@ export default function Viewer3D({ design }) {
 
     animId = requestAnimationFrame(update)
     return () => cancelAnimationFrame(animId)
-  }, [rooms, allDoors, viewMode, currentRoom, detectedRooms, isExteriorAccessWalkable, charFloorLevel])
+  }, [navigationRooms, allDoors, viewMode, isExteriorAccessWalkable, charFloorLevel])
 
   // Select room camera jump (jumps directly into the true 3D room center)
   const handleSelectRoom = (room) => {
@@ -496,7 +575,9 @@ export default function Viewer3D({ design }) {
     const rz = pos.z
     setActiveFloorLevel(pos.level)
     setCharFloorLevel(pos.level)
-    setCharPos({ x: rx, y: ry + 0.1, z: rz })
+    const p = { x: rx, y: ry + 0.1, z: rz }
+    charPosRef.current = p
+    setCharPos(p)
 
     if (viewMode === 'walkthrough') {
       yawRef.current = 0
@@ -568,7 +649,9 @@ export default function Viewer3D({ design }) {
       const rx = pos.x
       const ry = pos.y
       const rz = pos.z
-      setCharPos({ x: rx, y: ry + 0.1, z: rz })
+      const p = { x: rx, y: ry + 0.1, z: rz }
+      charPosRef.current = p
+      setCharPos(p)
 
       targetCamPos.current.set(rx, ry + 1.65, rz + 0.2)
       targetPos.current.set(rx, ry + 1.6, rz - 2.0)

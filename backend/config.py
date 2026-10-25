@@ -51,7 +51,10 @@ GEMINI_API_BASE_URL = os.getenv(
 # Blender Worker microservice config
 BLENDER_SERVICE_URL = os.getenv("BLENDER_SERVICE_URL", "http://localhost:5001")
 BLENDER_ENABLED = os.getenv("BLENDER_ENABLED", "true").lower() == "true"
-BLENDER_TIMEOUT_SECONDS = int(os.getenv("BLENDER_TIMEOUT_SECONDS", "260"))
+# The worker's default generation ceiling is 600s. Keep the HTTP client above
+# that value so it receives the worker's actionable 504 response instead of
+# abandoning a valid, asset-heavy two-storey export first.
+BLENDER_TIMEOUT_SECONDS = int(os.getenv("BLENDER_TIMEOUT_SECONDS", "630"))
 
 # AWS S3 Storage config
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")

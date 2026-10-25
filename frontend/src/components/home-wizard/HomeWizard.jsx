@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { WIZARD_STEPS, DEFAULT_WIZARD_STATE } from './wizard-constants'
 import {
@@ -20,13 +20,29 @@ import ReviewGenerateStep from './ReviewGenerateStep'
 
 import { Sparkles, MessageSquare } from 'lucide-react'
 
-export default function HomeWizard({ onGenerate, loading, onClose, onSwitchToPrompt }) {
+export default function HomeWizard({
+  onGenerate,
+  loading,
+  onClose,
+  onSwitchToPrompt,
+  initialState,
+  onStateChange,
+}) {
   const [currentStep, setCurrentStep] = useState(1)
-  const [wizardState, setWizardState] = useState(structuredClone(DEFAULT_WIZARD_STATE))
+  const [wizardState, setWizardState] = useState(() =>
+    structuredClone(initialState || DEFAULT_WIZARD_STATE)
+  )
   const [errors, setErrors] = useState({})
   const [completedSteps, setCompletedSteps] = useState([])
   const [isGenerating, setIsGenerating] = useState(false)
   const contentRef = useRef(null)
+
+  // Dashboard owns a page-lifetime draft. The wizard can be temporarily
+  // unmounted while views change, but a rejected request must never erase the
+  // user's work. A full browser refresh intentionally resets this draft.
+  useEffect(() => {
+    onStateChange?.(structuredClone(wizardState))
+  }, [wizardState, onStateChange])
 
   // Scroll to top of wizard content when step changes
   const scrollToTop = useCallback(() => {
@@ -151,7 +167,10 @@ export default function HomeWizard({ onGenerate, loading, onClose, onSwitchToPro
       const prompt = buildPromptFromWizard(wizardState)
       const style = getStyleFromWizard(wizardState)
 
-      await onGenerate({ prompt, style, timeout: 120 })
+      // Send the original selections alongside the readable prompt. Floors,
+      // room quantities and floor assignments are architectural constraints;
+      // they must not depend on prose parsing or an LLM interpretation.
+      await onGenerate({ prompt, style, timeout: 120, wizard: wizardState })
     } catch {
       // Error handled by store
     } finally {

@@ -8,7 +8,10 @@ Designed for Headless Blender execution (bpy).
 """
 
 import os
+import shutil
 import sys
+import tempfile
+import uuid
 from typing import Optional
 
 try:
@@ -18,11 +21,37 @@ except ImportError:
     bpy = None
 
 
+class _ExportTemporaryDirectory:
+    """Temp directory compatible with Blender 5.1's Windows image exporter.
+
+    Blender's bundled Python creates its default temporary folder with a
+    restrictive ACL that can make the same process unable to scan it during
+    cleanup. A random directory created with the worker volume's inherited ACL
+    avoids that exporter crash while retaining automatic cleanup.
+    """
+
+    def __init__(self, suffix=None, prefix=None, dir=None, **_kwargs):
+        base = dir or tempfile.gettempdir()
+        name = f"{prefix or 'archigen_gltf_'}{uuid.uuid4().hex}{suffix or ''}"
+        self.name = os.path.join(base, name)
+        os.makedirs(self.name, exist_ok=False)
+
+    def __enter__(self):
+        return self.name
+
+    def cleanup(self):
+        shutil.rmtree(self.name, ignore_errors=True)
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.cleanup()
+        return False
+
+
 def export_scene_to_glb(
     output_path: str,
     export_materials: bool = True,
     apply_modifiers: bool = True,
-    use_draco: bool = False
+    use_draco: bool = True
 ) -> str:
     """
     Exports the active Blender scene to a web-optimized GLB file with Draco compression.
@@ -125,7 +154,14 @@ def export_scene_to_glb(
         removed = sorted(set(export_kwargs) - set(compatible_kwargs))
         if removed:
             print(f"[EXPORT] Ignoring unsupported Blender options: {', '.join(removed)}")
-        bpy.ops.export_scene.gltf(**compatible_kwargs)
+        # The glTF add-on uses the standard tempfile module, so a scoped patch
+        # also reaches its image encoder without modifying Blender's install.
+        original_temporary_directory = tempfile.TemporaryDirectory
+        tempfile.TemporaryDirectory = _ExportTemporaryDirectory
+        try:
+            bpy.ops.export_scene.gltf(**compatible_kwargs)
+        finally:
+            tempfile.TemporaryDirectory = original_temporary_directory
         file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
         print(f"[EXPORT] Successfully generated GLB ({file_size_mb:.2f} MB): {output_path}")
         return output_path

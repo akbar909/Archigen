@@ -2,6 +2,10 @@ import { Component, useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { Html, useGLTF, useProgress } from '@react-three/drei'
 import { Sparkles, RotateCw } from 'lucide-react'
+import { getCachedModelUrl, saveModelToCache } from '../../utils/modelCache'
+
+// Enable Draco decompression via local WASM decoders or Google CDN fallback
+const DRACO_DECODER_PATH = '/draco/gltf/'
 
 // ── Blender Headless GLB Model Component with Error Boundary ─────────
 export class BlenderErrorBoundary extends Component {
@@ -152,9 +156,36 @@ export function BlenderLoadingFallback({ onRetry }) {
   )
 }
 
-// ── Model Loader (Single Self-Contained GLB Binary) ───────────────────
-export function BlenderHouseModel({ url, onRoomsDetected, onDoorsDetected, onLoaded, showRoof = true, activeFloorLevel = null }) {
-  const { scene } = useGLTF(url)
+export function BlenderHouseModel({
+  url,
+  onRoomsDetected,
+  onDoorsDetected,
+  onLoaded,
+  showRoof = true,
+  activeFloorLevel = null,
+  viewMode = 'dollhouse',
+}) {
+  // Pass DRACO_DECODER_PATH so Draco-compressed GLB meshes are decoded efficiently via WebAssembly
+  const { scene } = useGLTF(url, DRACO_DECODER_PATH)
+
+  // Asynchronously cache downloaded GLB model in browser IndexedDB for 0ms repeat loads
+  useEffect(() => {
+    if (!url) return
+    const cacheKey = url.split('?')[0]
+    // Check if not already loaded from blob
+    if (!url.startsWith('blob:')) {
+      fetch(url)
+        .then((res) => (res.ok ? res.blob() : null))
+        .then((blob) => {
+          if (blob) {
+            saveModelToCache(url, blob)
+          }
+        })
+        .catch(() => {
+          // Non-blocking network fetch fail for cache
+        })
+    }
+  }, [url])
 
   useEffect(() => {
     if (scene && onLoaded) {
@@ -346,8 +377,7 @@ export function BlenderHouseModel({ url, onRoomsDetected, onDoorsDetected, onLoa
         return
       }
 
-      // Roof visibility toggle — also hide in cut-away floor view since roof
-      // sits above every storey.
+      // Roof visibility toggle — respect showRoof directly
       if (lowerName.startsWith('roof') || lowerName.includes('_roof_') || lowerName.startsWith('roof_')) {
         const bounds = ownWorldBounds(child)
         const size = new THREE.Vector3()
@@ -356,14 +386,14 @@ export function BlenderHouseModel({ url, onRoomsDetected, onDoorsDetected, onLoa
           structuralSize.x > 0 && structuralSize.z > 0
           && (size.x > structuralSize.x * 1.35 || size.z > structuralSize.z * 1.35)
         )
-        const isCutAway = activeFloorLevel !== null && activeFloorLevel !== undefined
-        child.visible = showRoof && !malformedLegacyRoof && !isCutAway
+        // In walkthrough mode or when user clicks Roof ON, always show the roof/ceiling
+        child.visible = Boolean(showRoof) && !malformedLegacyRoof
       }
 
       // Cut-away view: show the selected floor AND everything below it.
       // Hide objects that belong exclusively to floors ABOVE the active level.
-      // Unlevelled site objects (ground, terrain, etc.) always remain visible.
-      if (activeFloorLevel !== null && activeFloorLevel !== undefined && activeFloorLevel >= 0) {
+      // In walkthrough mode, the user is inside a specific room, so don't cut away the ceiling above them!
+      if (viewMode !== 'walkthrough' && activeFloorLevel !== null && activeFloorLevel !== undefined && activeFloorLevel >= 0) {
         const explicitLevels = inheritedFloorLevels(child)
         const activeLvl = Number(activeFloorLevel)
 
@@ -394,6 +424,15 @@ export function BlenderHouseModel({ url, onRoomsDetected, onDoorsDetected, onLoa
           child.material = child.material.clone()
           const mats = Array.isArray(child.material) ? child.material : [child.material]
           mats.forEach((m) => {
+            // Render both sides on roof, ceilings, and slabs so looking up from inside renders the ceiling
+            if (
+              lowerName.startsWith('roof') ||
+              lowerName.includes('slab') ||
+              lowerName.includes('ceiling') ||
+              lowerName.startsWith('floor_')
+            ) {
+              m.side = THREE.DoubleSide
+            }
             if (m.map) {
               m.map.wrapS = THREE.RepeatWrapping
               m.map.wrapT = THREE.RepeatWrapping
@@ -421,16 +460,16 @@ export function BlenderHouseModel({ url, onRoomsDetected, onDoorsDetected, onLoa
       }
     })
     return clone
-  }, [scene, showRoof, activeFloorLevel])
+  }, [scene, showRoof, activeFloorLevel, viewMode])
 
   if (!clonedScene) return null
   return <primitive object={clonedScene} position={[0, 0, 0]} />
 }
 
-// Preload utility for snappy scene loads
+// Preload utility for snappy scene loads with Draco decoder support
 BlenderHouseModel.preload = (url) => {
   if (url) {
-    useGLTF.preload(url)
+    useGLTF.preload(url, DRACO_DECODER_PATH)
   }
 }
 

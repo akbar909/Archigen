@@ -153,7 +153,8 @@ class FurnitureMixin:
                 f_dict["position"]["y"] = round(cy_clamped, 2)
                 furniture.append(f_dict)
 
-            if rtype == "living_room":
+            if rtype in {"living_room", "drawing_room"}:
+                compact_living = rw * rd < 20.0
                 living_items = [
                     {
                         "id": f"sofa_{rid}",
@@ -164,7 +165,11 @@ class FurnitureMixin:
                         "room_id": rid,
                         "position": {"x": cx, "y": round(cy - 0.5, 2), "z": floor_elev},
                         "rotation": 0.0,
-                        "dimensions": {"width": 2.2, "depth": 0.95, "height": 0.82},
+                        "dimensions": {
+                            "width": 1.80 if compact_living else 2.20,
+                            "depth": 0.85 if compact_living else 0.95,
+                            "height": 0.82,
+                        },
                     },
                     {
                         "id": f"coffee_table_{rid}",
@@ -197,6 +202,8 @@ class FurnitureMixin:
                         "room_id": rid,
                         "position": {"x": cx, "y": round(ry + rd - 0.45, 2), "z": floor_elev},
                         "rotation": 180.0,
+                        "anchor_wall": "north",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 1.8, "depth": 0.45, "height": 0.60},
                     },
                 ]
@@ -205,12 +212,13 @@ class FurnitureMixin:
                 # into a validation failure after circulation clearances were
                 # applied. The sofa and chair remain; larger rooms get the full
                 # furniture group.
-                if rw * rd < 20.0:
+                if compact_living:
                     living_items = [living_items[0]]
                 for item in living_items:
                     _add(item)
             elif "bedroom" in rtype:
                 bed_y = round(ry + rd - 1.15, 2)
+                is_master_bedroom = rtype == "master_bedroom"
                 bedroom_items = [
                     {
                         "id": f"bed_{rid}",
@@ -222,7 +230,12 @@ class FurnitureMixin:
                         "position": {"x": cx, "y": bed_y, "z": floor_elev},
                         "rotation": 0.0,
                         "anchor_wall": "north",
-                        "dimensions": {"width": 2.1, "depth": 2.15, "height": 1.10},
+                        "placement_hint": "wall_backed",
+                        "dimensions": {
+                            "width": 2.10 if is_master_bedroom else 1.40,
+                            "depth": 2.15 if is_master_bedroom else 2.00,
+                            "height": 1.10,
+                        },
                     },
                     {
                         "id": f"nightstand_{rid}_1",
@@ -256,6 +269,7 @@ class FurnitureMixin:
                         "position": {"x": round(rx + 0.65, 2), "y": round(ry + 0.8, 2), "z": floor_elev},
                         "rotation": 90.0,
                         "anchor_wall": "west",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 1.56, "depth": 0.65, "height": 2.06},
                     },
                 ]
@@ -267,18 +281,10 @@ class FurnitureMixin:
                 for item in bedroom_items:
                     _add(item)
             elif rtype == "kitchen":
-                for item in [
-                    {
-                        "id": f"island_{rid}",
-                        "asset": "kitchen_island",
-                        "asset_id": "kitchen_island_001",
-                        "category": "kitchen_counter",
-                        "roomId": rid,
-                        "room_id": rid,
-                        "position": {"x": cx, "y": cy, "z": floor_elev},
-                        "rotation": 0.0,
-                        "dimensions": {"width": 1.8, "depth": 0.90, "height": 0.92},
-                    },
+                # Wall fixtures are essential and are placed first. An island
+                # requires a real working aisle around it; compact kitchens use
+                # an open center instead of forcing an approval-blocking asset.
+                kitchen_items = [
                     {
                         "id": f"fridge_{rid}",
                         "asset": "refrigerator",
@@ -289,6 +295,7 @@ class FurnitureMixin:
                         "position": {"x": round(rx + 0.55, 2), "y": round(ry + 0.55, 2), "z": floor_elev},
                         "rotation": 180.0,
                         "anchor_wall": "south",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 0.90, "depth": 0.80, "height": 1.82},
                     },
                     {
@@ -301,9 +308,29 @@ class FurnitureMixin:
                         "position": {"x": round(rx + rw - 0.55, 2), "y": round(ry + 0.55, 2), "z": floor_elev},
                         "rotation": 180.0,
                         "anchor_wall": "south",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 0.80, "depth": 0.55, "height": 0.88},
                     },
-                ]:
+                ]
+                island_rotation = None
+                # A fixed island needs working aisles on every side in addition
+                # to the refrigerator/sink door arcs.  Do not treat merely
+                # fitting its rectangle as an architecturally usable kitchen.
+                if rw >= 3.80 and rd >= 3.80:
+                    island_rotation = 0.0
+                if island_rotation is not None:
+                    kitchen_items.append({
+                        "id": f"island_{rid}",
+                        "asset": "kitchen_island",
+                        "asset_id": "kitchen_island_001",
+                        "category": "kitchen_island",
+                        "roomId": rid,
+                        "room_id": rid,
+                        "position": {"x": cx, "y": cy, "z": floor_elev},
+                        "rotation": island_rotation,
+                        "dimensions": {"width": 1.8, "depth": 0.90, "height": 0.92},
+                    })
+                for item in kitchen_items:
                     _add(item)
             elif "bath" in rtype:
                 bath_items = [
@@ -317,6 +344,7 @@ class FurnitureMixin:
                         "position": {"x": round(rx + 0.45, 2), "y": round(ry + rd - 0.45, 2), "z": floor_elev},
                         "rotation": 0.0,
                         "anchor_wall": "north",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 0.45, "depth": 0.65, "height": 0.80},
                     },
                     {
@@ -329,6 +357,7 @@ class FurnitureMixin:
                         "position": {"x": round(rx + rw - 0.45, 2), "y": round(ry + rd - 0.45, 2), "z": floor_elev},
                         "rotation": 0.0,
                         "anchor_wall": "north",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 0.70, "depth": 0.48, "height": 0.85},
                     },
                 ]
@@ -344,12 +373,32 @@ class FurnitureMixin:
                         "position": {"x": round(rx + rw - 0.55, 2), "y": round(ry + 0.55, 2), "z": floor_elev},
                         "rotation": 180.0,
                         "anchor_wall": "south",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 0.90, "depth": 0.90, "height": 2.00},
                     })
                 for item in bath_items:
                     _add(item)
             elif rtype == "dining_room":
-                for item in [
+                # Orient the dining group along the room's long axis and keep
+                # chair footprints beyond the tabletop edge. The previous
+                # 0.55 m offset physically intersected the 0.85 m-deep table.
+                table_rotation = 0.0 if rw >= rd else 90.0
+                chair_offset = 0.85 / 2.0 + 0.45 / 2.0 + 0.10
+                if table_rotation == 0.0:
+                    chair_specs = [
+                        (cx - 0.50, cy - chair_offset, 0.0),
+                        (cx + 0.50, cy - chair_offset, 0.0),
+                        (cx - 0.50, cy + chair_offset, 180.0),
+                        (cx + 0.50, cy + chair_offset, 180.0),
+                    ]
+                else:
+                    chair_specs = [
+                        (cx - chair_offset, cy - 0.50, 270.0),
+                        (cx - chair_offset, cy + 0.50, 270.0),
+                        (cx + chair_offset, cy - 0.50, 90.0),
+                        (cx + chair_offset, cy + 0.50, 90.0),
+                    ]
+                dining_items = [
                     {
                         "id": f"table_{rid}",
                         "asset": "dining_table",
@@ -358,54 +407,23 @@ class FurnitureMixin:
                         "roomId": rid,
                         "room_id": rid,
                         "position": {"x": cx, "y": cy, "z": floor_elev},
-                        "rotation": 0.0,
+                        "rotation": table_rotation,
                         "dimensions": {"width": 1.60, "depth": 0.85, "height": 0.76},
                     },
-                    {
-                        "id": f"chair_{rid}_1",
+                ]
+                for index, (chair_x, chair_y, chair_rotation) in enumerate(chair_specs, 1):
+                    dining_items.append({
+                        "id": f"chair_{rid}_{index}",
                         "asset": "dining_chair",
                         "asset_id": "dining_chair_001",
-                        "category": "chair",
+                        "category": "dining_chair",
                         "roomId": rid,
                         "room_id": rid,
-                        "position": {"x": round(cx - 0.50, 2), "y": round(cy - 0.55, 2), "z": floor_elev},
-                        "rotation": 0.0,
+                        "position": {"x": round(chair_x, 2), "y": round(chair_y, 2), "z": floor_elev},
+                        "rotation": chair_rotation,
                         "dimensions": {"width": 0.45, "depth": 0.45, "height": 0.85},
-                    },
-                    {
-                        "id": f"chair_{rid}_2",
-                        "asset": "dining_chair",
-                        "asset_id": "dining_chair_001",
-                        "category": "chair",
-                        "roomId": rid,
-                        "room_id": rid,
-                        "position": {"x": round(cx + 0.50, 2), "y": round(cy - 0.55, 2), "z": floor_elev},
-                        "rotation": 0.0,
-                        "dimensions": {"width": 0.45, "depth": 0.45, "height": 0.85},
-                    },
-                    {
-                        "id": f"chair_{rid}_3",
-                        "asset": "dining_chair",
-                        "asset_id": "dining_chair_001",
-                        "category": "chair",
-                        "roomId": rid,
-                        "room_id": rid,
-                        "position": {"x": round(cx - 0.50, 2), "y": round(cy + 0.55, 2), "z": floor_elev},
-                        "rotation": 180.0,
-                        "dimensions": {"width": 0.45, "depth": 0.45, "height": 0.85},
-                    },
-                    {
-                        "id": f"chair_{rid}_4",
-                        "asset": "dining_chair",
-                        "asset_id": "dining_chair_001",
-                        "category": "chair",
-                        "roomId": rid,
-                        "room_id": rid,
-                        "position": {"x": round(cx + 0.50, 2), "y": round(cy + 0.55, 2), "z": floor_elev},
-                        "rotation": 180.0,
-                        "dimensions": {"width": 0.45, "depth": 0.45, "height": 0.85},
-                    },
-                ]:
+                    })
+                for item in dining_items:
                     _add(item)
             elif rtype == "home_office":
                 for item in [
@@ -440,6 +458,8 @@ class FurnitureMixin:
                         "room_id": rid,
                         "position": {"x": round(rx + 0.55, 2), "y": round(ry + rd - 0.35, 2), "z": floor_elev},
                         "rotation": 180.0,
+                        "anchor_wall": "north",
+                        "placement_hint": "wall_backed",
                         "dimensions": {"width": 1.10, "depth": 0.38, "height": 1.85},
                     },
                 ]:
@@ -454,8 +474,7 @@ class FurnitureMixin:
                     "room_id": rid,
                     "position": {"x": cx, "y": cy, "z": floor_elev},
                     "rotation": 0.0,
-                    "dimensions": {"width": 2.0, "depth": 4.5, "height": 1.50},
+                    "dimensions": {"width": 1.80, "depth": 4.50, "height": 1.50},
                 })
 
         return furniture
-

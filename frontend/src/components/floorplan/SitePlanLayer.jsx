@@ -14,7 +14,7 @@ export default function SitePlanLayer({
     <>
           {/* A continuous pedestrian route from the plot gate to the real
               wall-hosted main entrance door. */}
-          {isGroundFloor && design?.exterior?.entrance_path && (() => {
+          {isGroundFloor && design?.exterior?.entrance_path?.enabled !== false && design?.exterior?.entrance_path && (() => {
             const path = design.exterior.entrance_path
             const start = path.start || {}
             const end = path.end || {}
@@ -44,7 +44,7 @@ export default function SitePlanLayer({
           })()}
 
           {/* Main vehicle entrance gate on the front plot boundary */}
-          {isGroundFloor && design?.exterior?.gate && (() => {
+          {isGroundFloor && design?.exterior?.gate?.enabled !== false && design?.exterior?.gate && (() => {
             const gate = design.exterior.gate
             const gateX = Number(gate.position?.x ?? design.exterior.driveway?.position?.x ?? 0)
             const gateY = Number(gate.position?.y ?? 0)
@@ -88,7 +88,7 @@ export default function SitePlanLayer({
           })()}
 
           {/* Driveway Connecting Road to Garage / Entrance (if present) */}
-          {isGroundFloor && design?.exterior?.driveway && (
+          {isGroundFloor && design?.exterior?.driveway?.enabled !== false && design?.exterior?.driveway && (
             <g>
               <rect
                 x={mapX(design.exterior.driveway.position?.x || 0)}

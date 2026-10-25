@@ -113,10 +113,11 @@ def _door_opens_toward_local_y(is_vertical: bool, wall_side: str, swing: str) ->
 def _select_door_model_path(door_dir: str, preferred_asset: Optional[str] = None) -> Optional[str]:
     """Select one stable house door, or an explicitly requested door asset."""
     candidates = []
-    search_dirs = [
+    search_dirs = [door_dir,
         os.path.join(BLENDER_ROOT, "assets", "architecture", "doors"),
         os.path.join(BLENDER_ROOT, "assets", "doors"),
     ]
+    search_dirs = list(dict.fromkeys(os.path.abspath(path) for path in search_dirs if path))
     for s_dir in search_dirs:
         if os.path.isdir(s_dir):
             for root, _, names in os.walk(s_dir):
@@ -523,4 +524,3 @@ def _create_hinged_door_model(
     leaf["archgen_open_door_leaf"] = True
     bpy.context.view_layer.update()
     return root
-

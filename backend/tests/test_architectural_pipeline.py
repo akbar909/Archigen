@@ -22,6 +22,8 @@ from utils.blender_service import adapt_gemini_to_blender_layout
 from utils.layout_engine import ArchitecturalLayoutEngine
 from utils.gemini_layout import _normalize_design, infer_layout_constraints
 from utils.gemini_layout import _validate_home_design_schema
+from utils.gemini import generate_home_design
+from utils.wizard_constraints import build_prompt_layout_constraints, build_wizard_layout_constraints
 
 
 def footprint(item):
@@ -158,10 +160,254 @@ class ArchitecturalPipelineTests(unittest.TestCase):
                     {room["floor_level"] for room in adapted["rooms"]},
                 )
 
+    def test_two_floor_wizard_program_is_structured_exact_and_approval_safe(self):
+        wizard = {
+            "plot": {
+                "width": "40", "length": "60", "unit": "ft", "floors": 2,
+                "buildingType": "house", "orientation": "north", "roadAccess": "front",
+                "coverage": "60",
+                "setbacks": {"front": "10", "rear": "6", "left": "4", "right": "4"},
+            },
+            "design": {
+                "architecturalStyle": "modern", "roofType": "flat",
+                "exteriorColor": "white", "wallMaterial": "plaster",
+                "interiorStyle": "contemporary", "flooringMaterial": "tile",
+                "furniture": "fully_furnished", "designPriority": "balanced",
+                "budget": "standard",
+            },
+            "rooms": [
+                {"type": "living_room", "count": 1, "floor": 0, "preferredSize": "large", "preferredLocation": "front"},
+                {"type": "drawing_room", "count": 1, "floor": 0, "preferredSize": "medium", "preferredLocation": "front"},
+                {"type": "dining_room", "count": 1, "floor": 0},
+                {"type": "kitchen", "count": 1, "floor": 0, "preferredLocation": "back"},
+                {"type": "master_bedroom", "count": 1, "floor": 0, "preferredSize": "large", "preferredLocation": "back", "attachedBathroom": True},
+                {"type": "bathroom", "count": 1, "floor": 0, "preferredSize": "small"},
+                {"type": "garage", "count": 1, "floor": 0, "preferredLocation": "front"},
+                {"type": "storage_room", "count": 1, "floor": 0, "preferredSize": "small"},
+                {"type": "bedroom", "count": 3, "floor": 1, "attachedBathroom": True},
+                {"type": "study_room", "count": 1, "floor": 1, "preferredLocation": "front"},
+                {"type": "prayer_room", "count": 1, "floor": 1, "preferredSize": "small"},
+                {"type": "laundry_room", "count": 1, "floor": 1, "preferredSize": "small", "preferredLocation": "back"},
+                {"type": "balcony", "count": 1, "floor": 1, "preferredLocation": "front"},
+                {"type": "terrace", "count": 1, "floor": 1, "preferredLocation": "back"},
+            ],
+            "features": {
+                "front_garden": True, "boundary_wall": True,
+                "entrance_gate": True, "car_parking": True,
+                "balcony": True, "rooftop_terrace": True,
+                "exterior_lighting": True, "solar_panels": True,
+            },
+            "featureConfigs": {"car_parking": {"parkingSpaces": 1}},
+            "specialRequirements": "",
+        }
+        constraints = build_wizard_layout_constraints(wizard)
+        design = generate_home_design(
+            "Structured wizard request",
+            constraints_prompt="Ground + 1 Floor",
+            layout_constraints=constraints,
+        )
+        canonical, _adapted = self.assert_pipeline_valid(design)
+
+        self.assertEqual(2, canonical["building"]["floors"])
+        self.assertEqual([0, 1], [floor["level"] for floor in canonical["floors"]])
+        self.assertEqual({"width": 12.19, "depth": 18.29}, canonical["site"]["plot"])
+        self.assertEqual(
+            {"front": 3.05, "back": 1.83, "left": 1.22, "right": 1.22},
+            canonical["site"]["setbacks"],
+        )
+        self.assertEqual(60.0, canonical["site"]["max_coverage"])
+        self.assertEqual("fully_furnished", canonical["design_preferences"]["furniture"])
+        self.assertTrue(canonical["features"]["solar_panels"])
+        self.assertEqual(11, len(canonical["floors"][0]["rooms"]))
+        self.assertEqual(13, len(canonical["floors"][1]["rooms"]))
+        self.assertTrue(all(
+            sum(room["type"] == "hallway" for room in floor["rooms"]) == 1
+            for floor in canonical["floors"]
+        ))
+        self.assertEqual(
+            3,
+            sum(room["type"] == "bedroom" for room in canonical["floors"][1]["rooms"]),
+        )
+        self.assertTrue(all(
+            any(room["type"] == "stair_lobby" for room in floor["rooms"])
+            for floor in canonical["floors"]
+        ))
+
+        # Every requested attached bathroom is a private, one-door ensuite for
+        # its exact bedroom instance. It must never become a shared bathroom,
+        # a bathroom bank, or a shortcut into another room.
+        private_ensuites = [
+            room
+            for floor in canonical["floors"]
+            for room in floor["rooms"]
+            if room.get("access") == "ensuite_only"
+        ]
+        self.assertEqual(4, len(private_ensuites))
+        for floor in canonical["floors"]:
+            room_map = {room["id"]: room for room in floor["rooms"]}
+            interior_pairs = [
+                set(door.get("connected_room_ids", []))
+                for door in floor["doors"]
+                if "exterior" not in door.get("connected_room_ids", [])
+            ]
+            self.assertFalse(any(
+                len(pair) == 2
+                and all("bath" in room_map[room_id]["type"] for room_id in pair)
+                for pair in interior_pairs
+            ))
+            self.assertFalse(any(
+                len(pair) == 2
+                and all("bedroom" in room_map[room_id]["type"] for room_id in pair)
+                for pair in interior_pairs
+            ))
+            for destination in (
+                room for room in floor["rooms"]
+                if room["type"] in {"bathroom", "storage_room"}
+                and room.get("access") != "ensuite_only"
+            ):
+                self.assertEqual(
+                    1,
+                    sum(destination["id"] in pair for pair in interior_pairs),
+                    f"{destination['id']} must not be used as circulation",
+                )
+            for ensuite in (room for room in floor["rooms"] if room.get("access") == "ensuite_only"):
+                owner_id = ensuite["ensuite_for_room_id"]
+                owner = room_map[owner_id]
+                self.assertEqual(ensuite["id"], owner.get("ensuite_id"))
+                incident = [pair for pair in interior_pairs if ensuite["id"] in pair]
+                self.assertEqual([{ensuite["id"], owner_id}], incident)
+
+        # This compact kitchen cannot support professional island clearances;
+        # omitting the optional island is safer than blocking plan approval.
+        kitchen = next(room for room in canonical["floors"][0]["rooms"] if room["type"] == "kitchen")
+        kitchen_items = [
+            item for item in canonical["floors"][0]["furniture"]
+            if item["room_id"] == kitchen["id"]
+        ]
+        self.assertFalse(any("island" in str(item.get("asset", "")) for item in kitchen_items))
+
+    def test_complete_wizard_text_prompt_uses_exact_deterministic_program(self):
+        prompt = (
+            "Design a house on a 40x60 feet north-facing plot. 2 floors total (Ground + 1 Floor). "
+            "Road access from front. Setbacks: front: 10ft, rear: 6ft, left: 4ft, right: 4ft. "
+            "Rooms: 1 Living Room on Ground Floor (large) at front, "
+            "1 Drawing Room on Ground Floor (medium) at front, "
+            "1 Dining Room on Ground Floor (medium), "
+            "1 Master Bedroom on Ground Floor (large) with attached bathroom at back, "
+            "1 Bathroom on Ground Floor (small), 1 Garage on Ground Floor (medium) at front, "
+            "1 Kitchen on Ground Floor (medium) at back, 1 Storage Room on Ground Floor (small), "
+            "3 Bedroom on 1st Floor (medium) with attached bathroom, "
+            "1 Study Room on 1st Floor (medium) at front, 1 Prayer Room on 1st Floor (small), "
+            "1 Balcony on 1st Floor (medium) at front, 1 Laundry Room on 1st Floor (small) at back, "
+            "1 Terrace on 1st Floor (medium) at back. Architectural style: Modern. Roof: flat. "
+            "Exterior color: white. Wall material: plaster. Interior style: contemporary. "
+            "Flooring: tile. Furniture: Fully Furnished. Design priority: Balanced. "
+            "Additional features: Front Garden, Boundary Wall, Entrance Gate, Car Parking, "
+            "Rooftop Terrace, Balcony, Exterior Lighting, Solar Panels, Laundry Area."
+        )
+        constraints = build_prompt_layout_constraints(prompt)
+        self.assertIsNotNone(constraints)
+        self.assertEqual("structured_prompt", constraints["source"])
+        self.assertEqual(2, constraints["floors_count"])
+        self.assertEqual("north", constraints["orientation"])
+        self.assertEqual({"width": 12.192, "depth": 18.288}, constraints["plot"])
+        self.assertEqual(
+            {"front": 3.048, "back": 1.829, "left": 1.219, "right": 1.219},
+            constraints["setbacks"],
+        )
+        self.assertEqual(3, constraints["floor_room_counts"][1]["bedroom"])
+        self.assertEqual(4, constraints["attached_baths"])
+        self.assertTrue(constraints["features"]["solar_panels"])
+
+        complete_copy = prompt.replace(
+            "Rooms:", "Maximum coverage: 60%. Rooms:", 1
+        ).replace(
+            "Additional features:", "Budget: Standard. Additional features:", 1
+        )
+        complete_constraints = build_prompt_layout_constraints(complete_copy)
+        self.assertEqual(60.0, complete_constraints["max_coverage"])
+        self.assertEqual("standard", complete_constraints["design_preferences"]["budget"])
+        self.assertEqual(constraints["setbacks"], complete_constraints["setbacks"])
+
+        # No explicit constraints object is passed here: this exercises the
+        # pasted/free-text API path and must not fall through to Gemini.
+        design = generate_home_design(prompt, constraints_prompt=prompt)
+        canonical, _adapted = self.assert_pipeline_valid(design)
+        self.assertEqual(2, canonical["building"]["floors"])
+        self.assertEqual("north", canonical["site"]["road"]["side"])
+        self.assertEqual(11, len(canonical["floors"][0]["rooms"]))
+        self.assertEqual(13, len(canonical["floors"][1]["rooms"]))
+        self.assertEqual(
+            3,
+            sum(room["type"] == "bedroom" for room in canonical["floors"][1]["rooms"]),
+        )
+        self.assertEqual(
+            4,
+            sum(
+                room.get("access") == "ensuite_only"
+                for floor in canonical["floors"]
+                for room in floor["rooms"]
+            ),
+        )
+
+    def test_legacy_crowded_dining_chairs_and_island_are_non_blocking(self):
+        dining = {
+            "id": "dining_room_01",
+            "position": {"x": 0, "y": 0, "z": 0},
+            "dimensions": {"width": 2.7, "depth": 3.0, "height": 3.0},
+        }
+        kitchen = {
+            "id": "kitchen_01",
+            "position": {"x": 3.0, "y": 0, "z": 0},
+            "dimensions": {"width": 2.4, "depth": 2.7, "height": 3.0},
+        }
+        furniture = [{
+            "id": "table_dining_room_01", "asset": "dining_table", "category": "dining_table",
+            "room_id": dining["id"], "position": {"x": 1.35, "y": 1.5, "z": 0},
+            "dimensions": {"width": 1.6, "depth": 0.85, "height": 0.76}, "rotation": 0,
+        }]
+        for index in range(1, 5):
+            furniture.append({
+                "id": f"chair_dining_room_01_{index}", "asset": "dining_chair",
+                "category": "chair", "room_id": dining["id"],
+                "position": {"x": 1.35, "y": 1.5, "z": 0},
+                "dimensions": {"width": 0.45, "depth": 0.45, "height": 0.85}, "rotation": 0,
+            })
+        furniture.extend([
+            {
+                "id": "fridge_kitchen_01", "asset": "refrigerator", "category": "refrigerator",
+                "room_id": kitchen["id"], "position": {"x": 3.55, "y": 0.55, "z": 0},
+                "dimensions": {"width": 0.9, "depth": 0.8, "height": 1.82}, "rotation": 180,
+            },
+            {
+                "id": "sink_kitchen_01", "asset": "kitchen_sink", "category": "sink",
+                "room_id": kitchen["id"], "position": {"x": 4.85, "y": 0.55, "z": 0},
+                "dimensions": {"width": 0.8, "depth": 0.55, "height": 0.88}, "rotation": 180,
+            },
+            {
+                "id": "island_kitchen_01", "asset": "kitchen_island", "category": "kitchen_counter",
+                "room_id": kitchen["id"], "position": {"x": 4.2, "y": 1.35, "z": 0},
+                "dimensions": {"width": 1.8, "depth": 0.9, "height": 0.92}, "rotation": 0,
+            },
+        ])
+        floor = {"id": "ground_floor", "doors": [], "furniture": furniture}
+        report = {"critical_errors": [], "warnings": [], "repairs": []}
+
+        _repair_furniture(floor, {dining["id"]: dining, kitchen["id"]: kitchen}, report)
+
+        self.assertEqual([], report["critical_errors"], report)
+        self.assertTrue(any(item["id"] == "table_dining_room_01" for item in floor["furniture"]))
+        self.assertTrue(any(item["id"] == "fridge_kitchen_01" for item in floor["furniture"]))
+        self.assertTrue(any(item["id"] == "sink_kitchen_01" for item in floor["furniture"]))
+
     def test_explicit_floor_prompt_is_authoritative(self):
         constraints = infer_layout_constraints("Make this a 3-floor family house")
         self.assertTrue(constraints["floors_explicit"])
         self.assertEqual(3, constraints["floors_count"])
+
+        wizard_wording = infer_layout_constraints("2 floors total (Ground + 1 Floor).")
+        self.assertTrue(wizard_wording["floors_explicit"])
+        self.assertEqual(2, wizard_wording["floors_count"])
 
         inferred = infer_layout_constraints("A spacious family house with many rooms")
         self.assertFalse(inferred["floors_explicit"])
@@ -515,7 +761,7 @@ class ArchitecturalPipelineTests(unittest.TestCase):
 
         refined, refinement = apply_targeted_refinement(
             base,
-            "room one window from bedroom which is back side of bed",
+            "remove the north window from the bedroom",
         )
 
         self.assertTrue(refinement["handled"])

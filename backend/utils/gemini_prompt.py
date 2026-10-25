@@ -137,7 +137,7 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
         constraints["room_counts"].update(aggregate_floor_room_counts(floor_room_counts))
 
     # Multi-floor / Story detection
-    floor_match = re.search(r"\b(one|two|three|\d+)\s*[- ]?(story|storey|floor|level)s?\b", prompt_lower)
+    floor_match = re.search(r"\b(one|two|three|four|\d+)\s*[- ]?(story|storey|floor|level)s?\b", prompt_lower)
     if floor_room_counts:
         constraints["floors_count"] = max(floor_room_counts) + 1
         constraints["floors_explicit"] = True
@@ -293,4 +293,3 @@ def validate_architectural_prompt(prompt: str) -> tuple[bool, str | None]:
         return False, "❌ Prompt too short. Please describe what you want to design (e.g., '3 bedroom house with kitchen and living room')."
 
     return True, None
-

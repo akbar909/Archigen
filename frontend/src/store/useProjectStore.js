@@ -27,6 +27,7 @@ export const useProjectStore = create((set, get) => ({
 
   // UI State
   loading: false,
+  isVersionLoading: false,
   isGenerating3D: false,
   isReloading3D: false,
   isApprovingLayout: false,
@@ -95,6 +96,7 @@ export const useProjectStore = create((set, get) => ({
       activeProjectId: projectId,
       activeVersionId: versionId,
       design: null, // Loading indicator in viewport
+      isVersionLoading: true,
       activeTab: 'viewer',
     })
     try {
@@ -103,7 +105,7 @@ export const useProjectStore = create((set, get) => ({
       const designData = ver?.design
         ? { ...ver.design, glb_url: ver.glb_url || ver.design.glb_url }
         : null
-      set({ design: designData })
+      set({ design: designData, isVersionLoading: false })
 
       // If version is approved but has no 3D glb model yet, poll in case it is finishing in background
       if (designData && !designData.glb_url && designData.layout_approved) {
@@ -111,7 +113,7 @@ export const useProjectStore = create((set, get) => ({
       }
       return data.version
     } catch (err) {
-      set({ activeVersionId: null, design: null })
+      set({ activeVersionId: null, design: null, isVersionLoading: false })
       if (get().projectAction?.type !== 'deleting') {
         if (err?.response?.status === 404) {
           toast.error('Design version not found')
@@ -271,7 +273,7 @@ export const useProjectStore = create((set, get) => ({
     }
   },
 
-  generate: async ({ prompt, style }) => {
+  generate: async ({ prompt, style, timeout = 120, wizard }) => {
     const { activeProjectId, activeVersionId, loadProjectsList } = get()
     set({ loading: true })
 
@@ -284,6 +286,8 @@ export const useProjectStore = create((set, get) => ({
         data = await apiGenerateVersion(activeProjectId, {
           prompt,
           style,
+          timeout,
+          wizard,
           base_version_id: activeVersionId || undefined,
         })
         resultVersionId = data.version.id
@@ -296,7 +300,7 @@ export const useProjectStore = create((set, get) => ({
         })
         toast.success(`Version ${data.version.version_num} generated! ✨`)
       } else {
-        data = await apiGenerateDesign({ prompt, style })
+        data = await apiGenerateDesign({ prompt, style, timeout, wizard })
         resultProjectId = data.project_id
         resultVersionId = data.design_id
         const designData = data.design

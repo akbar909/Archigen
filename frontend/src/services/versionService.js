@@ -11,13 +11,13 @@ export async function fetchVersion(versionId) {
 }
 
 export async function generateVersion(projectId, payload) {
-  // payload: { prompt, style, base_version_id }
+  // payload: { prompt, style, base_version_id, wizard?, timeout? }
   const { data } = await apiClient.post(`/projects/${projectId}/generate`, payload)
   return data // { success, version }
 }
 
 export async function generateDesign(payload) {
-  // payload: { prompt, style, timeout }
+  // payload: { prompt, style, timeout, wizard? }
   const { data } = await apiClient.post('/chat', payload)
   return data
 }

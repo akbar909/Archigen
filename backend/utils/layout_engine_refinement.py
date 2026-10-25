@@ -105,7 +105,12 @@ class RefinementMixin:
 
         return selected
 
-    def solve_or_refine_design(self, design_data: Dict[str, Any], prompt: str = "") -> Dict[str, Any]:
+    def solve_or_refine_design(
+        self,
+        design_data: Dict[str, Any],
+        prompt: str = "",
+        constraints_override: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Takes raw Gemini design output (with arbitrary/missing coordinates) and
         produces a mathematically validated, contiguous architectural CAD model.
@@ -113,12 +118,18 @@ class RefinementMixin:
         from utils.gemini_layout import infer_layout_constraints
 
         constraints = infer_layout_constraints(prompt)
+        if constraints_override:
+            # Structured callers (notably Home Wizard) are authoritative for
+            # exact geometry and inventory. Keep inferred prose fields only as
+            # fallbacks for values the structured payload did not provide.
+            constraints.update(copy.deepcopy(constraints_override))
 
         # Extract plot dimensions or use standard architectural envelope
         plot_info = design_data.get("site", {}).get("plot", {})
         house_info = design_data.get("house", {})
-        pw = float(plot_info.get("width") or house_info.get("width") or 14.0)
-        pd = float(plot_info.get("depth") or house_info.get("length") or 18.0)
+        requested_plot = constraints.get("plot") if isinstance(constraints.get("plot"), dict) else {}
+        pw = float(requested_plot.get("width") or plot_info.get("width") or house_info.get("width") or 14.0)
+        pd = float(requested_plot.get("depth") or plot_info.get("depth") or house_info.get("length") or 18.0)
 
         # A floor count stated by the user must override Gemini's normalized
         # default (usually 1). Otherwise "make it three floors" is silently
@@ -134,20 +145,26 @@ class RefinementMixin:
             constraints.get("replace_room_program")
             and constraints.get("room_counts")
         )
-        if strict_room_program:
+        if constraints.get("requested_rooms"):
+            raw_rooms = copy.deepcopy(constraints["requested_rooms"])
+            strict_room_program = True
+        elif strict_room_program:
             raw_rooms = self._rooms_for_explicit_program(raw_rooms, constraints)
-        style = design_data.get("style") or house_info.get("style") or "modern"
+        style = constraints.get("style") or design_data.get("style") or house_info.get("style") or "modern"
 
         requirements = {
             "project_name": design_data.get("project_name", "ArchiGen Residential Home"),
             "style": style,
-            "orientation": design_data.get("site", {}).get("road", {}).get("side", "south"),
+            "orientation": constraints.get("orientation") or design_data.get("site", {}).get("road", {}).get("side", "south"),
             "plot": {"width": pw, "depth": pd},
             "floors": floors_cnt,
             "rooms": raw_rooms if raw_rooms else [],
             "connection_preferences": constraints.get("connections", []),
             "strict_room_program": strict_room_program,
             "strict_floor_program": bool(constraints.get("floor_room_counts")),
+            "roof_type": constraints.get("roof_type"),
+            "setbacks": copy.deepcopy(constraints.get("setbacks") or {}),
+            "max_coverage": constraints.get("max_coverage"),
         }
 
         # If rooms list was empty, populate from constraints
@@ -158,6 +175,33 @@ class RefinementMixin:
 
         # Run deterministic constraint engine
         solved_doc = self.generate_layout(requirements)
+
+        # Preserve non-geometric wizard selections as canonical design
+        # metadata. Renderers may adopt these fields incrementally, while the
+        # saved version always reflects exactly what the user selected.
+        if constraints.get("source") == "home_wizard":
+            preferences = copy.deepcopy(constraints.get("design_preferences") or {})
+            features = copy.deepcopy(constraints.get("features") or {})
+            solved_doc["design_preferences"] = preferences
+            solved_doc["features"] = features
+            solved_doc["feature_configs"] = copy.deepcopy(constraints.get("feature_configs") or {})
+            solved_doc["special_requirements"] = constraints.get("special_requirements", "")
+            solved_doc["project"]["building_type"] = constraints.get("building_type", "house")
+            solved_doc["site"]["road_access"] = constraints.get("road_access", "front")
+            solved_doc["site"]["max_coverage"] = constraints.get("max_coverage")
+
+            exterior = solved_doc.setdefault("exterior", {})
+            exterior.setdefault("boundary_wall", {})["enabled"] = bool(features.get("boundary_wall"))
+            gate_enabled = bool(features.get("entrance_gate"))
+            exterior.setdefault("gate", {})["enabled"] = gate_enabled
+            exterior.setdefault("entrance_path", {})["enabled"] = True
+            ground_rooms = (solved_doc.get("floors") or [{}])[0].get("rooms", [])
+            has_garage = any(room.get("type") == "garage" for room in ground_rooms)
+            exterior.setdefault("driveway", {})["enabled"] = bool(features.get("car_parking")) or has_garage
+            exterior.setdefault("landscape", {})["front_garden"] = bool(features.get("front_garden"))
+            exterior["exterior_lighting"] = bool(features.get("exterior_lighting"))
+            solved_doc.setdefault("roof", {})["solar_panels"] = bool(features.get("solar_panels"))
+            solved_doc["roof"]["rooftop_terrace"] = bool(features.get("rooftop_terrace"))
 
         # Merge custom PBR materials from Gemini where matching
         gemini_rooms_by_type = {}

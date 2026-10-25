@@ -27,6 +27,7 @@ from utils.gemini_layout import (
     infer_layout_constraints,
     validate_architectural_prompt,
 )
+from utils.wizard_constraints import build_prompt_layout_constraints
 
 
 # ─── Error Classes ────────────────────────────────────────────────────────────
@@ -156,11 +157,61 @@ def _extract_text_from_response(response_data: dict[str, Any]) -> str:
 
 # ─── Main Generation Function ────────────────────────────────────────────────
 
+def _generate_from_structured_wizard(
+    constraints_prompt: str,
+    layout_constraints: dict[str, Any],
+) -> dict[str, Any]:
+    """Solve an authoritative wizard payload without an LLM round trip.
+
+    Wizard fields already contain the full room program, floors and design
+    selections. Depending on Gemini to restate that JSON introduced avoidable
+    timeouts/rejections and could contradict the user's exact selections.
+    """
+    seed = {
+        "style": layout_constraints.get("style", "modern"),
+        "site": {
+            "plot": dict(layout_constraints.get("plot") or {}),
+            "road": {"side": layout_constraints.get("orientation", "north")},
+        },
+        "house": {"floors": layout_constraints.get("floors_count", 1)},
+        "rooms": [],
+        "furniture": [],
+        "doors": [],
+        "windows": [],
+    }
+    normalized = _normalize_design(
+        seed,
+        constraints_prompt,
+        layout_constraints=layout_constraints,
+    )
+    is_valid, validation_errors = _validate_home_design_schema(
+        normalized, constraints_prompt
+    )
+    if not is_valid:
+        raise GeminiSchemaValidationError(
+            f"Design validation failed: {'; '.join(validation_errors)}"
+        )
+    return normalized
+
+
 def generate_home_design(
     user_prompt: str,
     timeout: int = 120,
     constraints_prompt: str | None = None,
+    layout_constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if layout_constraints is None:
+        layout_constraints = build_prompt_layout_constraints(constraints_prompt or user_prompt)
+    if (
+        layout_constraints
+        and layout_constraints.get("source") in {"home_wizard", "structured_prompt"}
+        and not str(layout_constraints.get("special_requirements", "")).strip()
+    ):
+        return _generate_from_structured_wizard(
+            constraints_prompt or user_prompt,
+            layout_constraints,
+        )
+
     api_key = _get_api_key()
     endpoint = f"{GEMINI_API_BASE_URL}/{GEMINI_MODEL}:generateContent?key={parse.quote(api_key)}"
 
@@ -205,7 +256,11 @@ def generate_home_design(
         # The request sent to Gemini may contain a previous design JSON. Room
         # counts must be inferred only from the current user instruction.
         authoritative_prompt = constraints_prompt or user_prompt
-        normalized = _normalize_design(parsed_json, authoritative_prompt)
+        normalized = _normalize_design(
+            parsed_json,
+            authoritative_prompt,
+            layout_constraints=layout_constraints,
+        )
 
         # Validate schema
         is_valid, validation_errors = _validate_home_design_schema(normalized, authoritative_prompt)

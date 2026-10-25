@@ -16,6 +16,22 @@ import {
 import { CadDoorItem, CadFurnitureItem, CadWindowItem, formatDim, getRoomColor } from './floorplan/CadSymbols'
 import SitePlanLayer from './floorplan/SitePlanLayer'
 
+const compactRoomLabel = (room, fallback) => {
+  const type = String(room?.type || '').toLowerCase()
+  if (room?.access === 'ensuite_only' || type === 'master_bathroom') return 'ENSUITE'
+  const labels = {
+    storage_room: 'STORE',
+    laundry_room: 'LAUNDRY',
+    stair_lobby: 'STAIR LOBBY',
+    hallway: 'HALL',
+    home_office: 'STUDY',
+    master_bedroom: 'MASTER BED',
+  }
+  return String(labels[type] || room?.name || room?.type || fallback).toUpperCase()
+}
+
+const safeSvgId = (value) => String(value || 'room').replace(/[^a-zA-Z0-9_-]/g, '_')
+
 export default function FloorPlanVectorViewer({
   design,
   onApproveLayout,
@@ -406,6 +422,18 @@ export default function FloorPlanVectorViewer({
             <pattern id="garageHatch" width="10" height="10" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
               <line x1="0" y1="0" x2="0" y2="10" stroke="rgba(255,255,255,0.06)" strokeWidth="1.2" />
             </pattern>
+            {rooms.map((room, idx) => {
+              const rx = Number(room.position?.x || 0)
+              const ry = Number(room.position?.y || room.position?.z || 0)
+              const rw = Number(room.dimensions?.width || room.width || 4)
+              const rd = Number(room.dimensions?.depth || room.length || 4)
+              const clipId = `room-label-${safeSvgId(activeFloor.id || activeFloorIdx)}-${safeSvgId(room.id || idx)}`
+              return (
+                <clipPath id={clipId} key={clipId}>
+                  <rect x={mapX(rx) + 4} y={mapY(ry + rd) + 4} width={Math.max(0, rw * scale - 8)} height={Math.max(0, rd * scale - 8)} />
+                </clipPath>
+              )
+            })}
           </defs>
 
           {/* Background Grid */}
@@ -471,44 +499,6 @@ export default function FloorPlanVectorViewer({
                   />
                 )}
 
-                {/* Room Name */}
-                <text
-                  x={svgX + svgW / 2}
-                  y={svgY + svgD / 2 - (showDimensions ? 7 : 0)}
-                  fill={isSel ? '#60a5fa' : styling.text}
-                  fontSize="11.5"
-                  fontWeight="700"
-                  textAnchor="middle"
-                  letterSpacing="0.5"
-                >
-                  {(r.name || r.type || `Room ${idx + 1}`).toUpperCase()}
-                </text>
-
-                {/* Dimension & Area Pill Tag */}
-                {showDimensions && (
-                  <g>
-                    <rect
-                      x={svgX + svgW / 2 - 40}
-                      y={svgY + svgD / 2 + 4}
-                      width={80}
-                      height={16}
-                      rx="4"
-                      fill="rgba(15, 23, 42, 0.85)"
-                      stroke="rgba(255, 255, 255, 0.12)"
-                      strokeWidth="0.8"
-                    />
-                    <text
-                      x={svgX + svgW / 2}
-                      y={svgY + svgD / 2 + 15}
-                      fill="#cbd5e1"
-                      fontSize="9"
-                      fontWeight="600"
-                      textAnchor="middle"
-                    >
-                      {formatDim(rw, displayUnit)} Ãƒâ€” {formatDim(rd, displayUnit)}
-                    </text>
-                  </g>
-                )}
               </g>
             )
           })}
@@ -664,6 +654,68 @@ export default function FloorPlanVectorViewer({
                 mapY={mapY}
               />
             ))}
+
+          {/* Adaptive labels are clipped to each room and stay above CAD symbols. */}
+          {rooms.map((r, idx) => {
+            const rx = Number(r.position?.x || 0)
+            const ry = Number(r.position?.y || r.position?.z || 0)
+            const rw = Number(r.dimensions?.width || r.width || 4)
+            const rd = Number(r.dimensions?.depth || r.length || 4)
+            const svgX = mapX(rx)
+            const svgY = mapY(ry + rd)
+            const svgW = rw * scale
+            const svgD = rd * scale
+            const isSel = selectedRoomId === r.id
+            const styling = getRoomColor(r.type || r.name, isSel)
+            const label = compactRoomLabel(r, `Room ${idx + 1}`)
+            const fontSize = Math.max(6.5, Math.min(11, svgW / Math.max(5, label.length * 0.62), svgD / 4))
+            const showRoomDimensions = showDimensions && svgW >= 72 && svgD >= 48
+            const pillWidth = Math.min(80, svgW - 10)
+            const clipId = `room-label-${safeSvgId(activeFloor.id || activeFloorIdx)}-${safeSvgId(r.id || idx)}`
+            return (
+              <g key={`label-${r.id || idx}`} clipPath={`url(#${clipId})`} pointerEvents="none">
+                <title>{r.name || r.type || `Room ${idx + 1}`}</title>
+                <text
+                  x={svgX + svgW / 2}
+                  y={svgY + svgD / 2 - (showRoomDimensions ? 7 : 0)}
+                  fill={isSel ? '#60a5fa' : styling.text}
+                  stroke="rgba(8, 15, 28, 0.95)"
+                  strokeWidth="3"
+                  paintOrder="stroke"
+                  fontSize={fontSize}
+                  fontWeight="700"
+                  textAnchor="middle"
+                  letterSpacing="0.35"
+                >
+                  {label}
+                </text>
+                {showRoomDimensions && (
+                  <g>
+                    <rect
+                      x={svgX + (svgW - pillWidth) / 2}
+                      y={svgY + svgD / 2 + 3}
+                      width={pillWidth}
+                      height="15"
+                      rx="4"
+                      fill="rgba(15, 23, 42, 0.9)"
+                      stroke="rgba(255, 255, 255, 0.12)"
+                      strokeWidth="0.8"
+                    />
+                    <text
+                      x={svgX + svgW / 2}
+                      y={svgY + svgD / 2 + 13.5}
+                      fill="#cbd5e1"
+                      fontSize="8.5"
+                      fontWeight="600"
+                      textAnchor="middle"
+                    >
+                      {formatDim(rw, displayUnit)} × {formatDim(rd, displayUnit)}
+                    </text>
+                  </g>
+                )}
+              </g>
+            )
+          })}
         </svg>
       </div>
     </div>

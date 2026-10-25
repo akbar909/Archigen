@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Download, Loader2 } from 'lucide-react'
 import { useProjectStore } from '../store'
+import { getCachedModelUrl } from '../utils/modelCache'
 
 const SidebarToggleIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -50,12 +52,69 @@ export default function TopBar({ onOpenWizard }) {
   const activeVersion = activeProject?.versions?.find((v) => v.id === activeVersionId)
   const activeVersionNum = activeVersion ? activeVersion.version_num : null
 
+  const [isDownloading, setIsDownloading] = useState(false)
+  const glbUrl = design?.glb_url || design?.model_url || null
+
   const handleCopyLink = () => {
     try {
       navigator.clipboard.writeText(window.location.href)
       toast.success('Page link copied to clipboard! 📋')
     } catch {
       toast.error('Failed to copy link')
+    }
+  }
+
+  const handleDownload3D = async () => {
+    if (!glbUrl) {
+      toast.error('No 3D model available yet. Generate or approve layout first.')
+      return
+    }
+
+    setIsDownloading(true)
+    const toastId = toast.loading('Preparing 3D model download…')
+
+    try {
+      let blob = null
+      const cachedBlobUrl = await getCachedModelUrl(glbUrl)
+      if (cachedBlobUrl) {
+        const res = await fetch(cachedBlobUrl)
+        blob = await res.blob()
+      } else {
+        const res = await fetch(glbUrl)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        blob = await res.blob()
+      }
+
+      const cleanProjectName = (activeProject?.name || 'House_Design').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const fileName = `${cleanProjectName}_v${activeVersionNum || 1}.glb`
+
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+
+      toast.success('3D Model (.glb) downloaded! 🏡💾', { id: toastId })
+    } catch (err) {
+      console.warn('[TopBar] Blob download failed, attempting direct link download:', err)
+      try {
+        const cleanProjectName = (activeProject?.name || 'House_Design').replace(/[^a-zA-Z0-9_-]/g, '_')
+        const link = document.createElement('a')
+        link.href = glbUrl
+        link.download = `${cleanProjectName}_v${activeVersionNum || 1}.glb`
+        link.target = '_blank'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        toast.success('3D Model download started! 🏡', { id: toastId })
+      } catch {
+        toast.error('Failed to download 3D model.', { id: toastId })
+      }
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -141,25 +200,49 @@ export default function TopBar({ onOpenWizard }) {
           </button>
         )}
 
-        {/* 3D View mode badge */}
+        {/* 3D Model Download Button */}
         {design && (
-          <div
+          <button
+            type="button"
+            onClick={handleDownload3D}
+            disabled={!glbUrl || isDownloading}
+            title={glbUrl ? 'Download 3D Model (.glb)' : '3D Model not synthesized yet'}
+            aria-label="Download 3D Model"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 5,
-              padding: '5px 12px',
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border)',
+              gap: 6,
+              padding: '6px 12px',
+              background: glbUrl ? 'rgba(16, 163, 127, 0.12)' : 'var(--bg-secondary)',
+              border: `1px solid ${glbUrl ? 'rgba(16, 163, 127, 0.35)' : 'var(--border)'}`,
               borderRadius: 'var(--radius-sm)',
               fontSize: '0.8125rem',
-              fontWeight: 500,
-              color: 'var(--text-primary)',
+              fontWeight: 600,
+              color: glbUrl ? '#10a37f' : 'var(--text-muted)',
+              cursor: glbUrl && !isDownloading ? 'pointer' : 'not-allowed',
+              opacity: glbUrl ? 1 : 0.6,
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (glbUrl && !isDownloading) {
+                e.currentTarget.style.background = 'rgba(16, 163, 127, 0.22)'
+                e.currentTarget.style.borderColor = '#10a37f'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (glbUrl && !isDownloading) {
+                e.currentTarget.style.background = 'rgba(16, 163, 127, 0.12)'
+                e.currentTarget.style.borderColor = 'rgba(16, 163, 127, 0.35)'
+              }
             }}
           >
-            <BuildingIcon />
-            <span>3D Model</span>
-          </div>
+            {isDownloading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
+            <span>{isDownloading ? 'Downloading…' : '3D Model'}</span>
+          </button>
         )}
 
         {onOpenWizard && (
