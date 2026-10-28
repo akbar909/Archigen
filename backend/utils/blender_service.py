@@ -23,6 +23,15 @@ from utils.s3_storage import resolve_s3_url_to_presigned
 logger = logging.getLogger(__name__)
 
 
+def _material_info(value: Any) -> Dict[str, Any]:
+    """Normalize legacy string finishes and current structured finish records."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value:
+        return {"pattern": value}
+    return {}
+
+
 def hex_to_rgb(hex_str: str) -> List[float]:
     """Converts hex color string to normalized RGB list [r, g, b]."""
     hex_str = str(hex_str).lstrip("#")
@@ -36,6 +45,38 @@ def hex_to_rgb(hex_str: str) -> List[float]:
         except ValueError:
             pass
     return [0.8, 0.8, 0.8]
+
+
+def _aligned_wall_item(item: Dict[str, Any], room: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve reviewed axes without mutating an older saved version."""
+    if not item.get('wall_mounted') or not item.get('s3_key'):
+        return item
+    from utils.asset_catalog import _entry
+    asset = _entry(item['s3_key'], 'saved')
+    mounting = (asset or {}).get('mounting', {})
+    if not mounting.get('orientation_verified'):
+        return item
+    result = {**item, 'canonical_yaw_offset_deg': asset['canonical_yaw_offset_deg'],
+              'canonical_pitch_offset_deg': asset['canonical_pitch_offset_deg']}
+    version = int(mounting.get('orientation_version', 0))
+    dimensions = dict(item.get('dimensions', {}))
+    if version > int(item.get('wall_orientation_version', 0)):
+        height = float(dimensions.get('height') or asset['dimensions']['height'])
+        factor = height / asset['dimensions']['height']
+        dimensions = {key: value * factor for key, value in asset['dimensions'].items()}
+        result['dimensions'] = dimensions
+        pos = dict(item.get('position', {}))
+        rp = room.get('position', room.get('bounds', {}))
+        rd = room.get('dimensions', room.get('bounds', {}))
+        offset = dimensions['depth'] / 2 + 0.12
+        side = item.get('wall_side')
+        if side == 'left': pos['x'] = float(rp.get('x', 0)) + offset
+        if side == 'right': pos['x'] = float(rp.get('x', 0)) + float(rd.get('width', 4)) - offset
+        if side == 'back': pos['y'] = float(rp.get('y', 0)) + offset
+        if side == 'front': pos['y'] = float(rp.get('y', 0)) + float(rd.get('depth', 4)) - offset
+        result['position'] = pos
+    result['wall_orientation_version'] = version
+    return result
 
 
 def _canonical_blender_layout(
@@ -57,6 +98,9 @@ def _canonical_blender_layout(
             if not isinstance(wall, dict):
                 continue
             adapted = dict(wall)
+            face_overrides = design_data.get("wall_face_overrides", {}).get(str(wall.get("id")), {})
+            if face_overrides:
+                adapted["material_overrides"] = {**wall.get("material_overrides", {}), **face_overrides}
             adapted["floor_id"] = floor_id
             adapted["floor_level"] = level
             walls.append(adapted)
@@ -83,6 +127,9 @@ def _canonical_blender_layout(
             str(item.get("id")): item for item in floor.get("furniture", [])
             if isinstance(item, dict) and item.get("id")
         }
+        suppressed = {str(fid) for item in floor_items.values() for fid in item.get('suppressed_furniture_ids', [])}
+        suppressed.update(str(fid) for fid in design_data.get('deleted_furniture_ids', []))
+        floor_items = {fid: item for fid, item in floor_items.items() if fid not in suppressed}
         for room_index, room in enumerate(floor.get("rooms", [])):
             room_id = room.get("id") or f"room_{floor_index + 1}_{room_index + 1}"
             pos = room.get("position", {})
@@ -91,8 +138,8 @@ def _canonical_blender_layout(
             bw, bd = float(dim.get("width", 1.0)), float(dim.get("depth", 1.0))
             materials = room.get("materials", {})
             pbr = room.get("pbr_material", {})
-            floor_info = materials.get("floor", pbr.get("floor", {}))
-            wall_info = materials.get("walls", materials.get("wall", pbr.get("walls", pbr.get("wall", {}))))
+            floor_info = _material_info(materials.get("floor", pbr.get("floor", {})))
+            wall_info = _material_info(materials.get("walls", materials.get("wall", pbr.get("walls", pbr.get("wall", {})))))
 
             ids = [
                 fid for fid, item in floor_items.items()
@@ -103,7 +150,7 @@ def _canonical_blender_layout(
                 if fid in seen_furniture:
                     continue
                 seen_furniture.add(fid)
-                item = floor_items[fid]
+                item = _aligned_wall_item(floor_items[fid], room)
                 fpos, fdim = item.get("position", {}), item.get("dimensions", {})
                 category = str(item.get("category") or item.get("asset") or item.get("type") or "furniture").lower()
                 furniture_reqs.append({
@@ -113,6 +160,16 @@ def _canonical_blender_layout(
                     "preferred_id": item.get("asset_id") or item.get("asset") or item.get("model_id"),
                     "placement_hint": item.get("placement_hint", "exact"),
                     "anchor_wall": item.get("anchor_wall"),
+                    "wall_mounted": bool(item.get("wall_mounted", False)),
+                    "wall_side": item.get("wall_side"),
+                    "wall_normal": item.get("wall_normal"),
+                    "wall_anchor": item.get("wall_anchor"),
+                    "wall_orientation_version": item.get("wall_orientation_version", 0),
+                    "ceiling_mounted": bool(item.get("ceiling_mounted", False)),
+                    "ceiling_clearance": max(0.0, float(item.get("ceiling_clearance", 0.06))),
+                    "canonical_yaw_offset_deg": item.get("canonical_yaw_offset_deg"),
+                    "canonical_pitch_offset_deg": item.get("canonical_pitch_offset_deg"),
+                    "mount_height": max(0.0, float(item.get("mount_height", 0.0) or 0.0)),
                     "position": [
                         round(float(fpos.get("x", bx + bw / 2.0)), 3),
                         round(float(fpos.get("y", by + bd / 2.0)), 3),
@@ -141,6 +198,48 @@ def _canonical_blender_layout(
                 "walls": {"pattern": wall_info.get("pattern", "plaster"), "color": hex_to_rgb(wall_info.get("color", "#F0EDE8"))},
                 "furniture_requirements": furniture_reqs,
             })
+
+    # Layered outdoor assets are kept outside the architectural furniture
+    # inventory so ordinary saves never repack them. An explicit Finalize GLB
+    # merges them through the first ground-floor room's export collection.
+    exterior_assets = design_data.get("exterior", {}).get("assets", [])
+    ground_export_room = next(
+        (room for room in adapted_rooms if int(room.get("floor_level", 0)) == 0),
+        adapted_rooms[0] if adapted_rooms else None,
+    )
+    if ground_export_room and isinstance(exterior_assets, list):
+        for item in exterior_assets:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            fid = str(item["id"])
+            if fid in seen_furniture:
+                continue
+            seen_furniture.add(fid)
+            position = item.get("position", {})
+            dimensions = item.get("dimensions", {})
+            ground_export_room["furniture_requirements"].append({
+                "id": fid,
+                "instance_id": fid,
+                "category": str(item.get("category") or item.get("asset") or "outdoor").lower(),
+                "preferred_id": item.get("asset_id") or item.get("model_id") or item.get("asset"),
+                "placement_hint": "exact",
+                "anchor_wall": None,
+                "wall_mounted": False,
+                "mount_height": 0.0,
+                "position": [
+                    round(float(position.get("x", 0.0)), 3),
+                    round(float(position.get("y", 0.0)), 3),
+                    round(float(position.get("z", 0.0)), 3),
+                ],
+                "rotation_deg": float(item.get("rotation", item.get("rotation_y", 0.0))),
+                "dimensions": {
+                    "width": float(dimensions.get("width", 1.0)),
+                    "depth": float(dimensions.get("depth", 1.0)),
+                    "height": float(dimensions.get("height", 1.0)),
+                },
+                "room_id": "exterior_ground",
+            })
+            expected_furniture.append(fid)
 
     return {
         "house_id": house_id,
@@ -221,11 +320,11 @@ def adapt_gemini_to_blender_layout(
         # Flooring and Wall material extraction
         materials = r.get("materials", {})
         pbr = r.get("pbr_material", {})
-        floor_info = materials.get("floor", pbr.get("floor", {}))
+        floor_info = _material_info(materials.get("floor", pbr.get("floor", {})))
         floor_color = hex_to_rgb(floor_info.get("color", "#CCCCCC"))
         floor_pattern = floor_info.get("pattern", "wood_planks")
 
-        wall_info = materials.get("wall", pbr.get("wall", {}))
+        wall_info = _material_info(materials.get("wall", pbr.get("wall", {})))
         wall_color = hex_to_rgb(wall_info.get("color", "#F0EDE8"))
         wall_pattern = wall_info.get("pattern", "plaster")
 
@@ -270,6 +369,11 @@ def adapt_gemini_to_blender_layout(
                 "preferred_id": f.get("asset_id") or f.get("preferred_id") or f.get("id"),
                 "placement_hint": "center",
                 "anchor_wall": f.get("anchor_wall"),
+                "wall_mounted": bool(f.get("wall_mounted", False)),
+                "wall_side": f.get("wall_side"),
+                "wall_normal": f.get("wall_normal"),
+                "wall_anchor": f.get("wall_anchor"),
+                "mount_height": max(0.0, float(f.get("mount_height", 0.0) or 0.0)),
                 "position": [round(abs_x, 2), round(abs_y, 2), round(target_z, 2)],
                 "rotation_deg": rot,
             })

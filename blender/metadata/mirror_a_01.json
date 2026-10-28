@@ -1,5 +1,12 @@
 {
   "id": "mirror_a_01",
+  "mounting": {
+    "surface": "floor",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Mirror A 01",
   "category": "general",
   "room": "general",

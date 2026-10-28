@@ -1,5 +1,12 @@
 {
   "id": "curtain_blinds_02",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Curtain Blinds 02",
   "category": "general",
   "room": "general",

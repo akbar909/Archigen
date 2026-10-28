@@ -1,5 +1,12 @@
 {
   "id": "clock_03",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Clock 03",
   "category": "general",
   "room": "general",

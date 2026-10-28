@@ -1,5 +1,12 @@
 {
   "id": "luxury_gold_carved_mirror_04",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Luxury Gold Carved Mirror 04",
   "category": "general",
   "room": "general",

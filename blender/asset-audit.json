@@ -1,0 +1,2065 @@
+{
+  "counts": {
+    ".glb": 169,
+    ".gltf": 2,
+    ".md": 1,
+    ".orig": 1,
+    ".jpg": 9
+  },
+  "models": [
+    {
+      "path": "assets/appliances/electronics/led_tv_01.glb",
+      "sha256": "bf3f2c8a25826fc628b1688d7864d9ad1ffa25c58d5d8e15600849f11c9c14d6",
+      "dimensions": {
+        "width": 13,
+        "height": 7.753897190093994,
+        "depth": 2.151894450187685
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/electronics/led_tv_02.glb",
+      "sha256": "6555a72807f2eab5e939a21a718d549ee6d22744907745bde5e976b153dd589b",
+      "dimensions": {
+        "width": 27.341366683636714,
+        "height": 94.22517053137761,
+        "depth": 152.40751389461968
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/kitchen/haier_refrigerator_02.glb",
+      "sha256": "18bbbb2178177addc9ef0bdf75af51b6e4ec8f8ae5a827d3e7e6d016935f61af",
+      "dimensions": {
+        "width": 0.8333699703216559,
+        "height": 1.804190039634705,
+        "depth": 0.9180919826030735
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/kitchen/microwave_old_01.glb",
+      "sha256": "1dde8f63a52e09bde8fc3e64b9e1367602786edc2fc7db06e4c26f66ae5fb2fa",
+      "dimensions": {
+        "width": 5.015621873130798,
+        "height": 2.770405113000871,
+        "depth": 5.685367121980191
+      },
+      "meshes": 4,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/kitchen/refrigerator_001.glb",
+      "sha256": "3e2684f782d1655f54de4f8d5d21e3116a5d838e585b22b4f89d74f0c24b7754",
+      "dimensions": {
+        "width": 0.5130118727684021,
+        "height": 1.0017739534378052,
+        "depth": 0.4643137454986572
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/kitchen/vintage_microwave_1.glb",
+      "sha256": "bfdc36d2b1823a00a6a75c7ee146221dd8f6d9f50fa117ae8be9b6aadd983bc0",
+      "dimensions": {
+        "width": 1.0737111568450928,
+        "height": 0.5258261561393738,
+        "depth": 0.7455552816390991
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/laundry/washing_machine_01.glb",
+      "sha256": "22dbb2dbd0e8875263d6deb40841ec0c56e38b5615861c7d7134b71706ea1697",
+      "dimensions": {
+        "width": 587.2225492522342,
+        "height": 851.8646153999035,
+        "depth": 527.3128699435101
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/appliances/laundry/washing_machine_02.glb",
+      "sha256": "ac4b4da16ce9eaf1f799446a8d2b507adfa688c03e699cbc30c548e8df820eca",
+      "dimensions": {
+        "width": 490.3776715728393,
+        "height": 692.3455837981517,
+        "depth": 542.5404908690339
+      },
+      "meshes": 21,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/ceilings/designs/ceiling_lamp_01.glb",
+      "sha256": "c1edd2eddb961517d91eb8b06e390bac51299b16bacae0beb85f4a7846a68b65",
+      "dimensions": {
+        "width": 7.972381114959717,
+        "height": 1.11744824051857,
+        "depth": 16.496437072753906
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/ceilings/designs/ceiling_lamp_02.glb",
+      "sha256": "fc8c91e9ac41f5a7f0ffe5d874b8af0b5dd2fc8d718f09722dbc3bce61f82ada",
+      "dimensions": {
+        "width": 80.54080963134766,
+        "height": 118.9011344909668,
+        "depth": 80.54080581665039
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/ceilings/fans/ceiling_fan_01.glb",
+      "sha256": "c7f0a4921cc4e9f28e0e1a2e0768d12e28e44cfeeacdea881c5b67cb9c655936",
+      "dimensions": {
+        "width": 958.3499431610107,
+        "height": 958.3499073849543,
+        "depth": 332.7700358143369
+      },
+      "meshes": 1,
+      "skins": 1,
+      "animations": 1
+    },
+    {
+      "path": "assets/architecture/ceilings/fans/ceiling_fan_02.glb",
+      "sha256": "c15129df581b37fae5f9e045fe4deaaa037fd835aba557af0d55495f4af3a558",
+      "dimensions": {
+        "width": 14.78571605682373,
+        "height": 4.491438627243042,
+        "depth": 16.621376991271973
+      },
+      "meshes": 8,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/columns/classical/column_01.glb",
+      "sha256": "e772d69504757f1f85c3e003102273311b67ae1de95bac24d5cff61cad91906e",
+      "dimensions": {
+        "width": 0.5881916284561157,
+        "height": 3.0034779608249664,
+        "depth": 0.6498076915740967
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/columns/classical/column_02.glb",
+      "sha256": "84b93e6986d365e9102608ae1485fa0ba1c9a12991269309b72e04c695962b7f",
+      "dimensions": {
+        "width": 0.8446426202809221,
+        "height": 4.148573889137454,
+        "depth": 0.6533131655773117
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/columns/modern/column_01.glb",
+      "sha256": "9c47c47687cbf5665b1289f49c6ea9b3e0a138917f7257390b792cff4ae4a544",
+      "dimensions": {
+        "width": 2.970989227294922,
+        "height": 14.579700646222307,
+        "depth": 2.970989227294922
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/columns/modern/column_02.glb",
+      "sha256": "ebf4d28314470341322bce02813a2c2b50f383ac206402661656eaacb5b3a97e",
+      "dimensions": {
+        "width": 40,
+        "height": 245,
+        "depth": 40.00000000000006
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/exterior/entrance_door_01.glb",
+      "sha256": "b31bb7365293594481912155c33bfdd73a3a5f8717023e6058db9ef892faa9d0",
+      "dimensions": {
+        "width": 1172.5602416992188,
+        "height": 1380.2935914993286,
+        "depth": 371.84739685058605
+      },
+      "meshes": 15,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/exterior/Gate.glb",
+      "sha256": "1c33250603d2bf2ab3de48e8087b3061fd4d78249d85c3d6f961a1c4dcdb33f7",
+      "dimensions": {
+        "width": 4.631317614141621,
+        "height": 2.149825831869804,
+        "depth": 0.17494389166239266
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/exterior/roller_garager_door_01.glb",
+      "sha256": "f4286e4764d7bcfb572caad6d62f79f3276aa96705dca44f6274747a5ac98ab3",
+      "dimensions": {
+        "width": 2.8400001525878906,
+        "height": 2.7100013809205166,
+        "depth": 0.3259785547852516
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/glass_french/french_door_01.glb",
+      "sha256": "ee98fad06c4fb626492164759943835a487fcb873a56ee5a25c60c86ee00b5e5",
+      "dimensions": {
+        "width": 8.96820983668243,
+        "height": 9.888120920104454,
+        "depth": 0.7015337124523255
+      },
+      "meshes": 22,
+      "skins": 0,
+      "animations": 1
+    },
+    {
+      "path": "assets/architecture/doors/glass_french/french_door_02.glb",
+      "sha256": "cc4c692c6e0d6676231a43e3ec2773f2bcccdef1795680bf923e4a6cbbf52238",
+      "dimensions": {
+        "width": 0.5111538171768188,
+        "height": 4.987653732299805,
+        "depth": 4.505379915237427
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/interior/interior_door_01.glb",
+      "sha256": "187901d77eb5a6d16e2138ee507ada3d9f9956a316e0bf439efd09e729f97d87",
+      "dimensions": {
+        "width": 0.9144003391265869,
+        "height": 2.031813621520996,
+        "depth": 0.12506723403930664
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/interior/interior_door_02.glb",
+      "sha256": "a6fc5161604f7cd4b426dc1713f70ee6f80abeb3a20f42e34a8806e5c3792d3d",
+      "dimensions": {
+        "width": 5.4287196376460845,
+        "height": 9.168102329885553,
+        "depth": 1.7532763934693498
+      },
+      "meshes": 4,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/sliding/sliding_door_01.glb",
+      "sha256": "ab862dfdcd9e772791748ce85b1c2b7e5277d5f8e431604cabe4164429af90c9",
+      "dimensions": {
+        "width": 0.1435503363609314,
+        "height": 1.7755379676818848,
+        "depth": 1.7928439192473888
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/doors/sliding/sliding_door_02.glb",
+      "sha256": "0e3eeae1b302195f71f638c2195af3c90090bf2164906051d1774ba7cd45f9fe",
+      "dimensions": {
+        "width": 3.055000500753522,
+        "height": 2.500000409781933,
+        "depth": 0.20000038038688217
+      },
+      "meshes": 28,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/l_shaped/stairs_01.glb",
+      "sha256": "6bfd0fa784677987aa9ec0c07df1186882e7f5aed18a74e575b1cfcddc3d5f45",
+      "dimensions": {
+        "width": 0.17883522233248939,
+        "height": 0.190673915357523,
+        "depth": 0.1738558309260318
+      },
+      "meshes": 88,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/l_shaped/stairs_02.glb",
+      "sha256": "d8284bff5dbb4fb41f0c5c737a3ec9352da726770a7b3d4d768f546772a6a68d",
+      "dimensions": {
+        "width": 3.6346735189555526,
+        "height": 3.4050154878568164,
+        "depth": 4.2921086687123315
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/railings/railing_stairs_01.glb",
+      "sha256": "fe1b831e671749fc3c296fe0af5032fe9bb1d6860778e23d328ed2775e91bcf7",
+      "dimensions": {
+        "width": 0.08300000958889697,
+        "height": 0.09396582919134255,
+        "depth": 0.08140521825973987
+      },
+      "meshes": 15,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/railings/railing_stairs_02.glb",
+      "sha256": "df07f83777e5383c4d3457c6dbf9a8c214b4105df90fcc061fea058e145cde92",
+      "dimensions": {
+        "width": 2.536789894104004,
+        "height": 1.505224943161011,
+        "depth": 1.0663250088691716
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/spiral/spiral_stairs_01.glb",
+      "sha256": "cc48764a89ef86a9de4ce2f2821d0e733cc6cc8445c8593d0a9beddaf94a6bae",
+      "dimensions": {
+        "width": 251.23800659179688,
+        "height": 311.8869934082031,
+        "depth": 140.84709835052496
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/spiral/spiral_stairs_02.glb",
+      "sha256": "772f150ea69a7ae566e62b3b7a63111503197eec624b72ae4f6c5ca7ec327b13",
+      "dimensions": {
+        "width": 4.148968223962426,
+        "height": 5.968282050107971,
+        "depth": 4.150001966892038
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/straight/straight_stairs_01.glb",
+      "sha256": "41b6d8a7a4605b9c86776387af5f5d01f061a18377614d82b9b74eb39bb62e25",
+      "dimensions": {
+        "width": 3.477201155188652,
+        "height": 3.423692855603406,
+        "depth": 1.624020959794053
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/stairs/straight/straight_stairs_02.glb",
+      "sha256": "bf467f2ab0ff50509be0fc0014b1dfa82e5c8726c4dcd8df62942a26875ff0aa",
+      "dimensions": {
+        "width": 1.5166687508339856,
+        "height": 2.559378813852433,
+        "depth": 3.0013142816283764
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/walls/designs/wall_panel_01.glb",
+      "sha256": "a65fc83bc3f7459b931fe58a72b446ee39a0771fd46a7d11833996498f80ce5d",
+      "dimensions": {
+        "width": 0.9999999776482582,
+        "height": 0.9999999839086566,
+        "depth": 0.08292160437992897
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/walls/designs/wall_panel_02.glb",
+      "sha256": "d0c4a5d220f4f7098d58ae1131ee87269c0e93f094cd6e7589df4ac91b12f341",
+      "dimensions": {
+        "width": 3.0484920740127563,
+        "height": 3.403599977493286,
+        "depth": 0.1812700044351807
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/windows/sliding/Window_with_sliding_door_01.glb",
+      "sha256": "78c3a0eef315144ea405b2af151551442f73be6756a8632d8a9e0b67d5c8765e",
+      "dimensions": {
+        "width": 2.200000047683716,
+        "height": 2.0999999955522632,
+        "depth": 0.1499518472701311
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/windows/standard/standard_window_01.glb",
+      "sha256": "d880d3879680a92a19a36f2a4c4769792131fff531887698dc5197e03e1c4d1c",
+      "dimensions": {
+        "width": 7.5326080322265625,
+        "height": 6.463051080703735,
+        "depth": 1.4800919306740479
+      },
+      "meshes": 15,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/architecture/windows/standard/standard_window_02.glb",
+      "sha256": "fa6fda5452b73e2d5f2ec22c7ca2455b695b147ad729b4450a45069fc64d5798",
+      "dimensions": {
+        "width": 1.2200000286102295,
+        "height": 1.0199999902397394,
+        "depth": 0.30000001192092896
+      },
+      "meshes": 7,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/carpets_rugs/carpet_01.glb",
+      "sha256": "b89fe92f05f726c72480f4406ce6712d3d8bc1716c90a4c80751ac69426523ec",
+      "dimensions": {
+        "width": 1.9946367526278266,
+        "height": 0.02010158285643371,
+        "depth": 3.059020026812888
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/carpets_rugs/persian_qashqai_rug_03.glb",
+      "sha256": "250e28922799b6ee286aac10557cc85a370fca9709d53f3d519fa2d2bc614667",
+      "dimensions": {
+        "width": 0.9920987486839294,
+        "height": 0.004000000189989805,
+        "depth": 0.6451240181922913
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/carpets_rugs/rug_with_tassles_02.glb",
+      "sha256": "4906f944fd53f8adcc11969e264ea81ae8403b78edf491a7955a1aab88aba1ad",
+      "dimensions": {
+        "width": 2.5409737446029492,
+        "height": 0.014114852284959865,
+        "depth": 3.6883309790999412
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/clocks/antique_clock_02.glb",
+      "sha256": "b46f5f3343069f1c7b5803c8a2a71c4d6af0e41760f3fca3c9a94740c679ba39",
+      "dimensions": {
+        "width": 287.5472888946533,
+        "height": 1320.5640258789065,
+        "depth": 629.2702941894534
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/clocks/clock_01.glb",
+      "sha256": "cbbff9218ca6324564c43ad53fa376520b4569c0292baa4aa82145b1a29348a5",
+      "dimensions": {
+        "width": 157.94077980698074,
+        "height": 295.7314997895479,
+        "depth": 208.63072920934502
+      },
+      "meshes": 7,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/clocks/clock_03.glb",
+      "sha256": "73f9d9d31b124ce1c41466e8a8cd7f3b7bf8495895d284231ac966535fe033d1",
+      "dimensions": {
+        "width": 2.000015124505881,
+        "height": 2,
+        "depth": 0.9313496124166845
+      },
+      "meshes": 22,
+      "skins": 0,
+      "animations": 1
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_01.glb",
+      "sha256": "9e3628956bdd93cb965989135bbf71d54ed232202c1dabfef7e268ce2ecdc029",
+      "dimensions": {
+        "width": 232.77354665777875,
+        "height": 229.46996476407557,
+        "depth": 27.502742767334055
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_02.glb",
+      "sha256": "6b930f4fa90a2f0f8a87f501ec4524f174352c3e7d5809d1260d1ce1e84ccd80",
+      "dimensions": {
+        "width": 8.12025901547226,
+        "height": 8.009033878061771,
+        "depth": 0.6412570271519087
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_03.glb",
+      "sha256": "72952ee83fb610795eb2ee1491e5e96ddd4514e3419edd777e0516a799869e1a",
+      "dimensions": {
+        "width": 0.11532999947667122,
+        "height": 3.040150023996831,
+        "depth": 2.317389965057374
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_04.glb",
+      "sha256": "b446f0c96d6c8c27c6610db3a83fd21c6dd67675eb487a2585e6635caf5ce36f",
+      "dimensions": {
+        "width": 112.73706841864112,
+        "height": 83.51282948611282,
+        "depth": 4.426708155748459
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtain_blinds_02.glb",
+      "sha256": "a8afe3a93b6e92d664ce0ad407408e639488f9405d5a8d9eccd990095f99ae7d",
+      "dimensions": {
+        "width": 5.643299453482786,
+        "height": 3.810997530203859,
+        "depth": 0.3500022016075499
+      },
+      "meshes": 21,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/window_blinds_low_poly_01.glb",
+      "sha256": "27a90e53b19d77a17ae11c061922bdb9b1b997a5f83a066e91ebd187b8e0f020",
+      "dimensions": {
+        "width": 10.69647216796875,
+        "height": 197.9100738193619,
+        "depth": 208.68924052348245
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/mirrors/luxury_gold_carved_mirror_04.glb",
+      "sha256": "a7241116039731f96d2a702af8232020281ef66ff468e8e7af96ee9b208e7017",
+      "dimensions": {
+        "width": 427.51129150390625,
+        "height": 689.484619140625,
+        "depth": 23.762199789285813
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/mirrors/mirror_03.glb",
+      "sha256": "ba443ea65d8fd236d254406a638f6b61a3510c433435ab8a91c978855c2b2778",
+      "dimensions": {
+        "width": 82.88365173339844,
+        "height": 178.6767578125,
+        "depth": 2.2823443412781157
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/mirrors/mirror_a_01.glb",
+      "sha256": "e3c2c2dfcc3c0ba88225a4198d79acdeb7b5e2e3a1ed0ab320e3449b7bda947f",
+      "dimensions": {
+        "width": 0.7161760551592096,
+        "height": 1.7644461380441596,
+        "depth": 0.36767672670610096
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/mirrors/ornate_mirror_02.glb",
+      "sha256": "129b4260d6b73535b3b487c71939ffaa5a9de81f4092032798a7ebec48bea544",
+      "dimensions": {
+        "width": 1.3658039569854736,
+        "height": 2.0000000012843433,
+        "depth": 0.1115176676782148
+      },
+      "meshes": 31,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/plants_greenery/indoor_plant_01.glb",
+      "sha256": "a386e013d4e7da247e96d56a64f90d9a455987a26046f1a228277e1dae6d228d",
+      "dimensions": {
+        "width": 1.0805669724941254,
+        "height": 1.0648891236633062,
+        "depth": 1.035344958305359
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/plants_greenery/indoor_plant_02.glb",
+      "sha256": "79a9badc598a31d1adf5fd3e01c578b4f69c25748028e2503e1c816dbf2a0c18",
+      "dimensions": {
+        "width": 3.7787351608276367,
+        "height": 5.582149267196655,
+        "depth": 3.8279651403427133
+      },
+      "meshes": 2,
+      "skins": 1,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/tabletop_decor/tableTop_books_01.glb",
+      "sha256": "2013e73fc3a76a50dfcaac9fa958530ce3acaa036630f34031aa828dd14693fb",
+      "dimensions": {
+        "width": 2.9491900205612183,
+        "height": 0.9451099932193763,
+        "depth": 3.2639899253845215
+      },
+      "meshes": 7,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/tabletop_decor/tableTop_books_decor_02.glb",
+      "sha256": "46e9698b670d48ce47f23b4efa6af31c122018e4498ff59f6266549432982772",
+      "dimensions": {
+        "width": 0.3172767019157444,
+        "height": 0.3071568580629199,
+        "depth": 0.6885667295284268
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/wall_art/cafe_wall_pictures_03.glb",
+      "sha256": "e598eb7202ddca71d1379c7f1a52a827e763a394626915f5200e2fc4ecd1bee2",
+      "dimensions": {
+        "width": 0.026181364636016703,
+        "height": 0.7888878122624121,
+        "depth": 1.831509296440645
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/wall_art/city_map_framed_wall_art_print_amsterdam_02.glb",
+      "sha256": "ce3cbfd09e5c5ff57ce6844a056026f64b8ec4dde33307698ecd1923e873046c",
+      "dimensions": {
+        "width": 50.00003242492676,
+        "height": 49.999996185302734,
+        "depth": 1.0000001192093118
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/wall_art/retro_patent_framed_wall_art_print_guitar_04.glb",
+      "sha256": "a36fc4f2fc8705ca825c726df5f106ad455e6169acccdac31e73221b67127216",
+      "dimensions": {
+        "width": 30.0000057220459,
+        "height": 42,
+        "depth": 0.9996485412121006
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/decorations/wall_art/wall_art_01.glb",
+      "sha256": "97a51b5138d713487612c69ff5407539855f829f6037240cd7262f41661ddc7a",
+      "dimensions": {
+        "width": 0.20602000504732132,
+        "height": 0.5361500233411789,
+        "depth": 0.0308999987319113
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/doors/door_standard.glb",
+      "sha256": "40857bb97ff7125a81cee9b29f5ed133d89215aa3b270178ef1c5d7742b2d0ec",
+      "dimensions": {
+        "width": 1.7398420572280808,
+        "height": 4.1976558756883025,
+        "depth": 0.42111613732663167
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/doors/door_standard_02.glb",
+      "sha256": "9a79b63bbce7f627f68026c21ceae12903a433ff3d4f7b03b5ce9666da3055ca",
+      "dimensions": {
+        "width": 1.7398421987891728,
+        "height": 4.197656993275344,
+        "depth": 0.42111613732665565
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/doors/door_standard_03.glb",
+      "sha256": "b8ddb8dd49b526ae65b94f1e77f669da02149bf8b769e8e68d53b48d2b0982fc",
+      "dimensions": {
+        "width": 0.4860000014305115,
+        "height": 1.0095319747924805,
+        "depth": 0.1134000001475215
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/hardware/door_handle_02.glb",
+      "sha256": "978109a6650caa41ee6be8f79707acdf2ed4a6920ddf93a21c162863e16f860b",
+      "dimensions": {
+        "width": 19.781099319458022,
+        "height": 55.000000000000014,
+        "depth": 15.000000000000027
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/hardware/door_handle_1.glb",
+      "sha256": "04f599dcc52117670a280b0674942f56cf9b42da9950ba3f493912db9a5648be",
+      "dimensions": {
+        "width": 105.40360369863265,
+        "height": 48.49961292753568,
+        "depth": 41.48299191764864
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/plumbing/drain_02.glb",
+      "sha256": "a6711dde20b702191cc8830aa0a1dcdb0589c2c77563b1e1f6f552e76676b8df",
+      "dimensions": {
+        "width": 82.65318298339844,
+        "height": 3.8364299386739917,
+        "depth": 82.65318298339844
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/plumbing/kitchen_faucet_01.glb",
+      "sha256": "300a824b6a5670fc6a79b8a06ec661c93b69210305faca4860f2ad7a4a9d81ca",
+      "dimensions": {
+        "width": 6.419447497139055,
+        "height": 4.4361687832477354,
+        "depth": 4.013111367242547
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/plumbing/kitchen_faucet_02.glb",
+      "sha256": "bf01febfb79ab316352165c4af94999582665e448193c63c053bdd903a2ba069",
+      "dimensions": {
+        "width": 0.42249704897403717,
+        "height": 0.4062863650506188,
+        "depth": 0.2941207438707353
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/plumbing/shower_head_from_poly_by_google_01.glb",
+      "sha256": "a374d64ed97db77aec8a911eb73b79d441f5862f7fa0fa88b64133cfdebd7362",
+      "dimensions": {
+        "width": 268.6122055053711,
+        "height": 188.69635009765625,
+        "depth": 123.53577423095703
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/plumbing/shr_head_02.glb",
+      "sha256": "aa7e684c336ecebb7bb81225f4d97589719875217a399b2ff082e8f768e8cc3d",
+      "dimensions": {
+        "width": 0.3279151916503906,
+        "height": 0.33666205406188965,
+        "depth": 0.3048591613769531
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/fixtures/plumbing/small_drain_cover_decal_1.glb",
+      "sha256": "350301ca815ce1b2f8e8594525717c43df4288ad4de0becbcc090d0b01195c0c",
+      "dimensions": {
+        "width": 0.6042640550971612,
+        "height": 0.02667657077290344,
+        "depth": 0.30000006958842107
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/bathtubs/bathtub_001.glb",
+      "sha256": "72bb906bc0ac8a4c114ddd0a00b6cbd8a6ffdc56d2d6ec756f4819ecabc2766e",
+      "dimensions": {
+        "width": 0.5339075326919556,
+        "height": 0.420841708779335,
+        "depth": 1.0037460327148438
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/bathtubs/vitto_bathtub_02.glb",
+      "sha256": "cc03623f88ecc3207188a20cfb72c7d368a544698aef475dd2e4a808baa08550",
+      "dimensions": {
+        "width": 83.8582992553711,
+        "height": 88.97637939453126,
+        "depth": 40.531513052844986
+      },
+      "meshes": 691,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/showers/shower_high_poly_01.glb",
+      "sha256": "04c94a6f14a1bcf768810c2a09e1fb54ea9312ce1d6a4cd40b868c506755461f",
+      "dimensions": {
+        "width": 0.3598107248544693,
+        "height": 1.3183732330799103,
+        "depth": 0.6020039841532707
+      },
+      "meshes": 8,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/showers/shower_set_02.glb",
+      "sha256": "2fa9634ab6222901b9c303781d197b4abde6108c27bfb09328ddb88263828bd4",
+      "dimensions": {
+        "width": 0.37419700622558594,
+        "height": 0.9584970474243164,
+        "depth": 0.5871791839599609
+      },
+      "meshes": 11,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/toilets/toilet_001.glb",
+      "sha256": "7225f144936de1c6f8b0dc98c6a3efdf5c67edb224f96721ab4fd4a7a1920334",
+      "dimensions": {
+        "width": 0.5727962553501129,
+        "height": 0.9996671974658966,
+        "depth": 0.8959689140319824
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/toilets/toilet_002.glb",
+      "sha256": "cce61c48e8db130e8be57df952ccb5e6dda8ab7d1f15a76e44e4bafad7f239c3",
+      "dimensions": {
+        "width": 71.45273389489746,
+        "height": 103.66193791453568,
+        "depth": 45.093126934104916
+      },
+      "meshes": 31,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/vanities/bathroom_sink_cabinet_03.glb",
+      "sha256": "b86e54e60e392ff7b268f891829080d7e791be7c382e3f5746a9f5c289affed3",
+      "dimensions": {
+        "width": 48,
+        "height": 34.67418813705444,
+        "depth": 23.728800000000007
+      },
+      "meshes": 71,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/vanities/bathroom_vanity_with_marble_topfree_02.glb",
+      "sha256": "ce9d2b7acf8f7a34d96ff887264b85beedf0e42aa02ec87d3bcdc404d10022cf",
+      "dimensions": {
+        "width": 2.6847970410351536,
+        "height": 3.010383213930051,
+        "depth": 1.6756856013941221
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bathroom/vanities/sink_001.glb",
+      "sha256": "18675c3f661c3f193349b5c4153cf29c9800e3f3c68efed1ca2eebaebc121e0b",
+      "dimensions": {
+        "width": 0.5193873047828674,
+        "height": 0.5300353765487671,
+        "depth": 1.0037664771080017
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/ArmChair_01.glb",
+      "sha256": "f5513bf7d2f365353a9e1e9571b5ab999a23e3338f43e5d8bfb879b073eb30b7",
+      "dimensions": {
+        "width": 0.8484309017658234,
+        "height": 1.065087635157397,
+        "depth": 0.7657602727413177
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_01.glb",
+      "sha256": "566017fb41bfb68b235fa2d6e1ca2d303ae684ae95af589f48c0c93b201abae6",
+      "dimensions": {
+        "width": 1.765596977744142,
+        "height": 2.4111661921032814,
+        "depth": 2.7474227895817744
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_02.glb",
+      "sha256": "13947f346ab7a3a01081d4225a111d7065a6edf504e1d82fd3c05ee98c6c131d",
+      "dimensions": {
+        "width": 0.9053834080696106,
+        "height": 0.4772714078426361,
+        "depth": 1.0016339421272278
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_03.glb",
+      "sha256": "3b31887da2e101758e634819e91b1499a74027a8a18971ae9dffa4ed188a1255",
+      "dimensions": {
+        "width": 198.72670006752014,
+        "height": 100.00000000000004,
+        "depth": 233.48929977416992
+      },
+      "meshes": 7,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_04.glb",
+      "sha256": "5e610fd09bdd4f30904d6be8d17d3386113e0b2f099b32d4f1f1587a8753b744",
+      "dimensions": {
+        "width": 8.174263022840023,
+        "height": 4.9371268545528455,
+        "depth": 7.870178937911988
+      },
+      "meshes": 7,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/GothicBed_01.glb",
+      "sha256": "145b9ea95288402210aa32e2db925aa76d1ca1738a7930e930a8ceb45017a0e9",
+      "dimensions": {
+        "width": 1.493751883506775,
+        "height": 1.5338402975614969,
+        "depth": 2.0399999022483826
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/single_bed_01.glb",
+      "sha256": "709cbfb5c35fb1fcb1d91a8c0298ac5de6a22be6cd2925fc52640dda514ff358",
+      "dimensions": {
+        "width": 0.7863654914565643,
+        "height": 0.6819246556924731,
+        "depth": 1.7557344044208278
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/single_bed_02.glb",
+      "sha256": "26efbc9f32157c909d1cd9bde9b1692e4734728a0dcde7466739fe2ce5ff449a",
+      "dimensions": {
+        "width": 1.2625668362443387,
+        "height": 1.120000053197146,
+        "depth": 2.070000098319724
+      },
+      "meshes": 29,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/desk_001.glb",
+      "sha256": "72fbb72859e347a1b03860ccd4518b4e9440c0be81996a2af38fa694b65b3414",
+      "dimensions": {
+        "width": 1.0035037398338318,
+        "height": 0.46044209599494934,
+        "depth": 0.4349534809589386
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/dressers/dressers_01.glb",
+      "sha256": "c3de2d64610af5f7738ad5d1c96cfc5c644b8c3c8f7860dd4928ad8735081796",
+      "dimensions": {
+        "width": 0.5745298266410828,
+        "height": 1.908161997795105,
+        "depth": 1.1743241846561432
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/dressers/dressers_02.glb",
+      "sha256": "d10283785c2b0c5df125fabc1f04046432a974ab0d079b65eb7a11f951adb8ff",
+      "dimensions": {
+        "width": 89.86519622802734,
+        "height": 177.17181396484375,
+        "depth": 55.8209533691407
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/modren_wooden_cabinet_01.glb",
+      "sha256": "a4454f64a7fae0c66db641dc10e46b6bc86499446db58a19e00d05736f8b0df8",
+      "dimensions": {
+        "width": 2.4400004148483276,
+        "height": 0.6801425069570541,
+        "depth": 0.5200000107288361
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 1
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/bedside_table_001.glb",
+      "sha256": "979d6c737d51dd4cbb00dc9b577670a3bc3af29e153eabf55f38585d8e542e9a",
+      "dimensions": {
+        "width": 0.8575865030288696,
+        "height": 1.0020093321800232,
+        "depth": 0.8564020097255707
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/nightstand_01.glb",
+      "sha256": "f353025185c546d8d463a9ee79ed7bb4883960bc5698f7835cd92e341f81f33d",
+      "dimensions": {
+        "width": 56.01034462451935,
+        "height": 98.86455297853803,
+        "depth": 37.67642052364016
+      },
+      "meshes": 4,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/nightstand_02.glb",
+      "sha256": "535c64130d135a02b29ee780d3dcb9824bcb92e8f9fe5185213a2803e92fb25a",
+      "dimensions": {
+        "width": 0.6928687051256972,
+        "height": 0.8073057571082958,
+        "depth": 0.7625706680924582
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/nightstand_03.glb",
+      "sha256": "5220d96fecb2151deb7540b94ce87a61a53727d7de64bf26e4eb7195b139813a",
+      "dimensions": {
+        "width": 44.999998807907104,
+        "height": 53.99999617687597,
+        "depth": 32.00000254315747
+      },
+      "meshes": 4,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/vanity_tables/vanity_table_01.glb",
+      "sha256": "41127365e3bce494065c9d441a8e8c951e1393d071796abe807b2623fa70b9df",
+      "dimensions": {
+        "width": 1.3413189588192331,
+        "height": 1.4385819542724945,
+        "depth": 1.2684759619427626
+      },
+      "meshes": 13,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/vanity_tables/vanity_table_02.glb",
+      "sha256": "eb774f7c54b37f2444ecfe2e4e51631edb9df2c54b6b9b8718583df44059f5fa",
+      "dimensions": {
+        "width": 1624.2954196267847,
+        "height": 3202.3217686377066,
+        "depth": 1209.6329473960468
+      },
+      "meshes": 100,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_02.glb",
+      "sha256": "f102547ea50ad805cafc388bb99d09cbaa6d482eadbee0d789fe88a3ea095408",
+      "dimensions": {
+        "width": 966.2102155153074,
+        "height": 1623.1707042544037,
+        "depth": 475.41529983951955
+      },
+      "meshes": 29,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_03.glb",
+      "sha256": "c51992dd2cac242789ea0f352d7e968661ee26a675fe606b09b26f0f37472bc2",
+      "dimensions": {
+        "width": 2.4700002625868285,
+        "height": 2.700000747003015,
+        "depth": 1.9600005573073858
+      },
+      "meshes": 166,
+      "skins": 0,
+      "animations": 1
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_04.glb",
+      "sha256": "86c4cf69d85f8de8785ea49ca0904e741aa6b48846635563c74d0ead7e930eee",
+      "dimensions": {
+        "width": 1.7952729958572717,
+        "height": 2.4136452065028804,
+        "depth": 0.6084167252417579
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 1
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_modern_01.glb",
+      "sha256": "5418ce3a4ed6d3570aff3827a9305ee966f654c9de15aa8bd6c077896299fa3c",
+      "dimensions": {
+        "width": 0.6517095666974377,
+        "height": 2.057534683634799,
+        "depth": 1.564706563949585
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_chairs/dining_chair_001.glb",
+      "sha256": "6f4ccb3321fda09e96c60b83ea2ba4dbdb8e7085c8f58e43a64c1bdb5ac62708",
+      "dimensions": {
+        "width": 1.1910787224769592,
+        "height": 1.9098873734474182,
+        "depth": 1.1679655313491821
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_chairs/dining_chair_002.glb",
+      "sha256": "ef7f2c1ba4e483ebb63f7ba6d26c6a9f211ab0a1c5701d33d2c1fcde11e39816",
+      "dimensions": {
+        "width": 0.5923689305782318,
+        "height": 0.739298403263092,
+        "depth": 0.5372882038354874
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_tables/dining_table_001.glb",
+      "sha256": "9654497b527eb7d97c941242210f1126122ca862607b1972cb4b164c4aeb0a64",
+      "dimensions": {
+        "width": 1.0035947561264038,
+        "height": 0.38119374215602875,
+        "depth": 0.45911863446235657
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_tables/dining_table_with_chairs_01.glb",
+      "sha256": "1303385f07ddb64dcd5f1c5216ca47757ab7b160b88b04b70509781ea3156d3f",
+      "dimensions": {
+        "width": 1505.362495929643,
+        "height": 1245.6055962449173,
+        "depth": 1979.8506449416454
+      },
+      "meshes": 8,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_tables/dining_table_with_chairs_02.glb",
+      "sha256": "e1f07d4c35f1d49135a343b18c4049e9c57e88c15e76a09036999a8a0f80bb47",
+      "dimensions": {
+        "width": 671.6198403203285,
+        "height": 330.00011818528833,
+        "depth": 1091.6198277028457
+      },
+      "meshes": 8,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/sideboards/sideboard_001.glb",
+      "sha256": "b670eb4d2cbd5b36b44f649fb3ff3776c1aa903d4a07e8284c3910481005fabc",
+      "dimensions": {
+        "width": 1.0035706162452698,
+        "height": 0.40717506408691406,
+        "depth": 0.23263446241617203
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/dining_room/sideboards/sideboard_002.glb",
+      "sha256": "536cacaca0bd43b59efe27366e520fb8dcaf8873e26af5e1a8cf84b2a9893db6",
+      "dimensions": {
+        "width": 1.3865685006144344,
+        "height": 0.715110153774425,
+        "depth": 0.9304400692875971
+      },
+      "meshes": 10,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/entryway/benches/bench_02.glb",
+      "sha256": "47342f45bbac984e5e5ad5df250f5cf9f6d6d41b741097e350fe0c8f8e32c1ea",
+      "dimensions": {
+        "width": 0.12476153778893302,
+        "height": 0.06489182945822404,
+        "depth": 0.05613138733948428
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/entryway/benches/entryway_bench_with_drawer_01.glb",
+      "sha256": "781ee63a1ff49cafcb121554793e764b03cc3acaea81e1930a38927820019d92",
+      "dimensions": {
+        "width": 7.516834233026928,
+        "height": 3.9907552590052338,
+        "depth": 2.4999999441206464
+      },
+      "meshes": 13,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/entryway/shoe_storage/metal_shoe_rack_01.glb",
+      "sha256": "45b21fb2fc494d8f777d72e4db5e86e0d7dbbd8a304447470f50fa992d0457bc",
+      "dimensions": {
+        "width": 0.8464820981025696,
+        "height": 0.4946484863758087,
+        "depth": 0.35636913776397705
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/entryway/shoe_storage/shoe_rack_02.glb",
+      "sha256": "6f2c168359d4b20e48bbf42d33776e82527e485f24610f7bd5c4b878b499c2ea",
+      "dimensions": {
+        "width": 0.8405232429504395,
+        "height": 0.44015273451805115,
+        "depth": 0.3437831401824951
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/garage/car.glb",
+      "sha256": "17cebfedab325331f4c580493158756058892e30ce7c7082dcdfa0fe783dbee7",
+      "dimensions": {
+        "width": 2.271301746368408,
+        "height": 1.130518525838852,
+        "depth": 4.947663307189941
+      },
+      "meshes": 504,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/home_office/bookshelves/bookshelves_01.glb",
+      "sha256": "cf195e7b5cc36ea35a20296eb8e31cc3737e464c02b6c696ae6efbd868c37849",
+      "dimensions": {
+        "width": 10.002184167455486,
+        "height": 15.026072693585789,
+        "depth": 4.7000026291068835
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/home_office/bookshelves/bookshelves_02.glb",
+      "sha256": "e91aa2f9a5360239f8268ab02c7e68251e3b1b7d339e1c75fa02723ca3b1ea9b",
+      "dimensions": {
+        "width": 4.000247955322266,
+        "height": 6.588981714407787,
+        "depth": 1.4673793695243522
+      },
+      "meshes": 50,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/home_office/desks/office_desk_metallic_01.glb",
+      "sha256": "56525ef9a58686e5231dfd9acf624d36d6c6dfbabe6abaf1d2dab1dcc27e56bc",
+      "dimensions": {
+        "width": 1.7324053567855344,
+        "height": 0.9236672576442226,
+        "depth": 0.9690527127149837
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/home_office/desks/office_desk_with_drawers_02.glb",
+      "sha256": "bcf270d78cc59ea982083e1f3a4c0c18b9639c285d1e3c34d06a50768419f39b",
+      "dimensions": {
+        "width": 1.6451161640327427,
+        "height": 0.801068697332763,
+        "depth": 0.7777526763824483
+      },
+      "meshes": 16,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/home_office/office_chairs/office_chair_01.glb",
+      "sha256": "f0a2058976e58fc52b16546873d8eb79665e65a826fa04f0982861cf0eebf3cb",
+      "dimensions": {
+        "width": 0.9339581392917391,
+        "height": 1.4619139190116797,
+        "depth": 0.963523451655008
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/home_office/office_chairs/office_chair_02.glb",
+      "sha256": "eaeaaf05b10d3c01204c62348a923310d18d32bd567642f0bdf9e9834cef571f",
+      "dimensions": {
+        "width": 0.7250370122751925,
+        "height": 1.1602470824418536,
+        "depth": 0.7130721238462476
+      },
+      "meshes": 20,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/bar_stools/bar_stool_02.glb",
+      "sha256": "ce9bbc66983a7f3d6fb08b26f6c63aee2ba0e454246f34cf1b56d096251d6ed1",
+      "dimensions": {
+        "width": 40.57182884216311,
+        "height": 108.42011642456058,
+        "depth": 43.26386833190925
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/bar_stools/leather_high_bar_stool_01.glb",
+      "sha256": "8b780507a556ac7281fcf2367086b9e96a4906bc6e26bf085741a5153bcff6b0",
+      "dimensions": {
+        "width": 0.5963173968957443,
+        "height": 0.9907543049358686,
+        "depth": 0.4633702668939501
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/cabinets_base/kitchen_cabinet_1.glb",
+      "sha256": "af959cce05e47c75767d930f752370b1ad07ed861b06aa7d542c1bb64fa34261",
+      "dimensions": {
+        "width": 0.30005295260328246,
+        "height": 0.18951175717494276,
+        "depth": 0.18449915602305472
+      },
+      "meshes": 32,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/cabinets_base/kitchen_cabinet_2.glb",
+      "sha256": "0f409830e23b6b07317f0df94ddd59ff4c8198c027e01ffc846f5c2d43f20c3e",
+      "dimensions": {
+        "width": 0.5295035243034363,
+        "height": 2.061187021434307,
+        "depth": 2.69772732257843
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/cabinet_001.glb",
+      "sha256": "b670eb4d2cbd5b36b44f649fb3ff3776c1aa903d4a07e8284c3910481005fabc",
+      "dimensions": {
+        "width": 1.0035706162452698,
+        "height": 0.40717506408691406,
+        "depth": 0.23263446241617203
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/countertops/countertop-dishwasher-built-in_01.glb",
+      "sha256": "9f40be6432c9a9549b228c0a59022b4d3f792572d6632d5b320094ef228cb91b",
+      "dimensions": {
+        "width": 21.457931475662008,
+        "height": 17.77144525051017,
+        "depth": 19.409474009273254
+      },
+      "meshes": 19,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/islands/kitchen_island_001.glb",
+      "sha256": "081e30463dad2e179c2b7a2aadbc1d0db606a0b244e5e4e949b7c448f2c79319",
+      "dimensions": {
+        "width": 0.9975470006465912,
+        "height": 0.33528171479701996,
+        "depth": 0.40855473279953003
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/islands/kitchen_island_002.glb",
+      "sha256": "5673eca6035757c92e7e77c31d898310079612618798f6da176d9c49df897344",
+      "dimensions": {
+        "width": 2.400000503451475,
+        "height": 0.9200000962283897,
+        "depth": 0.8000001013278961
+      },
+      "meshes": 17,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/islands/kitchen_island_003.glb",
+      "sha256": "561c4f6632b17b5656218d1ce212596148b5c55a478e0a71cb452c535b23d707",
+      "dimensions": {
+        "width": 3.2728331089019775,
+        "height": 1.2932080030441284,
+        "depth": 1.5236210823059082
+      },
+      "meshes": 5,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/kitchen/sink_001.glb",
+      "sha256": "8e979b26508df341af9906162f2efeff762d679cd58e2c55b02a4e1ba5362ba1",
+      "dimensions": {
+        "width": 0.989838719367981,
+        "height": 0.7384128868579865,
+        "depth": 0.466397762298584
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_01.glb",
+      "sha256": "f5513bf7d2f365353a9e1e9571b5ab999a23e3338f43e5d8bfb879b073eb30b7",
+      "dimensions": {
+        "width": 0.8484309017658234,
+        "height": 1.065087635157397,
+        "depth": 0.7657602727413177
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_02.glb",
+      "sha256": "522d619253b3ff4ef773565f004462edd24356f6b4758e3f75f78048e8974711",
+      "dimensions": {
+        "width": 0.6985367976456103,
+        "height": 0.8559655446741349,
+        "depth": 0.6960467743063037
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_03.glb",
+      "sha256": "ea7c7f89ba7cb5b145b1c9f2e262429ede613e391232c083d1ca6f595d7a26af",
+      "dimensions": {
+        "width": 0.6985367976456103,
+        "height": 0.8559655446741349,
+        "depth": 0.6960467743063037
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_04.glb",
+      "sha256": "43df720ee609dcc8ab2d032c13b6a922f240b857d7ae3093593a2bb641be5654",
+      "dimensions": {
+        "width": 1.985592128552036,
+        "height": 2.5974025808067456,
+        "depth": 1.5151975094904535
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_05.glb",
+      "sha256": "665116948e618d16362f39d307f4b341637ecba863f4623210e25a692d93764d",
+      "dimensions": {
+        "width": 0.8364063578274198,
+        "height": 0.6423547844667323,
+        "depth": 0.8618400168300869
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/bookshelves/bookshelves_01.glb",
+      "sha256": "cf195e7b5cc36ea35a20296eb8e31cc3737e464c02b6c696ae6efbd868c37849",
+      "dimensions": {
+        "width": 10.002184167455486,
+        "height": 15.026072693585789,
+        "depth": 4.7000026291068835
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/bookshelves/bookshelves_02.glb",
+      "sha256": "e91aa2f9a5360239f8268ab02c7e68251e3b1b7d339e1c75fa02723ca3b1ea9b",
+      "dimensions": {
+        "width": 4.000247955322266,
+        "height": 6.588981714407787,
+        "depth": 1.4673793695243522
+      },
+      "meshes": 50,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/coffee_tables/CoffeeTable_01.glb",
+      "sha256": "c4ad03727e8c9f6b88904539873102564b87e691536b19afbb28626ad686b894",
+      "dimensions": {
+        "width": 1316.1753387451172,
+        "height": 402.36401025518506,
+        "depth": 947.8481919765472
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/coffee_tables/CoffeeTable_02.glb",
+      "sha256": "d95d98d1a796c8fe17b649c32aa4a63c5a911869d414d3f766d451e942e4f300",
+      "dimensions": {
+        "width": 2,
+        "height": 0.5502480705592291,
+        "depth": 1.0000000240521052
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/coffee_tables/CoffeeTable_03.glb",
+      "sha256": "2174571d1b1907fb0aaea8069d9d840be335c6c610f13896c4d4f90311a51b9c",
+      "dimensions": {
+        "width": 1.5400111079216003,
+        "height": 0.523237330140546,
+        "depth": 0.972847044467926
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/floor_lamp.glb",
+      "sha256": "82a28ddc6e855a6e6e6d1f3a71c016cbb5a0d1d66d738d0e052dd10aeb6bc858",
+      "dimensions": {
+        "width": 0.2799999937415123,
+        "height": 0.5000000467925553,
+        "depth": 0.2799999937415123
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/side_tables/sidetable_01.glb",
+      "sha256": "9be94f0a353091cd1e57be0f9ddc6eff89fd7cf2d27b9a31a3d9d8de8b25f4a2",
+      "dimensions": {
+        "width": 0.3712623951508127,
+        "height": 0.7702744083235086,
+        "depth": 0.7195698334168033
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/side_tables/sidetable_02.glb",
+      "sha256": "8ff99f8707ec2b9acc70ab595b246cfa6300e68725a94aaaa681911057956be4",
+      "dimensions": {
+        "width": 709.6956176757812,
+        "height": 659.7233851552012,
+        "depth": 724.2182617187502
+      },
+      "meshes": 4,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/sofas/L_shaped_sofa_02.glb",
+      "sha256": "3ea4c87b4c1c1926906296d4465928a8464fddf23c46d7c57cb38ad1725a259c",
+      "dimensions": {
+        "width": 1.9755080342292786,
+        "height": 0.5498259961605072,
+        "depth": 2.0012600421905518
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/sofas/sofa_01.glb",
+      "sha256": "457abe4175f00599e74d2b25963ba7e2d8cce237cf945a80003f0bf928521301",
+      "dimensions": {
+        "width": 2,
+        "height": 0.6017000315124779,
+        "depth": 0.7836620333412223
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/tv_units/modren_wooden_cabinet_01.glb",
+      "sha256": "a4454f64a7fae0c66db641dc10e46b6bc86499446db58a19e00d05736f8b0df8",
+      "dimensions": {
+        "width": 2.4400004148483276,
+        "height": 0.6801425069570541,
+        "depth": 0.5200000107288361
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 1
+    },
+    {
+      "path": "assets/furniture/living_room/tv_units/tv_stand_01.glb",
+      "sha256": "e9e0fb6ee3f4f3c27961745ee7d6e672a8a4936d1d7bd0278b0a4efbb77a9704",
+      "dimensions": {
+        "width": 1.8080921173095703,
+        "height": 0.3682732880115509,
+        "depth": 0.46308092772960663
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/tv_units/tv_stand_02.glb",
+      "sha256": "00b352e265e418f36848a19930281794e137fec12193a6e472f87a67fdd5c461",
+      "dimensions": {
+        "width": 0.469999997243285,
+        "height": 0.4250004409497483,
+        "depth": 2.4000000922286278
+      },
+      "meshes": 13,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/living_room/tv_walls/tv_stand_with_tv_&_wall.glb",
+      "sha256": "03362ba57935d38c6de00bf927f4e83906194951df820a1d06f5b3af65d9c0b3",
+      "dimensions": {
+        "width": 67.7165448486328,
+        "height": 94.48820197300722,
+        "depth": 18.267693041992175
+      },
+      "meshes": 838,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/outdoor/lounge_seating/patio_furniture_set_02.glb",
+      "sha256": "aaeed4a49d365ce0cb20ebdae7849b0e3e4707d1f09d6619d0bc89be9ababfc7",
+      "dimensions": {
+        "width": 2.918290138244629,
+        "height": 0.9091309905052193,
+        "depth": 3.8473699092864995
+      },
+      "meshes": 8,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/outdoor/lounge_seating/patio_set_01.glb",
+      "sha256": "299568a78fef06a5ff9a494f746bd36624e7480d802a9f5ebf9df2c7b0a0c354",
+      "dimensions": {
+        "width": 273.6646728515625,
+        "height": 256.44086721307553,
+        "depth": 275.77523461604335
+      },
+      "meshes": 5,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/outdoor/planters/garden_urn_01.glb",
+      "sha256": "b5d7f23351f00e67aae488d1f2e65b98e5f734011c6b1e0c408a90d6d4ae3068",
+      "dimensions": {
+        "width": 65.13165664672852,
+        "height": 117.13101939882957,
+        "depth": 68.91912320224961
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/furniture/outdoor/planters/giardino_urn__roses_02.glb",
+      "sha256": "7eacb989a7fb7e28ad227353e5f44ebcaa58e5a24a4ad6f3bdcea1134de127ea",
+      "dimensions": {
+        "width": 1.4966599941253662,
+        "height": 1.9949620366096497,
+        "depth": 1.4938059449195862
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/ceiling_lights/antique_chandelier_01.glb",
+      "sha256": "3ed11dcd095009ebb81e88090480800be720abc175258af56c0ac54efc5731b1",
+      "dimensions": {
+        "width": 1073.7098693847656,
+        "height": 2135.10492564418,
+        "depth": 934.6644545986869
+      },
+      "meshes": 5,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/ceiling_lights/chandelier_02.glb",
+      "sha256": "76d968dff5eae310eab36d9e46a35cfcd690bbbeba09f69c36c0ca221d7fe185",
+      "dimensions": {
+        "width": 0.023492398929020775,
+        "height": 0.02975831948760927,
+        "depth": 0.02304351993552923
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/floor_lamps/floor_lamp_01.glb",
+      "sha256": "82a28ddc6e855a6e6e6d1f3a71c016cbb5a0d1d66d738d0e052dd10aeb6bc858",
+      "dimensions": {
+        "width": 0.2799999937415123,
+        "height": 0.5000000467925553,
+        "depth": 0.2799999937415123
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/floor_lamps/floor_lamp_02.glb",
+      "sha256": "2a81bd1b79954ab582088fd27b9b2c9255a9aa83d165585636bda74fe07dd228",
+      "dimensions": {
+        "width": 0.8064702133085131,
+        "height": 1.6498578936391886,
+        "depth": 0.7536749409027323
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/floor_lamps/vintage_floor_lamp_03.glb",
+      "sha256": "d907bf186146bbc34695432a960be2897f2bfd09083b2c96308e7574c12b7fa5",
+      "dimensions": {
+        "width": 0.5260519981384277,
+        "height": 2.0000100357482022,
+        "depth": 0.5269381028581392
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/switches_sockets/electrical_switch_board__power_socket_01.glb",
+      "sha256": "fb531471f596ce1db05d0eba3f49b36a04fdd1a74ff2f4a631e32288f950124c",
+      "dimensions": {
+        "width": 0.2873368813617603,
+        "height": 0.12879646709993864,
+        "depth": 0.033506457375508614
+      },
+      "meshes": 6,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/switches_sockets/single_plug_socket_02.glb",
+      "sha256": "b68c96dd87caf434cedc3b5dccde6a648636c07e205e7aecc4c9e0c45044bac4",
+      "dimensions": {
+        "width": 8.696100115776062,
+        "height": 8.600000468600555,
+        "depth": 1.8344002694440276
+      },
+      "meshes": 2,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/table_lamps/classic_table_lamp_02.glb",
+      "sha256": "bb2795c2a6a970d4b1f79b9d5dfb46e38ab0685ca5b270ca3cd3f7e4affcc3a7",
+      "dimensions": {
+        "width": 0.24856124322352002,
+        "height": 0.5783268058674004,
+        "depth": 0.31198203343193154
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/table_lamps/table_lamp_01.glb",
+      "sha256": "92756cb75d3a399d577e9fd504aa2e304576f13186734f741633932a4966ba41",
+      "dimensions": {
+        "width": 27.451900482177734,
+        "height": 46.687179565429695,
+        "depth": 27.451892852783214
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/wall_sconces/stylized_gothic_wall_torch_01.glb",
+      "sha256": "79c2743743b299f2da4bbdb039c86b765641b46f0e14bf650fff33b353cc77a4",
+      "dimensions": {
+        "width": 0.197658970952034,
+        "height": 0.75,
+        "depth": 0.27295634150505066
+      },
+      "meshes": 4,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/lighting/wall_sconces/wall_lamp_02.glb",
+      "sha256": "b018f3efcd07b96f6f7390b0ecf54c6358da17c03a866c026c98f029f7b9e32d",
+      "dimensions": {
+        "width": 0.15862977791601632,
+        "height": 0.29462637872156006,
+        "depth": 0.27906736236659824
+      },
+      "meshes": 3,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/windows/window_standard_01.glb",
+      "sha256": "2b05bb4168e404429130b38f94b3feae81de31c9c3f9f0d784d0f2f058ff6e9b",
+      "dimensions": {
+        "width": 0.9999085664749146,
+        "height": 0.874176025390625,
+        "depth": 0.3137359917163849
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/windows/window_standard_02.glb",
+      "sha256": "7cc7ceaa4f7862e43120b32b934ae9e8501d9406d14f8b77e2d7f8fc94c35f6a",
+      "dimensions": {
+        "width": 0.05000030994415283,
+        "height": 0.5999999940395355,
+        "depth": 0.560000091791153
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    },
+    {
+      "path": "assets/windows/window_standard_03.glb",
+      "sha256": "08a621c03caf8a1dec0b384b1779a9b651fa22a723d9e3eac0d7368318209cbb",
+      "dimensions": {
+        "width": 0.928198313340545,
+        "height": 1.2379511546889923,
+        "depth": 0.14110422777870182
+      },
+      "meshes": 1,
+      "skins": 0,
+      "animations": 0
+    }
+  ],
+  "duplicates": [
+    [
+      "assets/furniture/bedroom/ArmChair_01.glb",
+      "assets/furniture/living_room/armchairs/ArmChair_01.glb"
+    ],
+    [
+      "assets/furniture/bedroom/modren_wooden_cabinet_01.glb",
+      "assets/furniture/living_room/tv_units/modren_wooden_cabinet_01.glb"
+    ],
+    [
+      "assets/furniture/dining_room/sideboards/sideboard_001.glb",
+      "assets/furniture/kitchen/cabinet_001.glb"
+    ],
+    [
+      "assets/furniture/home_office/bookshelves/bookshelves_01.glb",
+      "assets/furniture/living_room/bookshelves/bookshelves_01.glb"
+    ],
+    [
+      "assets/furniture/home_office/bookshelves/bookshelves_02.glb",
+      "assets/furniture/living_room/bookshelves/bookshelves_02.glb"
+    ],
+    [
+      "assets/furniture/living_room/floor_lamp.glb",
+      "assets/lighting/floor_lamps/floor_lamp_01.glb"
+    ]
+  ]
+}

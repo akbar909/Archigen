@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 try:
     import boto3
+    from botocore.config import Config
     from botocore.exceptions import ClientError, NoCredentialsError
 except ImportError:
     boto3 = None
@@ -24,8 +25,8 @@ from config import (
 )
 
 
-@lru_cache(maxsize=1)
-def get_s3_client():
+@lru_cache(maxsize=2)
+def get_s3_client(*, catalog: bool = False):
     """Initializes and returns a boto3 S3 client if credentials and library exist."""
     if boto3 is None:
         return None
@@ -33,11 +34,21 @@ def get_s3_client():
         return None
 
     try:
+        options = {}
+        if catalog:
+            # Catalog requests have a local fallback; avoid long SDK retries.
+            # Leave upload/download client behavior unchanged.
+            options["config"] = Config(
+                connect_timeout=3,
+                read_timeout=5,
+                retries={"total_max_attempts": 1},
+            )
         return boto3.client(
             "s3",
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             region_name=AWS_REGION,
+            **options,
         )
     except Exception as e:
         print(f"[WARN] S3 client creation failed: {e}")

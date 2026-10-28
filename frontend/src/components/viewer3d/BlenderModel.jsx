@@ -1,11 +1,182 @@
-import { Component, useEffect, useMemo, useState } from 'react'
+/* eslint-disable react/prop-types, react/no-unknown-property */
+import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { Html, useGLTF, useProgress } from '@react-three/drei'
 import { Sparkles, RotateCw } from 'lucide-react'
-import { getCachedModelUrl, saveModelToCache } from '../../utils/modelCache'
+import { saveModelToCache } from '../../utils/modelCache'
+import { canApplyAccentColor, prepareAssetModel } from '../../utils/assetModel'
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { applySurfaceTexture, findEditableSurface as findSurfaceRoot, isVisibleInHierarchy, setSubtreePickable } from '../../utils/sceneEditing'
+import { isSelectionClick } from '../../utils/selectionGesture'
 
 // Enable Draco decompression via local WASM decoders or Google CDN fallback
 const DRACO_DECODER_PATH = '/draco/gltf/'
+
+// Only self-contained GLB files are safe to load from signed S3 URLs.
+const isBrowserModel = (path) => (
+  typeof path === 'string' && path.trim() && path.split('?')[0].toLowerCase().endsWith('.glb')
+)
+
+const normalizedToken = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '')
+
+function furnitureIdForObject(object, furnitureIds) {
+  const metadataId = object?.userData?.archgen_instance_id
+  if (metadataId !== undefined && metadataId !== null) {
+    const exact = furnitureIds.find((id) => String(id) === String(metadataId))
+    if (exact) return exact
+  }
+  const name = normalizedToken(object?.name)
+  if (!name.includes('furniture')) return null
+  return furnitureIds.find((id) => name.includes(normalizedToken(id))) || null
+}
+
+function findFurnitureRoot(hitObject, sceneRoot, furnitureIds) {
+  let current = hitObject
+  let nameMatch = null
+  while (current && current !== sceneRoot.parent) {
+    const id = furnitureIdForObject(current, furnitureIds)
+    if (id) {
+      if (current.userData?.archgen_instance_id !== undefined || current.userData?.archgen_asset_root) {
+        return { id, object: current }
+      }
+      nameMatch = { id, object: current }
+    }
+    if (current === sceneRoot) break
+    current = current.parent
+  }
+  return nameMatch
+}
+
+function roomForSurface(match, point, rooms, cameraPoint) {
+  if (match.roomId) return rooms.find((room) => String(room.id) === String(match.roomId)) || null
+  const connected = String(match.object?.userData?.archgen_connected_rooms || '')
+    .split(',').map((value) => value.trim()).filter(Boolean)
+  const candidates = connected.length
+    ? rooms.filter((room) => connected.includes(String(room.id)))
+    : rooms
+  const contains = (room, target, pad = 0) => {
+    const position = room.position || room.bounds || {}
+    const dimensions = room.dimensions || room.bounds || {}
+    const x0 = Number(position.x) || 0
+    const y0 = Number(position.y) || 0
+    const x1 = x0 + (Number(dimensions.width ?? room.width) || 0)
+    const y1 = y0 + (Number(dimensions.depth ?? room.length) || 0)
+    const y = -target.z
+    const floorZ = Number(position.z) || 0
+    return target.x >= x0 - pad && target.x <= x1 + pad && y >= y0 - pad && y <= y1 + pad
+      && target.y >= floorZ - 0.1 && target.y <= floorZ + (Number(dimensions.height) || 3) + 0.1
+  }
+  // On a shared wall choose the room on the viewer's side, never the first
+  // connected room in the GLB metadata.
+  if (cameraPoint) {
+    const towardCamera = cameraPoint.clone().sub(point).normalize().multiplyScalar(0.25).add(point)
+    const sideRoom = candidates.find((room) => contains(room, towardCamera))
+    if (sideRoom) return sideRoom
+  }
+  return candidates.find((room) => contains(room, point, 0.15))
+    || (['roof', 'ceiling'].includes(match.type) ? candidates.find((room) => contains(room, new THREE.Vector3(point.x, point.y - 0.3, point.z), 0.15)) : null)
+    || null
+}
+
+function wallSideAtPoint(room, point) {
+  if (!room) return 'front'
+  const position = room.position || room.bounds || {}
+  const dimensions = room.dimensions || room.bounds || {}
+  const x0 = Number(position.x) || 0
+  const y0 = Number(position.y) || 0
+  const x1 = x0 + (Number(dimensions.width ?? room.width) || 0)
+  const y1 = y0 + (Number(dimensions.depth ?? room.length) || 0)
+  const canonicalY = -point.z
+  return [
+    [Math.abs(point.x - x0), 'left'], [Math.abs(point.x - x1), 'right'],
+    [Math.abs(canonicalY - y0), 'back'], [Math.abs(canonicalY - y1), 'front'],
+  ].sort((a, b) => a[0] - b[0])[0][1]
+}
+
+function applyUploadedTexture(object, url, repeat = 2, normal = null) {
+  return applySurfaceTexture(object, url, repeat, normal).catch((error) => console.warn('[Viewer3D] Finish loading failed:', error))
+}
+
+class AssetLoadBoundary extends Component {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(error) { console.warn('[Viewer3D] Asset replacement unavailable:', error.message) }
+  render() { return this.state.failed ? null : this.props.children }
+}
+
+function BlenderReplacementAsset({ item, visible, isSelected, onSelect, onObjectReady, onReady }) {
+  const rootRef = useRef(null)
+  const { scene } = useGLTF(item.model_path, DRACO_DECODER_PATH)
+  const normalized = useMemo(() => {
+    return prepareAssetModel(scene, item)
+  }, [scene, item])
+  const position = item.position || {}
+  const elevation = Number(position.z) || 0
+  const isRug = /rug|carpet/.test(String(item.category || item.asset || item.name || '').toLowerCase())
+  const floorOffset = isRug ? 0.008 : 0
+  const mountHeight = item.wall_mounted ? Math.max(0, Number(item.mount_height) || 0) : 0
+  const ceilingOffset = item.ceiling_mounted
+    ? (Number(item.dimensions?.height) || 0.8) - normalized.dimensions.height : 0
+  const rotation = THREE.MathUtils.degToRad(-(Number(item.rotation ?? item.rotation_y) || 0))
+
+  useEffect(() => { onReady?.() }, [onReady])
+  useEffect(() => {
+    if (rootRef.current) setSubtreePickable(rootRef.current, visible)
+  }, [visible, normalized])
+
+  useEffect(() => {
+    if (!isSelected || !rootRef.current || !onObjectReady) return undefined
+    // Keep parent selection state updates outside the asset render/effect
+    // transaction. This avoids React's cross-component update warning while
+    // Suspense is resolving a replacement GLB.
+    const object = rootRef.current
+    const frame = requestAnimationFrame(() => onObjectReady(object))
+    return () => cancelAnimationFrame(frame)
+  }, [isSelected, onObjectReady])
+
+  return (
+    <group
+      ref={rootRef}
+      visible={visible}
+      position={[Number(position.x) || 0, elevation + mountHeight + ceilingOffset + floorOffset, -(Number(position.y) || 0)]}
+      rotation={[0, rotation, 0]}
+      userData={{
+        isSelectable: true,
+        entityType: 'furniture',
+        entityId: item.id,
+        roomId: item.room_id || item.roomId,
+        source: 'blender-replacement',
+        asset_info: {
+          model_path: item.model_path, s3_key: item.s3_key,
+          model_id: item.model_id, asset_id: item.asset_id,
+          canonical_yaw_offset_deg: item.canonical_yaw_offset_deg,
+          canonical_pitch_offset_deg: item.canonical_pitch_offset_deg,
+          mounting: item.mounting,
+          wall_orientation_version: item.wall_orientation_version,
+          dimensions: item.dimensions,
+        },
+      }}
+      onClick={(event) => {
+        if (!visible || !isSelectionClick(event)) return
+        event.stopPropagation()
+        onSelect?.({
+          type: 'furniture',
+          id: item.id,
+          roomId: item.room_id || item.roomId,
+          object: rootRef.current,
+          source: 'blender',
+        })
+      }}
+    >
+      <group scale={normalized.scale}>
+        <primitive object={normalized.object} />
+      </group>
+    </group>
+  )
+}
 
 // ── Blender Headless GLB Model Component with Error Boundary ─────────
 export class BlenderErrorBoundary extends Component {
@@ -74,8 +245,17 @@ export class BlenderErrorBoundary extends Component {
 
 // ── Loading Fallback with Real-time Progress Bar ──────────────────────
 export function BlenderLoadingFallback({ onRetry }) {
-  const { progress } = useProgress()
+  // Loader notifications can fire synchronously during a Suspense render.
+  // Poll after commit so they cannot update a different rendering component.
+  const [progress, setProgress] = useState(0)
   const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    const update = () => setProgress(useProgress.getState().progress || 0)
+    update()
+    const timer = setInterval(update, 150)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const timer = setInterval(() => setElapsed((prev) => prev + 1), 1000)
@@ -164,14 +344,23 @@ export function BlenderHouseModel({
   showRoof = true,
   activeFloorLevel = null,
   viewMode = 'dollhouse',
+  editingEnabled = false,
+  furnitureItems = [],
+  rooms = [],
+  design = null,
+  uploadedAssets = [],
+  hiddenFurnitureIds = [],
+  selectedEntity = null,
+  onSelectEntity,
+  onSelectionObjectReady,
 }) {
   // Pass DRACO_DECODER_PATH so Draco-compressed GLB meshes are decoded efficiently via WebAssembly
   const { scene } = useGLTF(url, DRACO_DECODER_PATH)
+  const [replacementReady, setReplacementReady] = useState({})
 
   // Asynchronously cache downloaded GLB model in browser IndexedDB for 0ms repeat loads
   useEffect(() => {
     if (!url) return
-    const cacheKey = url.split('?')[0]
     // Check if not already loaded from blob
     if (!url.startsWith('blob:')) {
       fetch(url)
@@ -270,27 +459,31 @@ export function BlenderHouseModel({
         })
       }
 
-      // ── Detect 3D doors for physical doorway passage ──
-      const doorName = (
-        rawName.toLowerCase().startsWith('door')
-          ? rawName
-          : (parentName.toLowerCase().startsWith('door') ? parentName : '')
-      ).toLowerCase()
-      if (doorName && !doorName.includes('cutter') && !doorName.includes('frame')) {
-        const box = new THREE.Box3().setFromObject(child)
-        const center = new THREE.Vector3()
-        const size = new THREE.Vector3()
-        box.getCenter(center)
-        box.getSize(size)
-        const level = Math.max(0, Math.round(center.y / 3.0))
-        detectedDoors.push({
-          name: rawName || parentName,
-          worldX: center.x,
-          worldZ: center.z,
-          width: Math.max(size.x, size.z, 0.9),
-          floorLevel: level,
-        })
-      }
+    })
+
+    const seenDoors = new Set()
+    scene.traverse((object) => {
+      const data = object.userData || {}
+      const name = String(object.name || '')
+      const metadataDoor = data.archgen_opening_kind === 'door'
+      const legacyRoot = /^door/i.test(name) && !/^door/i.test(object.parent?.name || '')
+      if (!metadataDoor && !legacyRoot) return
+      if (/cutter/i.test(name) || data.archgen_opening_kind === 'window') return
+      const id = String(data.archgen_opening_id || name)
+      if (seenDoors.has(id)) return
+      seenDoors.add(id)
+      const bounds = new THREE.Box3().setFromObject(object)
+      if (bounds.isEmpty()) return
+      const center = bounds.getCenter(new THREE.Vector3())
+      const size = bounds.getSize(new THREE.Vector3())
+      const floorHeight = Number(design?.building?.floor_height) || 3
+      const levelMatch = name.match(/(?:^|_)L(\d+)(?:_|$)/i)
+      const level = Number(data.archgen_floor_level ?? (levelMatch ? Number(levelMatch[1]) : Math.floor((bounds.min.y + 0.05) / floorHeight)))
+      detectedDoors.push({ id, name, worldX: metadataDoor ? Number(data.archgen_opening_x) : center.x,
+        worldZ: metadataDoor ? -Number(data.archgen_opening_y) : center.z,
+        width: Number(data.archgen_opening_width) || Math.max(size.x, size.z), floorLevel: level,
+        axis: metadataDoor ? (data.archgen_opening_vertical ? 'z' : 'x') : (size.x >= size.z ? 'x' : 'z'),
+      })
     })
 
     if (detected.length > 0 && onRoomsDetected) {
@@ -302,11 +495,23 @@ export function BlenderHouseModel({
       console.log('[Viewer3D] Detected 3D doors from GLB model:', detectedDoors)
       onDoorsDetected(detectedDoors)
     }
-  }, [scene, onRoomsDetected, onDoorsDetected])
+  }, [scene, onRoomsDetected, onDoorsDetected, design?.building?.floor_height])
 
-  const clonedScene = useMemo(() => {
+  const furnitureIdKey = useMemo(
+    () => [...new Set([
+      ...furnitureItems.map((item) => item?.id).filter(Boolean),
+      ...hiddenFurnitureIds.filter(Boolean),
+    ])].sort().join('|'),
+    [furnitureItems, hiddenFurnitureIds],
+  )
+  const furnitureIds = useMemo(
+    () => (furnitureIdKey ? furnitureIdKey.split('|') : []),
+    [furnitureIdKey],
+  )
+
+  const cloneBundle = useMemo(() => {
     if (!scene) return null
-    const clone = scene.clone(true)
+    const clone = cloneSkeleton(scene)
     clone.updateMatrixWorld(true)
 
     // Old exports could contain parapet children that inherited the already
@@ -386,8 +591,8 @@ export function BlenderHouseModel({
           structuralSize.x > 0 && structuralSize.z > 0
           && (size.x > structuralSize.x * 1.35 || size.z > structuralSize.z * 1.35)
         )
-        // In walkthrough mode or when user clicks Roof ON, always show the roof/ceiling
-        child.visible = Boolean(showRoof) && !malformedLegacyRoof
+        child.userData.__malformedLegacyRoof = malformedLegacyRoof
+        child.visible = !malformedLegacyRoof
       }
 
       // Cut-away view: show the selected floor AND everything below it.
@@ -421,7 +626,7 @@ export function BlenderHouseModel({
         child.castShadow = true
         child.receiveShadow = true
         if (child.material) {
-          child.material = child.material.clone()
+          child.material = Array.isArray(child.material) ? child.material.map((m) => m.clone()) : child.material.clone()
           const mats = Array.isArray(child.material) ? child.material : [child.material]
           mats.forEach((m) => {
             // Render both sides on roof, ceilings, and slabs so looking up from inside renders the ceiling
@@ -459,11 +664,265 @@ export function BlenderHouseModel({
         }
       }
     })
-    return clone
-  }, [scene, showRoof, activeFloorLevel, viewMode])
+    const furnitureRoots = new Map()
+    clone.traverse((child) => {
+      // Discover removed instance IDs too: saved layers may reuse a GLB
+      // exported before the deletion, including older versions without tombstones.
+      const metadataId = child.userData?.archgen_instance_id
+      const id = metadataId !== undefined && metadataId !== null
+        ? String(metadataId) : furnitureIdForObject(child, furnitureIds)
+      if (!id) return
+      const current = furnitureRoots.get(id)
+      if (!current || child.userData?.archgen_instance_id !== undefined || child.userData?.archgen_asset_root) {
+        furnitureRoots.set(id, child)
+      }
+    })
+    furnitureRoots.forEach((root) => {
+      root.userData.__archgenEditorBaseVisible = root.visible
+      root.userData.isSelectable = true
+      root.userData.entityType = 'furniture'
+    })
+    return { scene: clone, furnitureRoots }
+  }, [scene, activeFloorLevel, viewMode, furnitureIds])
 
-  if (!clonedScene) return null
-  return <primitive object={clonedScene} position={[0, 0, 0]} />
+  // Roof visibility toggle decoupled from scene cloning to prevent texture flickering
+  useEffect(() => {
+    if (!cloneBundle) return
+    cloneBundle.scene.traverse((child) => {
+      const lowerName = String(child.name || '').toLowerCase()
+      if (lowerName.startsWith('roof') || lowerName.includes('_roof_') || lowerName.startsWith('roof_')) {
+        child.visible = Boolean(showRoof) && !child.userData?.__malformedLegacyRoof
+      }
+    })
+  }, [cloneBundle, showRoof])
+
+  const replacementItems = useMemo(
+    () => {
+      const suppressed = new Set(furnitureItems.flatMap((item) => item.suppressed_furniture_ids || []))
+      return furnitureItems.filter((item) => item?.id && !suppressed.has(item.id)).map((item) => {
+        if (isBrowserModel(item.model_path)) return item
+        const original = cloneBundle?.furnitureRoots.get(item.id)
+        if (!original) return null
+        const asset = uploadedAssets.find((entry) => entry.kind === 'model' && (
+          entry.id === original.userData?.archgen_id
+          || entry.s3_key?.split('/').pop() === original.userData?.archgen_source_file
+        ))
+        if (!asset?.model_path) return null
+        const position = original.getWorldPosition(new THREE.Vector3())
+        const rotation = new THREE.Euler().setFromQuaternion(original.getWorldQuaternion(new THREE.Quaternion()), 'YXZ')
+        return { ...item, dimensions: asset.dimensions, model_path: asset.model_path,
+          s3_key: asset.s3_key, model_id: asset.id, asset_id: asset.id,
+          canonical_yaw_offset_deg: asset.canonical_yaw_offset_deg,
+          canonical_pitch_offset_deg: asset.canonical_pitch_offset_deg,
+          mounting: asset.mounting,
+          position: item.client_edited_3d ? item.position : {
+            x: position.x, y: -position.z,
+            z: position.y - (item.wall_mounted ? Number(item.mount_height) || 0 : 0),
+          },
+          rotation: item.client_edited_3d ? item.rotation : -THREE.MathUtils.radToDeg(rotation.y) }
+      }).filter(Boolean)
+    },
+    [furnitureItems, cloneBundle, uploadedAssets],
+  )
+  const replacementKey = replacementItems.map((item) => item.id).sort().join('|')
+
+  useEffect(() => {
+    if (!cloneBundle || !design) return
+    const urlByKey = new Map(uploadedAssets.map((asset) => [asset.s3_key, asset.url]))
+    const resolveFinishUrl = (finish) => urlByKey.get(finish?.s3_key) || finish?.texture_url || null
+    const wallFinishes = new Map(Object.entries(design.surface_overrides || {}))
+    const wallFaces = new Map(Object.entries(design.wall_face_overrides || {}))
+    const floorFinishes = new Map()
+    const collectFloor = (floor) => {
+      const floorWalls = floor?.walls || []
+      const floorRooms = floor?.rooms || []
+      floorWalls.forEach((wall) => {
+        if (wall?.id && wall?.material_override) wallFinishes.set(String(wall.id), wall.material_override)
+        if (wall?.id && wall?.material_overrides) wallFaces.set(String(wall.id), wall.material_overrides)
+      })
+      floorRooms.forEach((room) => {
+        const finish = room?.materials?.floor || room?.pbr_material?.floor
+        if (room?.id && finish?.s3_key) floorFinishes.set(String(room.id), finish)
+      })
+    }
+    const designWalls = design.walls || []
+    const designRooms = design.rooms || []
+    const designFloors = design.floors || []
+    designWalls.forEach((wall) => {
+      if (wall?.id && wall?.material_override) wallFinishes.set(String(wall.id), wall.material_override)
+      if (wall?.id && wall?.material_overrides) wallFaces.set(String(wall.id), wall.material_overrides)
+    })
+    designRooms.forEach((room) => {
+      const finish = room?.materials?.floor || room?.pbr_material?.floor
+      if (room?.id && finish?.s3_key) floorFinishes.set(String(room.id), finish)
+    })
+    designFloors.forEach(collectFloor)
+    const applied = new Set()
+    cloneBundle.scene.traverse((object) => {
+      const surface = findSurfaceRoot(object, cloneBundle.scene)
+      if (!surface || applied.has(surface.object.uuid)) return
+      const root = surface.object
+      const wallId = surface.type === 'wall' ? surface.id : null
+      let roomId = surface.roomId
+      if (surface.type === 'floor' && !roomId) {
+        const bounds = new THREE.Box3().setFromObject(root)
+        const point = bounds.getCenter(new THREE.Vector3())
+        point.y = bounds.max.y + 0.05
+        roomId = roomForSurface(surface, point, rooms)?.id
+      }
+      let finish = null
+      let repeat = 2
+      if (wallId && wallFinishes.has(String(wallId))) {
+        finish = wallFinishes.get(String(wallId))
+        repeat = 1.8
+      } else if (roomId && surface.type === 'floor' && floorFinishes.has(String(roomId))) {
+        finish = floorFinishes.get(String(roomId))
+        repeat = 2.5
+      } else if (surface.type === 'ground') {
+        finish = design.exterior?.ground_finish
+        repeat = 3.5
+      }
+      const url = resolveFinishUrl(finish)
+      applied.add(root.uuid)
+      const base = url ? applyUploadedTexture(root, url, repeat) : Promise.resolve()
+      // Legacy whole-wall edits load first. Each new face has an independent
+      // request key so editing the bathroom cannot cancel the bedroom finish.
+      if (wallId && wallFaces.has(String(wallId))) base.then(() => {
+        Object.values(wallFaces.get(String(wallId))).forEach((face) => {
+          const faceUrl = resolveFinishUrl(face)
+          if (faceUrl && face.normal) applyUploadedTexture(root, faceUrl, 1.8, face.normal)
+        })
+      })
+    })
+  }, [cloneBundle, design, uploadedAssets, rooms])
+
+  useEffect(() => {
+    if (!cloneBundle) return
+    const replacements = new Set(replacementItems.filter((item) => replacementReady[`${item.id}:${item.model_path}`]).map((item) => item.id))
+    const hidden = new Set(hiddenFurnitureIds.map(String))
+    const activeIds = new Set(furnitureItems.map((item) => String(item.id)))
+    furnitureItems.forEach((item) => (item.suppressed_furniture_ids || []).forEach((id) => hidden.add(String(id))))
+    cloneBundle.furnitureRoots.forEach((root, id) => {
+      root.visible = Boolean(root.userData.__archgenEditorBaseVisible) && activeIds.has(String(id)) && !replacements.has(id) && !hidden.has(String(id))
+      setSubtreePickable(root, root.visible)
+    })
+  }, [cloneBundle, hiddenFurnitureIds, replacementItems, replacementKey, furnitureItems, replacementReady])
+
+  useEffect(() => {
+    if (!cloneBundle) return
+    furnitureItems.forEach((item) => {
+      if (!item?.id || !item.client_edited_3d || item.model_path) return
+      const root = cloneBundle.furnitureRoots.get(item.id)
+      if (!root) return
+      const position = item.position || {}
+      const elevation = Number(position.z) || 0
+      const mountHeight = item.wall_mounted ? Math.max(0, Number(item.mount_height) || 0) : 0
+      root.position.set(Number(position.x) || 0, elevation + mountHeight, -(Number(position.y) || 0))
+      root.rotation.y = THREE.MathUtils.degToRad(-(Number(item.rotation ?? item.rotation_y) || 0))
+      if (item.color && canApplyAccentColor(root)) {
+        root.traverse((child) => {
+          if (!child.isMesh || !child.material) return
+          const materials = Array.isArray(child.material) ? child.material : [child.material]
+          materials.forEach((material) => material.color?.set(item.color))
+        })
+      }
+      root.updateMatrixWorld(true)
+    })
+  }, [cloneBundle, furnitureItems])
+
+  useEffect(() => {
+    if (!selectedEntity?.id || selectedEntity.source !== 'blender' || !cloneBundle) return
+    if (replacementItems.some((item) => item.id === selectedEntity.id)) return
+    const object = cloneBundle.furnitureRoots.get(selectedEntity.id)
+    if (object) {
+      const item = furnitureItems.find((entry) => entry.id === selectedEntity.id)
+      onSelectionObjectReady?.({
+        type: 'furniture',
+        id: selectedEntity.id,
+        roomId: item?.room_id || item?.roomId || object.userData?.archgen_room_id,
+        object,
+        source: 'blender',
+      })
+    }
+  }, [cloneBundle, furnitureItems, onSelectionObjectReady, replacementItems, selectedEntity?.id, selectedEntity?.source])
+
+  if (!cloneBundle) return null
+  return (
+    <group>
+      <primitive
+        object={cloneBundle.scene}
+        position={[0, 0, 0]}
+        onClick={(event) => {
+          if (!editingEnabled || !isSelectionClick(event) || !isVisibleInHierarchy(event.object)) return
+          const match = findFurnitureRoot(event.object, cloneBundle.scene, furnitureIds)
+          if (match) {
+            event.stopPropagation()
+            const item = furnitureItems.find((entry) => entry.id === match.id)
+            onSelectEntity?.({
+              type: 'furniture',
+              id: match.id,
+              roomId: item?.room_id || item?.roomId || match.object.userData?.archgen_room_id,
+              object: match.object,
+              source: 'blender',
+            })
+            return
+          }
+          const surface = findSurfaceRoot(event.object, cloneBundle.scene)
+          if (!surface) return
+          event.stopPropagation()
+          let normal = event.face?.normal?.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(event.object.matrixWorld))
+          if (surface.type === 'roof' || surface.type === 'ceiling') {
+            surface.type = normal?.y < -0.5 ? 'ceiling' : 'roof'
+          }
+          const room = roomForSurface(surface, event.point, rooms, event.ray.origin)
+          const wallSurface = surface.type === 'wall' || surface.type === 'window'
+          const wallSide = wallSurface ? wallSideAtPoint(room, event.point) : null
+          if (surface.type === 'wall' && Math.abs(normal?.y || 0) > 0.5 && room) {
+            const inward = { front: [0, 0, 1], back: [0, 0, -1], left: [1, 0, 0], right: [-1, 0, 0] }
+            normal = new THREE.Vector3(...inward[wallSide])
+          }
+          onSelectEntity?.({
+            ...surface,
+            roomId: surface.type === 'ground' ? 'exterior_ground' : (surface.roomId || room?.id || null),
+            wallId: wallSurface ? (surface.type === 'wall' ? surface.id : null) : null,
+            wallSide,
+            surfaceNormal: normal ? { x: normal.x, y: normal.y, z: normal.z } : null,
+            hitPoint: { x: event.point.x, y: event.point.y, z: event.point.z },
+            source: 'blender',
+          })
+        }}
+      />
+      {replacementItems.map((item) => {
+        const original = cloneBundle.furnitureRoots.get(item.id)
+        const visible = original
+          ? Boolean(original.userData.__archgenEditorBaseVisible)
+          : true
+        return (
+          <AssetLoadBoundary key={`${item.id}:${item.model_path}`}>
+          <Suspense fallback={null}>
+            <BlenderReplacementAsset
+              item={item}
+              visible={visible}
+              onReady={() => setReplacementReady((current) => {
+                const key = `${item.id}:${item.model_path}`
+                return current[key] ? current : { ...current, [key]: true }
+              })}
+              isSelected={selectedEntity?.type === 'furniture' && selectedEntity.id === item.id}
+              onSelect={onSelectEntity}
+              onObjectReady={(object) => onSelectionObjectReady?.({
+                type: 'furniture',
+                id: item.id,
+                roomId: item.room_id || item.roomId,
+                object,
+                source: 'blender',
+              })}
+            />
+          </Suspense>
+          </AssetLoadBoundary>
+        )
+      })}
+    </group>
+  )
 }
 
 // Preload utility for snappy scene loads with Draco decoder support

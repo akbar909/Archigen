@@ -16,6 +16,12 @@ export async function generateVersion(projectId, payload) {
   return data // { success, version }
 }
 
+export async function createVersionBranch(projectId, payload) {
+  // payload: { base_version_id, design, note? }
+  const { data } = await apiClient.post(`/projects/${projectId}/versions`, payload)
+  return data
+}
+
 export async function generateDesign(payload) {
   // payload: { prompt, style, timeout, wizard? }
   const { data } = await apiClient.post('/chat', payload)
@@ -35,10 +41,11 @@ export async function approveFloorPlan(projectId, versionId) {
   return data
 }
 
-export async function updateLayout(projectId, versionId, layoutData) {
+export async function updateLayout(projectId, versionId, layoutData, { note = '' } = {}) {
   const { data } = await apiClient.patch(`/projects/${projectId}/versions/${versionId}/layout`, {
     design: layoutData,
     layout: layoutData,
+    note,
   })
   return data
 }

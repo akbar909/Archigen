@@ -1,14 +1,17 @@
+/* eslint-disable react/prop-types, react/no-unknown-property */
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { getRoomMeta, makeSurfaceTexture } from './constants'
-import { buildFurniture, makeFloorTexture } from '../../utils/furnitureBuilder'
+import { makeFloorTexture } from '../../utils/furnitureBuilder'
+import EditableFurniture from './EditableFurniture'
+import { isSelectionClick } from '../../utils/selectionGesture'
 
 // ── Solid Architectural Wall with Cap & Baseboard ───────────────────
-function ArchitecturalWall({ width, height, thickness, position, isAccent, accentMat, defaultMat, wallCapMat, baseboardMat }) {
+function ArchitecturalWall({ width, height, thickness, position, isAccent, accentMat, defaultMat, wallCapMat, baseboardMat, userData, onClick }) {
   const mat = isAccent && accentMat ? accentMat : defaultMat
 
   return (
-    <group position={position}>
+    <group position={position} userData={userData} onClick={onClick}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={[width, height, thickness]} />
         <primitive object={mat} attach="material" />
@@ -26,9 +29,9 @@ function ArchitecturalWall({ width, height, thickness, position, isAccent, accen
 }
 
 // ── Floor-to-Ceiling Panoramic Glass Sliding Wall ───────────────────
-function FloorToCeilingGlass({ width = 4.5, height = 2.8, position = [0, 1.4, 0] }) {
+function FloorToCeilingGlass({ width = 4.5, height = 2.8, position = [0, 1.4, 0], userData, onClick }) {
   return (
-    <group position={position}>
+    <group position={position} userData={userData} onClick={onClick}>
       <mesh castShadow position={[0, 0, 0]}>
         <boxGeometry args={[width, height, 0.08]} />
         <meshStandardMaterial color="#0f172a" roughness={0.3} metalness={0.8} />
@@ -95,12 +98,14 @@ function WallWithOpening({
   defaultMat,
   wallCapMat,
   baseboardMat,
+  userData,
+  onClick,
 }) {
   const mat = isAccent && accentMat ? accentMat : defaultMat
 
   if (!opening) {
     return (
-      <group position={position} rotation={rotation}>
+      <group position={position} rotation={rotation} userData={userData} onClick={onClick}>
         <ArchitecturalWall
           width={length}
           height={height}
@@ -125,7 +130,7 @@ function WallWithOpening({
   const headerH = Math.max(height - (sillH + opH), 0.05)
 
   return (
-    <group position={position} rotation={rotation}>
+    <group position={position} rotation={rotation} userData={userData} onClick={onClick}>
       {/* Left Wall Segment */}
       <mesh position={[-(opW / 2 + sideW / 2), 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[sideW, height, thickness]} />
@@ -226,7 +231,19 @@ function WallWithOpening({
 }
 
 // ── Room Volume with Multi-Floor & Contiguous Wall Integration ───────
-export default function RoomVolume({ room, viewMode, isSelected, isNightMode, furniture, doors = [], windows = [] }) {
+export default function RoomVolume({
+  room,
+  viewMode,
+  isSelected,
+  isNightMode,
+  furniture,
+  doors = [],
+  windows = [],
+  editingEnabled = false,
+  selectedEntity = null,
+  onSelectEntity,
+  onSelectionObjectReady,
+}) {
   const width = Math.max(Number(room.dimensions?.width ?? room.width) || 1, 1)
   const length = Math.max(Number(room.dimensions?.depth ?? room.length) || 1, 1)
   const fullHeight = Math.max(Number(room.dimensions?.height ?? room.height) || 3.0, 2.4)
@@ -250,12 +267,23 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
 
   const materials = room?.materials || {}
   const pbrMaterial = room?.pbr_material || {}
-  const accentWall = pbrMaterial?.accent_wall || (materials?.accent_wall ? { pattern: materials.accent_wall } : null)
+  const floorFinish = typeof materials?.floor === 'object'
+    ? materials.floor
+    : { pattern: materials?.floor }
+  const wallFinish = typeof materials?.walls === 'object'
+    ? materials.walls
+    : { pattern: materials?.walls }
+  const accentWall = pbrMaterial?.accent_wall || (
+    typeof materials?.accent_wall === 'object'
+      ? materials.accent_wall
+      : (materials?.accent_wall ? { pattern: materials.accent_wall } : null)
+  )
   const accentSide = accentWall?.side ? String(accentWall.side).toLowerCase() : null
 
-  const floorPattern = materials?.floor || pbrMaterial?.floor?.pattern || (isUpperFloor ? 'wood_planks' : 'marble_tile')
+  const floorPattern = floorFinish?.pattern || pbrMaterial?.floor?.pattern || (isUpperFloor ? 'wood_planks' : 'marble_tile')
   const floorTexture = useMemo(() => makeFloorTexture(floorPattern), [floorPattern])
-  const wallTexture = useMemo(() => makeSurfaceTexture(materials?.walls || pbrMaterial?.walls?.pattern || 'plain', 'wall'), [materials?.walls, pbrMaterial?.walls?.pattern])
+  const wallPattern = wallFinish?.pattern || pbrMaterial?.walls?.pattern || 'plain'
+  const wallTexture = useMemo(() => makeSurfaceTexture(wallPattern, 'wall'), [wallPattern])
   const accentTexture = useMemo(
     () => (accentWall ? makeSurfaceTexture(accentWall.pattern || 'brick', 'wall') : wallTexture),
     [accentWall, wallTexture]
@@ -269,7 +297,7 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
 
   const defaultWallMat = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
-      color: pbrMaterial?.walls?.color || '#f4f4f0',
+      color: pbrMaterial?.walls?.color || wallFinish?.color || '#f4f4f0',
       roughness: 0.85,
       metalness: 0.0,
       map: wallTexture,
@@ -278,7 +306,7 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
     mat.polygonOffsetFactor = 1
     mat.polygonOffsetUnits = 1
     return mat
-  }, [pbrMaterial?.walls?.color, wallTexture])
+  }, [pbrMaterial?.walls?.color, wallFinish?.color, wallTexture])
 
   const accentWallMat = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
@@ -333,21 +361,45 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
   const furnitureList = useMemo(() => {
     const items = Array.isArray(furniture) && furniture.length > 0 ? furniture : (Array.isArray(room?.furniture) ? room.furniture : [])
     if (!isCanonical) return items
-    return items.map((item) => ({
-      ...item,
-      position: {
-        x: (Number(item.position?.x) || x) - x,
-        y: Math.max(0, (Number(item.position?.z) || y) - y),
-        z: (Number(item.position?.y) || z) - z,
-      },
-      rotation_y: -(Number(item.rotation ?? item.rotation_y) || 0),
-    }))
+    return items.map((item) => {
+      const itemElevation = Number(item.position?.z)
+      const mountHeight = Number(item.mount_height)
+      return {
+        ...item,
+        position: {
+          x: (Number(item.position?.x) || x) - x,
+          y: item.wall_mounted
+            ? Math.max(0, Number.isFinite(mountHeight) ? mountHeight : 1.25)
+            : Math.max(0, (Number.isFinite(itemElevation) ? itemElevation : y) - y),
+          z: (Number(item.position?.y) || z) - z,
+        },
+        rotation_y: -(Number(item.rotation ?? item.rotation_y) || 0),
+      }
+    })
   }, [furniture, room?.furniture, isCanonical, x, y, z])
 
-  const furnitureGroup = useMemo(
-    () => buildFurniture(furnitureList),
-    [furnitureList]
-  )
+  const selectSurface = (type, wallSide = null) => (event) => {
+    if (!editingEnabled || !isSelectionClick(event)) return
+    event.stopPropagation()
+    onSelectEntity?.({
+      type,
+      id: room.id,
+      roomId: room.id,
+      wallSide,
+      hitPoint: event.point
+        ? { x: event.point.x, y: event.point.y, z: event.point.z }
+        : null,
+      object: event.eventObject,
+    })
+  }
+
+  const surfaceData = (type, wallSide = null) => ({
+    isSelectable: true,
+    entityType: type,
+    entityId: room.id,
+    roomId: room.id,
+    wallSide,
+  })
 
   const roomDoors = useMemo(() => {
     const list = Array.isArray(doors) && doors.length > 0 ? doors.filter((d) => (d.roomId || d.room_id) === room.id) : []
@@ -398,7 +450,12 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
   return (
     <group position={[x, centerY, z]}>
       {/* Floor Slab */}
-      <mesh receiveShadow position={[0, 0.004, 0]}>
+      <mesh
+        receiveShadow
+        position={[0, 0.004, 0]}
+        userData={surfaceData('floor')}
+        onClick={selectSurface('floor')}
+      >
         <boxGeometry args={[width, slabThickness, length]} />
         <primitive object={floorMat} attach="material" />
       </mesh>
@@ -447,6 +504,8 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
         defaultMat={defaultWallMat}
         wallCapMat={wallCapMat}
         baseboardMat={baseboardMat}
+        userData={surfaceData('wall', 'back')}
+        onClick={selectSurface('wall', 'back')}
       />
 
       {/* Front Wall */}
@@ -455,6 +514,8 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
           width={width}
           height={wallHeight}
           position={[0, wallHeight / 2, length / 2 - wallThickness / 2]}
+          userData={surfaceData('wall', 'front')}
+          onClick={selectSurface('wall', 'front')}
         />
       ) : (
         <WallWithOpening
@@ -468,6 +529,8 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
           defaultMat={defaultWallMat}
           wallCapMat={wallCapMat}
           baseboardMat={baseboardMat}
+          userData={surfaceData('wall', 'front')}
+          onClick={selectSurface('wall', 'front')}
         />
       )}
 
@@ -484,6 +547,8 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
         defaultMat={defaultWallMat}
         wallCapMat={wallCapMat}
         baseboardMat={baseboardMat}
+        userData={surfaceData('wall', 'left')}
+        onClick={selectSurface('wall', 'left')}
       />
 
       {/* Right Wall */}
@@ -499,6 +564,8 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
         defaultMat={defaultWallMat}
         wallCapMat={wallCapMat}
         baseboardMat={baseboardMat}
+        userData={surfaceData('wall', 'right')}
+        onClick={selectSurface('wall', 'right')}
       />
 
       {hasCeiling && (
@@ -508,7 +575,22 @@ export default function RoomVolume({ room, viewMode, isSelected, isNightMode, fu
         </mesh>
       )}
 
-      <primitive object={furnitureGroup} />
+      {furnitureList.map((item, index) => (
+        <EditableFurniture
+          key={item.id || `${item.asset || item.type || 'furniture'}-${index}`}
+          item={item}
+          room={room}
+          editingEnabled={editingEnabled}
+          isSelected={selectedEntity?.type === 'furniture' && selectedEntity.id === item.id}
+          onSelect={onSelectEntity}
+          onObjectReady={(object) => onSelectionObjectReady?.({
+            type: 'furniture',
+            id: item.id,
+            roomId: room.id,
+            object,
+          })}
+        />
+      ))}
 
       {lights.map((l, i) => {
         const lx = Number(l?.position?.x) || 0

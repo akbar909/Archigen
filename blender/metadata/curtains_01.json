@@ -1,5 +1,12 @@
 {
   "id": "curtains_01",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Curtains 01",
   "category": "general",
   "room": "general",

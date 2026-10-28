@@ -7,9 +7,10 @@ import ChatInput from '../components/ChatInput'
 import StatsRow from '../components/StatsRow'
 import JsonViewer from '../components/JsonViewer'
 import HomeWizard from '../components/home-wizard/HomeWizard'
+import SaveVersionModal from '../components/SaveVersionModal'
 import { DEFAULT_WIZARD_STATE } from '../components/home-wizard/wizard-constants'
 import { useAuthStore, useProjectStore } from '../store'
-import { Sparkles, MessageSquare } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
 export default function DashboardPage() {
   const { projectId, versionId } = useParams()
@@ -27,12 +28,16 @@ export default function DashboardPage() {
     selectProject,
     selectVersion,
     generate,
+    isDirty,
+    isSavingVersion,
+    saveLayoutChanges,
   } = useProjectStore()
 
   // Track mode when no design is loaded (wizard vs prompt box)
   const [wizardActive, setWizardActive] = useState(true)
   // Track modal wizard when viewing an existing 3D design
   const [showWizardModal, setShowWizardModal] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
   // Keep wizard entries for this page session. They reset only when the page
   // itself is refreshed, not when generation fails or the wizard is closed.
   const [wizardDraft, setWizardDraft] = useState(() =>
@@ -72,13 +77,31 @@ export default function DashboardPage() {
       }
     } else if (!projectId && !versionId && activeProjectId) {
       // User navigated to /app root
-      useProjectStore.setState({ activeProjectId: null, activeVersionId: null, design: null })
+      useProjectStore.setState({
+        activeProjectId: null,
+        activeVersionId: null,
+        design: null,
+        persistedDesign: null,
+        isDirty: false,
+      })
     }
   }, [projectId, versionId, isAuthed, activeProjectId, activeVersionId, selectProject, selectVersion, navigate])
 
   const activeProject = useMemo(() => {
     return projects.find((p) => p.id === activeProjectId)
   }, [projects, activeProjectId])
+  const activeVersion = activeProject?.versions?.find((version) => version.id === activeVersionId)
+  const activeVersionNum = Number(activeVersion?.version_num) || 1
+
+  useEffect(() => {
+    if (!isDirty) return undefined
+    const warnBeforeUnload = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [isDirty])
 
   const hasGeneratedAnyDesign = useMemo(() => {
     if (design) return true
@@ -102,6 +125,15 @@ export default function DashboardPage() {
     }
   }
 
+  const handleSave = async ({ mode, note }) => {
+    const result = await saveLayoutChanges({ mode, note })
+    if (!result) return
+    setShowSaveModal(false)
+    if (mode === 'new_version' && result.versionId) {
+      navigate(`/app/projects/${activeProjectId}/versions/${result.versionId}`)
+    }
+  }
+
   return (
     <div className="app-shell">
       {/* Sidebar */}
@@ -110,7 +142,10 @@ export default function DashboardPage() {
       {/* Main area */}
       <div className="main-area">
         {/* TopBar */}
-        <TopBar onOpenWizard={handleOpenWizard} />
+        <TopBar
+          onOpenWizard={handleOpenWizard}
+          onOpenSave={() => setShowSaveModal(true)}
+        />
 
         {/* Content Area */}
         <div className="content-area" style={{ position: 'relative' }}>
@@ -243,6 +278,16 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <SaveVersionModal
+        open={showSaveModal}
+        currentVersion={activeVersionNum}
+        isSaving={isSavingVersion}
+        onClose={() => {
+          if (!isSavingVersion) setShowSaveModal(false)
+        }}
+        onSave={handleSave}
+      />
     </div>
   )
 }

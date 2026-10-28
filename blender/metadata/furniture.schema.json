@@ -83,6 +83,20 @@
       "description": "One-time yaw correction that normalizes the authored asset to ArchiGen's local-axis convention.",
       "default": 0
     },
+    "canonical_pitch_offset_deg": { "type": "number", "default": 0 },
+    "is_template": { "type": "boolean", "default": false },
+    "mounting": {
+      "type": "object",
+      "properties": {
+        "surface": { "enum": ["wall", "floor", "tabletop", "ceiling"] },
+        "front_axis": { "enum": ["+x", "-x", "+z", "-z"] },
+        "up_axis": { "enum": ["+y"] },
+        "orientation_verified": { "type": "boolean" },
+        "orientation_version": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["surface", "front_axis", "up_axis", "orientation_verified", "orientation_version"],
+      "additionalProperties": false
+    },
     "model_file": {
       "type": "string",
       "description": "Relative file path from the blender/ root directory to the 3D model asset."

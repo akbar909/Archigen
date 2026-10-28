@@ -1,5 +1,12 @@
 {
   "id": "stylized_gothic_wall_torch_01",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Stylized Gothic Wall Torch 01",
   "category": "lamp",
   "room": "general",

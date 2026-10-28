@@ -558,7 +558,13 @@ def _repair_furniture(
         item["rotation"] = _number(item.get("rotation")) % 360.0
         item["dimensions"] = _dimensions(item)
         pos = _position(item)
-        pos["z"] = _position(room)["z"]
+        ceiling_mounted = item.get("ceiling_mounted") is True
+        if ceiling_mounted:
+            clearance = max(0.0, _number(item.get("ceiling_clearance"), 0.06))
+            item["ceiling_clearance"] = clearance
+            pos["z"] = _position(room)["z"] + _dimensions(room)["height"] - item["dimensions"]["height"] - clearance
+        else:
+            pos["z"] = _position(room)["z"]
         door_clearances = _door_clearance_boxes(floor, rid, rooms)
         window_clearances = _window_clearance_boxes(floor, rid, rooms)
         stair_clearances = _stair_clearance_boxes(floor, rid, rooms)
@@ -570,6 +576,38 @@ def _repair_furniture(
         original_rotation = item["rotation"]
         placement_options = [(original_rotation, anchor_side)]
         window_fallback = None
+        # A transform committed by the interactive 3D editor is intentional.
+        # Do not run it through the automatic room-packing search again: doing
+        # so made a moved car/bed jump back to an older candidate on save.
+        # Keep collision reporting, but make the user's in-room position the
+        # authoritative candidate for this item.
+        client_edited = item.get("client_edited_3d") is True or ceiling_mounted
+        if client_edited:
+            fw, fd = _rotated_footprint(item)
+            room_x0, room_y0, room_x1, room_y1 = _room_box(room)
+            wall_mounted = item.get("wall_mounted") is True
+            cx = pos["x"] if wall_mounted else min(max(pos["x"], room_x0 + fw / 2), room_x1 - fw / 2)
+            cy = pos["y"] if wall_mounted else min(max(pos["y"], room_y0 + fd / 2), room_y1 - fd / 2)
+            if abs(cx - pos["x"]) > 0.01 or abs(cy - pos["y"]) > 0.01:
+                report["warnings"].append(
+                    f"Clamped user-edited furniture '{fid}' to the boundary of room '{rid}'."
+                )
+            # Wall décor occupies the wall plane, not the walking floor. Keep a
+            # tiny reservation so it cannot push beds/chairs away during save.
+            box = (
+                (cx - 0.01, cy - 0.01, cx + 0.01, cy + 0.01)
+                if wall_mounted else
+                (cx - fw / 2, cy - fd / 2, cx + fw / 2, cy + fd / 2)
+            )
+            if not ceiling_mounted and any(
+                _boxes_overlap(box, other_box, FURNITURE_GAP)
+                and not _allows_integrated_overlap(item, other_item)
+                for other_box, other_item in occupied[rid]
+            ):
+                report["warnings"].append(
+                    f"User-edited furniture '{fid}' overlaps another item in room '{rid}'."
+                )
+            chosen = (cx, cy, box, original_rotation, anchor_side)
         rotatable_categories = {
             "dining_table", "kitchen_island", "kitchen_counter", "desk", "table", "sofa",
         }
@@ -588,7 +626,7 @@ def _repair_furniture(
             if perpendicular != original_rotation:
                 placement_options.append((perpendicular, anchor_side))
 
-        for rotation, candidate_side in placement_options:
+        for rotation, candidate_side in ([] if client_edited else placement_options):
             item["rotation"] = rotation
             fw, fd = _rotated_footprint(item)
             candidates = (
@@ -652,7 +690,8 @@ def _repair_furniture(
         if abs(cx - pos["x"]) > 0.01 or abs(cy - pos["y"]) > 0.01:
             report["repairs"].append(f"Moved furniture '{fid}' inside room '{rid}'.")
         item["position"] = {"x": cx, "y": cy, "z": pos["z"]}
-        occupied[rid].append((box, item))
+        if not ceiling_mounted:
+            occupied[rid].append((box, item))
         valid_items.append(item)
     floor["furniture"] = valid_items
 
@@ -769,6 +808,7 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
     all_furniture: List[Dict[str, Any]] = []
     global_room_ids: set[str] = set()
     floor_height = max(2.4, _number(doc.get("building", {}).get("floor_height"), 3.0))
+    deleted_furniture_ids = {str(value) for value in doc.get("deleted_furniture_ids", [])}
     for floor_index, floor in enumerate(floors):
         floor.setdefault("id", f"floor_{floor_index + 1}")
         floor.setdefault("level", floor_index)
@@ -805,6 +845,8 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
         floor.setdefault("doors", [])
         floor.setdefault("windows", [])
         floor.setdefault("furniture", [])
+        floor["furniture"] = [item for item in floor["furniture"]
+                              if not isinstance(item, dict) or str(item.get("id")) not in deleted_furniture_ids]
         floor.setdefault("stairs", [])
         floor.setdefault("stair_openings", [])
         if renamed_room_ids:

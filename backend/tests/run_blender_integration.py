@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import subprocess
+import struct
 import sys
 import tempfile
 
@@ -35,6 +36,27 @@ SCENARIOS = [
     ("deterministic_repeat", ["living_room", "kitchen", "bedroom", "bathroom"], (14, 18), 1),
     ("balanced_two_storey_wizard", [], (12.19, 18.29), 2),
 ]
+
+
+def exported_furniture_ids(glb_path):
+    """Read the GLB JSON chunk and return furniture IDs preserved as node extras."""
+    with open(glb_path, "rb") as handle:
+        magic, version, total_length = struct.unpack("<4sII", handle.read(12))
+        if magic != b"glTF" or version != 2:
+            raise AssertionError(f"Invalid GLB header: {glb_path}")
+        while handle.tell() < total_length:
+            chunk_length, chunk_type = struct.unpack("<II", handle.read(8))
+            chunk = handle.read(chunk_length)
+            if chunk_type != 0x4E4F534A:
+                continue
+            document = json.loads(chunk.decode("utf-8").rstrip(" \t\r\n\x00"))
+            return {
+                str(node.get("extras", {}).get("archgen_instance_id"))
+                for node in document.get("nodes", [])
+                if node.get("extras", {}).get("archgen_entity_type") == "furniture"
+                and node.get("extras", {}).get("archgen_instance_id") is not None
+            }
+    raise AssertionError(f"GLB JSON chunk not found: {glb_path}")
 
 
 def make_layout(name, room_types, plot, floors):
@@ -146,6 +168,13 @@ def main():
             marker = f"Verified furniture inventory: {expected}/{expected}"
             if marker not in process.stdout:
                 raise RuntimeError(f"{name}: scene inventory was not verified\n{process.stdout[-3000:]}")
+            expected_ids = {str(item_id) for item_id in layout["expected_inventory"]["furniture_ids"]}
+            exported_ids = exported_furniture_ids(output_path)
+            missing_metadata = sorted(expected_ids - exported_ids)
+            if missing_metadata:
+                raise RuntimeError(
+                    f"{name}: exported GLB lost selectable furniture metadata: {missing_metadata}"
+                )
             print(f"[{index}/{end}] {name}: PASS ({os.path.getsize(output_path)} bytes, {expected} furniture)", flush=True)
     print(f"All {len(scenarios)} selected Blender integration scenarios passed.", flush=True)
 
