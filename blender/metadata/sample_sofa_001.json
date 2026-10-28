@@ -1,5 +1,6 @@
 {
   "id": "sofa_001",
+  "is_template": true,
   "name": "Modern Sofa",
   "category": "sofa",
   "room": "living_room",

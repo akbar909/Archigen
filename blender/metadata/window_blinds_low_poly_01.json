@@ -1,5 +1,12 @@
 {
   "id": "window_blinds_low_poly_01",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+x",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Window Blinds Low Poly 01",
   "category": "general",
   "room": "general",

@@ -45,6 +45,21 @@ WALL_BACKED_CATEGORIES = {
 }
 
 
+def wall_mount_rotation(requirement: Dict[str, Any]) -> Optional[float]:
+    """Blender Z-up yaw for canonical front (-Y) toward the room normal.
+
+    Frontend semantic rotation is clockwise; Blender rotation is counterclockwise.
+    Do not reuse its sign for left/right wall mounts.
+    """
+    normal = requirement.get('wall_normal') or {}
+    nx, nz = float(normal.get('x', 0)), float(normal.get('z', 0))
+    if math.hypot(nx, nz) > 0.01:
+        return math.degrees(math.atan2(nx, nz))
+    side = requirement.get('wall_side') or requirement.get('anchor_wall')
+    return {'front': 0.0, 'south': 0.0, 'back': 180.0, 'north': 180.0,
+            'left': 90.0, 'west': 90.0, 'right': -90.0, 'east': -90.0}.get(side)
+
+
 def _axis_aligned_footprint(
     x: float, y: float, width: float, depth: float, rotation_deg: float,
 ) -> Tuple[float, float, float, float]:
@@ -262,7 +277,7 @@ class FurnitureCatalog:
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        if "id" in data:
+                        if "id" in data and not data.get('is_template'):
                             self.catalog[data["id"]] = data
                 except Exception as e:
                     print(f"[WARN] Failed to parse metadata file {fname}: {e}")
@@ -469,7 +484,11 @@ def place_furniture_item(
     # example, an asset authored with its back along -X needs a -90-degree
     # normalization so its back follows ArchGen's canonical +Y direction.
     yaw_offset = float(asset_meta.get("canonical_yaw_offset_deg", 0.0) or 0.0)
-    if abs(yaw_offset) > 0.001:
+    mounting = asset_meta.get('mounting', {})
+    if mounting.get('orientation_verified') and mounting.get('up_axis') == '+y':
+        yaw_offset = {'+z': 0, '-z': 180, '+x': -90, '-x': 90}.get(mounting.get('front_axis'), yaw_offset)
+    pitch_offset = float(asset_meta.get("canonical_pitch_offset_deg", 0.0) or 0.0)
+    if abs(yaw_offset) > 0.001 or abs(pitch_offset) > 0.001:
         orientation = bpy.data.objects.new(f"{obj.name}_AxisNormalization", None)
         bpy.context.scene.collection.objects.link(orientation)
         orientation.parent = obj
@@ -479,7 +498,7 @@ def place_furniture_item(
             world = child.matrix_world.copy()
             child.parent = orientation
             child.matrix_world = world
-        orientation.rotation_euler = (0.0, 0.0, math.radians(yaw_offset))
+        orientation.rotation_euler = (math.radians(pitch_offset), 0.0, math.radians(yaw_offset))
         bpy.context.view_layer.update()
 
     # Scale model accurately to match metadata target dimensions (e.g. standard bed 2.1m x 2.2m x 1.1m)
@@ -493,7 +512,8 @@ def place_furniture_item(
             sx = target_w / cur_w
             sy = target_d / cur_d
             sz = target_h / cur_h
-            obj.scale = (obj.scale.x * sx, obj.scale.y * sy, obj.scale.z * sz)
+            uniform = min(sx, sy, sz)
+            obj.scale = tuple(component * uniform for component in obj.scale)
 
     # Set coordinates and rotation
     obj.location = (position[0], position[1], position[2])
@@ -555,24 +575,36 @@ def populate_room_furniture(
             print(f"[ERROR] Missing asset mapping for furniture '{req.get('id')}' category '{category}' in room '{room_type}'.")
             meta = {"id": category or "unsupported", "model_file": ""}
         requested_dimensions = req.get("dimensions", {})
+        if req.get('canonical_yaw_offset_deg') is not None:
+            meta['canonical_yaw_offset_deg'] = float(req['canonical_yaw_offset_deg'])
+        if req.get('canonical_pitch_offset_deg') is not None:
+            meta['canonical_pitch_offset_deg'] = float(req['canonical_pitch_offset_deg'])
         for key in ("width", "depth", "height"):
             if requested_dimensions.get(key) is not None:
                 meta[key] = float(requested_dimensions[key])
         if meta:
-            rot = _wall_facing_rotation(
+            user_exact = str(req.get('placement_hint', '')).lower() in {'user_exact', 'wall_exact'}
+            rot = rot if user_exact else _wall_facing_rotation(
                 str(meta.get("category") or category or ""),
                 pos,
                 bounds,
                 rot,
                 req.get("anchor_wall"),
             )
+            if req.get('wall_mounted'):
+                aligned_rotation = wall_mount_rotation(req)
+                if aligned_rotation is not None:
+                    rot = aligned_rotation
             # Deterministic clearance & boundary containment clamp
             width = float(meta.get("width", 0.8))
             depth = float(meta.get("depth", 0.8))
             item_forbidden_zones = [] if str(category or "").lower() == "vehicle" else forbidden_zones
-            pos, footprint = _find_clear_position(
-                pos, width, depth, rot, bounds, item_forbidden_zones, occupied_footprints,
-            )
+            if user_exact:
+                footprint = _axis_aligned_footprint(pos[0], pos[1], width, depth, rot)
+            else:
+                pos, footprint = _find_clear_position(
+                    pos, width, depth, rot, bounds, item_forbidden_zones, occupied_footprints,
+                )
 
             instance_id = req.get("instance_id") or req.get("id")
             try:
@@ -589,12 +621,47 @@ def populate_room_furniture(
                     instance_id=instance_id,
                 )
                 obj["archgen_asset_error"] = str(exc)
+            mount_height = max(0.0, float(req.get("mount_height", 0.0) or 0.0))
+            if req.get("ceiling_mounted"):
+                # Attach using evaluated top bounds, independent of an asset's
+                # authored pivot or the floor-seating normalization above.
+                bpy.context.view_layer.update()
+                meshes = [part for part in [obj] + list(obj.children_recursive) if part.type == 'MESH']
+                actual_top = max((mesh.matrix_world @ mathutils.Vector(corner)).z
+                                 for mesh in meshes for corner in mesh.bound_box)
+                clearance = max(0.0, float(req.get('ceiling_clearance', 0.06)))
+                ceiling_z = float(bounds.get('z', 0.0)) + float(room_data.get('height', bounds.get('height', 3.0)))
+                obj.location.z += ceiling_z - clearance - actual_top
+                obj['archgen_ceiling_mounted'] = True
+                obj['archgen_ceiling_z'] = ceiling_z
+                bpy.context.view_layer.update()
+            elif req.get("wall_mounted") or mount_height > 0.0:
+                obj.location.z += mount_height
+                obj["archgen_wall_mounted"] = True
+                obj["archgen_mount_height"] = mount_height
+                obj['archgen_wall_side'] = str(req.get('wall_side') or '')
+                # Pin the actual back bounds to the selected wall face, rather
+                # than guessing a model's origin or depth after rotation.
+                anchor = req.get('wall_anchor')
+                if anchor and req.get('wall_mounted'):
+                    angle = math.radians(rot)
+                    inward = mathutils.Vector((math.sin(angle), -math.cos(angle), 0.0))
+                    bpy.context.view_layer.update()
+                    meshes = [part for part in [obj] + list(obj.children_recursive) if part.type == 'MESH']
+                    back = min((part.matrix_world @ mathutils.Vector(corner)).dot(inward)
+                               for part in meshes for corner in part.bound_box)
+                    plane = mathutils.Vector((float(anchor['x']), float(anchor['y']), 0.0)).dot(inward)
+                    obj.location += inward * (plane + 0.012 - back)
+                    bpy.context.view_layer.update()
             obj["archgen_room_id"] = room_data.get("id", "")
+            obj["archgen_entity_type"] = "furniture"
+            obj["archgen_model_id"] = str(preferred_id or meta.get("id") or category or "furniture")
             obj["archgen_semantic_rotation_deg"] = float(rot)
             obj["archgen_door_clearance_checked"] = True
             obj.name = f"Furniture_L{room_data.get('floor_level', 0)}_{instance_id}"
             placed_objects.append(obj)
-            occupied_footprints.append(footprint)
+            if not req.get('wall_mounted') and not req.get('ceiling_mounted'):
+                occupied_footprints.append(footprint)
 
     return placed_objects
 

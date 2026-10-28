@@ -1,5 +1,12 @@
 {
   "id": "mirror_03",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Mirror 03",
   "category": "general",
   "room": "general",

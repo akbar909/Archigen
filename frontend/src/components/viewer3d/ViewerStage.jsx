@@ -1,14 +1,24 @@
-import { Suspense } from 'react'
+/* eslint-disable react/prop-types, react/no-unknown-property */
+import { Suspense, useState } from 'react'
 import * as THREE from 'three'
-import { Environment, Html, OrbitControls } from '@react-three/drei'
+import { Environment, Html, OrbitControls, TransformControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { Loader2, Sparkles } from 'lucide-react'
+import { Check, Loader2, Pencil, Sparkles } from 'lucide-react'
 
 import { CharacterAvatar, CameraController } from './CharacterAvatar'
 import { BlenderErrorBoundary, BlenderHouseModel, BlenderLoadingFallback } from './BlenderModel'
 import RoomVolume from './RoomVolume'
 import ViewerOverlay from './ViewerOverlay'
 import FloorPlanVectorViewer from '../FloorPlanVectorViewer'
+import InteriorEditorDrawer from './InteriorEditorDrawer'
+import { SelectionBox, SelectionQuickActions } from './SelectionAdornment'
+import EditorCameraFraming from './EditorCameraFraming'
+import { WalkthroughCameraGuard, WalkthroughDragLook } from './WalkthroughControls'
+import SelectionClickGuard from './SelectionClickGuard'
+import { isSelectionClick } from '../../utils/selectionGesture'
+import { canApplyAccentColor } from '../../utils/assetModel'
+import AssetPlacementPreview from './AssetPlacementPreview'
+import PlacementRoomCamera from './PlacementRoomCamera'
 
 // Preload HDRI environment maps so toggling Day / Night is instantaneous
 try {
@@ -19,6 +29,8 @@ try {
 }
 
 export default function ViewerStage({ state }) {
+  const [isCameraDragging, setIsCameraDragging] = useState(false)
+  const [previewObject, setPreviewObject] = useState(null)
   const {
     containerRef,
     isFullscreen,
@@ -75,11 +87,45 @@ export default function ViewerStage({ state }) {
     floors,
     setPlanSubMode,
     charFloorLevel,
+    isEditing3D,
+    toggleEditing3D,
+    selectedEntity,
+    setSelectedEntity,
+    handleSelectEntity,
+    handleSelectionObjectReady,
+    selectedFurniture,
+    selectedEditRoom,
+    transformMode,
+    setTransformMode,
+    isTransforming,
+    setIsTransforming,
+    commitGizmoTransform,
+    constrainGizmoTransform,
+    resizeSelectedFurniture,
+    nudgeSelectedFurniture,
+    rotateSelectedFurniture,
+    swapSelectedFurniture,
+    duplicateSelectedFurniture,
+    addModelAsNewFurniture,
+    deleteSelectedFurniture,
+    setSelectedFloorFinish,
+    setSelectedGroundFinish,
+    setSelectedWallFinish,
+    setSelectedFurnitureColor,
+    editableFurniture,
+    hiddenBlenderFurnitureIds,
+    addSelectedWallDecor,
+    uploadedAssets,
+    isDirty,
+    navigationModel,
+    pendingPlacement, cancelPlacement, confirmPlacement, onPlacementStatus,
+    roomTransition, onRoomTransitionComplete, openAssetLibrary, adjustPlacement,
   } = state
 
   return (
     <div
       ref={containerRef}
+      className="viewer-container"
       style={{
         position: 'relative',
         width: '100%',
@@ -106,7 +152,7 @@ export default function ViewerStage({ state }) {
         <Canvas
           shadows
           dpr={[1, 1.25]}
-          camera={{ position: [22, 22, 28], fov: 44, near: 0.1, far: 350 }}
+          camera={{ position: [22, 22, 28], fov: 44, near: 0.05, far: 350 }}
           gl={{
             antialias: true,
             powerPreference: 'high-performance',
@@ -114,7 +160,12 @@ export default function ViewerStage({ state }) {
             toneMappingExposure: 1.1,
             outputColorSpace: THREE.SRGBColorSpace,
           }}
+          onPointerMissed={(event) => {
+            if (!isEditing3D || isTransforming || pendingPlacement || roomTransition || !isSelectionClick(event)) return
+            setSelectedEntity(null)
+          }}
         >
+          <SelectionClickGuard isTransforming={isTransforming} />
           <color attach="background" args={[isNightMode ? '#060911' : '#0a0e17']} />
 
           <ambientLight intensity={isNightMode ? 0.35 : 0.75} color={isNightMode ? '#1e293b' : '#f8fafc'} />
@@ -155,6 +206,15 @@ export default function ViewerStage({ state }) {
                   showRoof={showRoof}
                   activeFloorLevel={activeFloorLevel}
                   viewMode={viewMode}
+                  editingEnabled={isEditing3D}
+                  furnitureItems={editableFurniture}
+                  rooms={rooms}
+                  design={design}
+                  uploadedAssets={uploadedAssets}
+                  hiddenFurnitureIds={hiddenBlenderFurnitureIds}
+                  selectedEntity={selectedEntity}
+                  onSelectEntity={handleSelectEntity}
+                  onSelectionObjectReady={handleSelectionObjectReady}
                 />
               </Suspense>
             </BlenderErrorBoundary>
@@ -170,9 +230,47 @@ export default function ViewerStage({ state }) {
                   furniture={r.furniture}
                   doors={visibleDoors}
                   windows={visibleWindows}
+                  editingEnabled={isEditing3D}
+                  selectedEntity={selectedEntity}
+                  onSelectEntity={handleSelectEntity}
+                  onSelectionObjectReady={handleSelectionObjectReady}
                 />
               ))}
             </group>
+          )}
+
+          {isEditing3D && selectedEntity?.object && (
+            <SelectionBox object={selectedEntity.object} />
+          )}
+
+          {isEditing3D && selectedEntity?.type === 'furniture' && selectedEntity.object && (
+            <>
+              <TransformControls
+                object={selectedEntity.object}
+                mode={transformMode}
+                space="world"
+                size={0.8}
+                translationSnap={0.02}
+                rotationSnap={Math.PI / 12}
+                showX={transformMode === 'translate'}
+                showY={transformMode === 'rotate' || Boolean(selectedFurniture?.wall_mounted)}
+                showZ={transformMode === 'translate'}
+                onMouseDown={() => setIsTransforming(true)}
+                onObjectChange={constrainGizmoTransform}
+                onMouseUp={() => {
+                  setIsTransforming(false)
+                  commitGizmoTransform()
+                }}
+              />
+              <SelectionQuickActions
+                allowRotation={!selectedFurniture?.wall_mounted && !selectedFurniture?.ceiling_mounted}
+                object={selectedEntity.object}
+                mode={transformMode}
+                onModeChange={setTransformMode}
+                onRotate={() => rotateSelectedFurniture(90)}
+                onDelete={deleteSelectedFurniture}
+              />
+            </>
           )}
 
           {!glbUrl && !dismissedSynthesisPrompt && (
@@ -319,19 +417,47 @@ export default function ViewerStage({ state }) {
             isMoving={isMoving}
             walkCycle={walkCycle}
             isVisible={
+              !isEditing3D
+              &&
               viewMode !== 'walkthrough'
               && (activeFloorLevel === null || activeFloorLevel === undefined || activeFloorLevel === charFloorLevel)
             }
           />
 
-          <CameraController controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} viewMode={viewMode} />
+          <AssetPlacementPreview placement={pendingPlacement} onStatus={onPlacementStatus} onObjectReady={setPreviewObject} />
+          <PlacementRoomCamera request={roomTransition} controlsRef={controlsRef} targetPos={targetPos}
+            targetCamPos={targetCamPos} onComplete={onRoomTransitionComplete} />
+          <CameraController controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} viewMode={viewMode} suspended={Boolean(roomTransition) || isCameraDragging || (isEditing3D && Boolean(selectedEntity))} />
+          <EditorCameraFraming
+            selection={pendingPlacement && previewObject ? { type: 'furniture', id: pendingPlacement.item.id, object: previewObject } : selectedEntity}
+            enabled={isEditing3D && !roomTransition}
+            controlsRef={controlsRef}
+            targetPos={targetPos}
+            targetCamPos={targetCamPos}
+            viewMode={viewMode}
+            isTransforming={isTransforming}
+            isCameraDragging={isCameraDragging}
+          />
+          <WalkthroughDragLook enabled={viewMode === 'walkthrough' && !isMouseLookLocked && !roomTransition} isTransforming={isTransforming}
+            controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} onDragChange={setIsCameraDragging} />
+          <WalkthroughCameraGuard enabled={viewMode === 'walkthrough' && !roomTransition} navigation={navigationModel} level={charFloorLevel}
+            controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} />
 
           <OrbitControls
             ref={controlsRef}
-            enabled={viewMode !== 'walkthrough'}
+            enabled={!roomTransition && !isTransforming && viewMode !== 'walkthrough'}
+            rotateSpeed={0.35}
+            onStart={() => setIsCameraDragging(true)}
+            onEnd={() => {
+              setIsCameraDragging(false)
+              if (controlsRef.current) {
+                targetPos.current.copy(controlsRef.current.target)
+                targetCamPos.current.copy(controlsRef.current.object.position)
+              }
+            }}
             enableDamping
             dampingFactor={0.08}
-            minDistance={viewMode === 'walkthrough' ? 0.1 : 2}
+            minDistance={isEditing3D ? 0.2 : (viewMode === 'walkthrough' ? 0.1 : 2)}
             maxDistance={viewMode === 'walkthrough' ? 4.5 : 95}
             maxPolarAngle={viewMode === 'plan' ? 0.05 : Math.PI / 2.05}
           />
@@ -342,11 +468,67 @@ export default function ViewerStage({ state }) {
         </Canvas>
       )}
 
+      {design && glbUrl && viewSource === 'blender' && !(viewMode === 'plan' && planSubMode === 'vector') && (
+        <div className="viewer-editor-actions" role="group" aria-label="3D editing actions">
+        <button
+          type="button"
+          className={`viewer-edit-toggle ${isEditing3D ? 'active' : ''}`}
+          onClick={toggleEditing3D}
+          title={isEditing3D ? 'Finish 3D editing' : 'Edit furniture and finishes in 3D'}
+        >
+          {isEditing3D ? <Check size={16} /> : <Pencil size={15} />}
+          <span>{isEditing3D ? 'Done editing' : 'Edit 3D'}</span>
+        </button>
+        {isEditing3D && <button type="button" className="viewer-add-assets" onClick={() => openAssetLibrary()}>+ Add assets</button>}
+        </div>
+      )}
+
+      {isEditing3D && selectedEntity && (
+        <InteriorEditorDrawer
+          selection={selectedEntity}
+          furniture={selectedFurniture && selectedEntity?.object?.userData?.asset_info
+            ? { ...selectedFurniture, dimensions: selectedEntity.object.userData.asset_info.dimensions }
+            : selectedFurniture}
+          room={selectedEditRoom}
+          rooms={rooms}
+          onLibraryRoomChange={openAssetLibrary}
+          pendingPlacement={pendingPlacement}
+          onCancelPlacement={cancelPlacement}
+          onConfirmPlacement={confirmPlacement}
+          onAdjustPlacement={adjustPlacement}
+          canAccentColor={canApplyAccentColor(selectedEntity?.object)}
+          transformMode={transformMode}
+          onTransformModeChange={setTransformMode}
+          onClose={() => setSelectedEntity(null)}
+          onNudge={nudgeSelectedFurniture}
+          onRotate={rotateSelectedFurniture}
+          onResize={resizeSelectedFurniture}
+          onSwapModel={swapSelectedFurniture}
+          onDuplicate={duplicateSelectedFurniture}
+          onAddModelAsNew={addModelAsNewFurniture}
+          onColorChange={setSelectedFurnitureColor}
+          onDelete={deleteSelectedFurniture}
+          onFloorFinish={setSelectedFloorFinish}
+          onGroundFinish={setSelectedGroundFinish}
+          onWallFinish={setSelectedWallFinish}
+          onAddWallDecor={addSelectedWallDecor}
+          canFinalize3D={!isDirty}
+          onFinalize3D={() => regenerate3D(activeProjectId, activeVersionId)}
+        />
+      )}
+
+      {roomTransition && <div key={roomTransition.id} className="placement-room-transition" role="status" aria-label="Moving to selected room" />}
+
       <ViewerOverlay
         viewMode={viewMode}
-        onModeChange={handleModeChange}
+        onModeChange={(mode) => {
+          handleModeChange(mode)
+        }}
         viewSource={viewSource}
-        onViewSourceChange={setViewSource}
+        onViewSourceChange={(source) => {
+          if (isEditing3D && source !== 'blender') toggleEditing3D()
+          setViewSource(source)
+        }}
         glbUrl={glbUrl}
         isModelRendered={isModelRendered}
         isGenerating3D={isGenerating3D}
@@ -380,4 +562,3 @@ export default function ViewerStage({ state }) {
     </div>
   )
 }
-

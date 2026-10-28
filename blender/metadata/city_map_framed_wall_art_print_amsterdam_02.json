@@ -1,5 +1,12 @@
 {
   "id": "city_map_framed_wall_art_print_amsterdam_02",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "City Map Framed Wall Art Print Amsterdam 02",
   "category": "general",
   "room": "general",

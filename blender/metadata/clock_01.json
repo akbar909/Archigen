@@ -1,5 +1,12 @@
 {
   "id": "clock_01",
+  "mounting": {
+    "surface": "tabletop",
+    "front_axis": "+x",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Clock 01",
   "category": "general",
   "room": "general",

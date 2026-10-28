@@ -278,6 +278,27 @@ def build_walls_from_network(
         if material:
             wall.data.materials.append(material)
         apply_box_uv_mapping(wall, tile_meters=1.8)
+        # Viewer normals are Y-up with -Z as canonical Y. Assign only the
+        # selected face; a shared partition must keep its opposite finish.
+        for face_key, finish in wall_data.get("material_overrides", {}).items():
+            normal = finish.get("normal", {}) if isinstance(finish, dict) else {}
+            if not all(axis in normal for axis in ("x", "y", "z")):
+                continue
+            from mathutils import Vector
+            desired = Vector((float(normal["x"]), -float(normal["z"]), float(normal["y"])))
+            if desired.length < 0.01:
+                continue
+            desired.normalize()
+            face_material = _wall_material_from_config(finish, f"mat_wall_{wall_id}_{face_key}")
+            if not face_material:
+                continue
+            slot = len(wall.data.materials)
+            wall.data.materials.append(face_material)
+            normal_matrix = wall.matrix_world.to_3x3().inverted().transposed()
+            for polygon in wall.data.polygons:
+                world_normal = (normal_matrix @ polygon.normal).normalized()
+                if world_normal.dot(desired) > 0.75:
+                    polygon.material_index = slot
         result.append(wall)
     return result
 

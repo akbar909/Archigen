@@ -1,17 +1,20 @@
 import datetime as dt
+import mimetypes
 import json
 import logging
 import threading
+from pathlib import Path
 
 # pyrefly: ignore [missing-import]
 from bson import ObjectId
 # pyrefly: ignore [missing-import]
 from routes.chat_project_routes import register_project_routes
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_from_directory, url_for
 
 from utils.db import designs_collection, projects_collection, versions_collection
 from utils.blender_service import generate_3d_house_model
-from utils.s3_storage import resolve_s3_url_to_presigned
+from config import AWS_S3_BUCKET
+from utils.s3_storage import get_s3_client, resolve_s3_url_to_presigned
 from utils.gemini import (
     GeminiSchemaValidationError,
     GeminiTemporaryUnavailableError,
@@ -25,6 +28,8 @@ from utils.architectural_validator import ArchitecturalValidator
 from utils.architectural_preflight import validate_and_repair_design
 from utils.architectural_refinement import apply_targeted_refinement, is_explicit_full_redesign
 from utils.architectural_schema_v3 import validate_schema_v3
+from utils.versioning import summarize_design_changes
+from utils.asset_catalog import ASSET_ROOT, browser_url, list_uploaded_assets
 from utils.wizard_constraints import build_prompt_layout_constraints, build_wizard_layout_constraints
 
 
@@ -60,11 +65,14 @@ def _serialize_version(doc, resolve_glb: bool = True):
         "base_version_id": str(doc.get("base_version_id")) if doc.get("base_version_id") else None,
         "version_num": doc.get("version_num", 1),
         "prompt":      doc.get("prompt", ""),
+        "version_note": doc.get("version_note", ""),
+        "change_summary": doc.get("change_summary") or {},
         "style":       doc.get("style", "modern"),
         "design":      design,
         "glb_url":     resolved_glb,
         "has_glb":     bool(raw_glb),
         "created_at":  doc["created_at"].isoformat() if doc.get("created_at") else None,
+        "updated_at":  doc["updated_at"].isoformat() if doc.get("updated_at") else None,
     }
 
 
@@ -72,6 +80,69 @@ def _serialize_version(doc, resolve_glb: bool = True):
 # ─── PROJECTS ─────────────────────────────────────────────────────────────────
 
 register_project_routes(chat_bp, _serialize_project, _serialize_version)
+
+
+@chat_bp.get("/assets/catalog")
+@require_auth
+def uploaded_asset_catalog():
+    """List only models and textures present in the synchronized S3 library."""
+    entries, source = list_uploaded_assets()
+    group = str(request.args.get("group") or "").strip().lower()
+    category = str(request.args.get("category") or "").strip().lower()
+    if group:
+        entries = [entry for entry in entries if entry["group"] == group]
+    if category:
+        entries = [entry for entry in entries if entry["category"] == category]
+    result = []
+    for entry in entries:
+        delivered_url = url_for(
+            "chat.uploaded_asset_content" if entry["kind"] == "texture" else "chat.local_uploaded_asset",
+            asset_path=entry["relative_path"],
+            _external=True,
+        )
+        item = dict(entry)
+        # Images are served through our stable asset endpoint. This avoids
+        # cached/expired S3 signatures and gives TextureLoader a predictable
+        # CORS response. GLBs continue using direct S3/CDN delivery.
+        item["url"] = delivered_url if entry["kind"] == "texture" else browser_url(entry, delivered_url)
+        item["model_path"] = item["url"] if item["kind"] == "model" else None
+        item["thumbnail_url"] = item["url"] if item["kind"] == "texture" else None
+        result.append(item)
+    return jsonify({"assets": result, "source": source, "count": len(result)})
+
+
+@chat_bp.get("/assets/local/<path:asset_path>")
+def local_uploaded_asset(asset_path: str):
+    """Development fallback for the exact files mirrored by the S3 sync job."""
+    return send_from_directory(str(ASSET_ROOT), asset_path, conditional=True)
+
+
+@chat_bp.get("/assets/content/<path:asset_path>")
+def uploaded_asset_content(asset_path: str):
+    """Stream an uploaded texture with a stable URL for browser materials."""
+    normalized = str(asset_path or "").replace("\\", "/").lstrip("/")
+    suffix = Path(normalized).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"} or ".." in Path(normalized).parts:
+        return jsonify({"error": "Unsupported asset"}), 404
+
+    s3 = get_s3_client()
+    if s3 and AWS_S3_BUCKET:
+        try:
+            result = s3.get_object(Bucket=AWS_S3_BUCKET, Key=f"assets/{normalized}")
+            body = result["Body"]
+            response = Response(
+                body.iter_chunks(chunk_size=64 * 1024),
+                content_type=result.get("ContentType") or mimetypes.guess_type(normalized)[0] or "application/octet-stream",
+                direct_passthrough=True,
+            )
+            response.headers["Cache-Control"] = "private, max-age=300"
+            if result.get("ETag"):
+                response.headers["ETag"] = result["ETag"]
+            return response
+        except Exception as exc:
+            logging.warning("Texture asset delivery failed for %s: %s", normalized, exc)
+
+    return send_from_directory(str(ASSET_ROOT), normalized, conditional=True, max_age=300)
 
 @chat_bp.post("/projects/<project_id>/generate")
 @require_auth
@@ -595,17 +666,29 @@ def update_layout_for_version(project_id: str, version_id: str):
     if not ver:
         return jsonify({"error": "Version not found"}), 404
 
+    # Keep the last Blender export available as the visual base while the
+    # edited version is rebuilt. The frontend applies saved furniture
+    # transforms to this base immediately; force-generation replaces it with
+    # the new canonical GLB as soon as Blender finishes.
+    preview_glb_url = ver.get("glb_url") or (ver.get("design") or {}).get("glb_url")
+    keep_3d_view = bool(preview_glb_url)
+
     data = request.get_json(silent=True) or {}
     updated_design = data.get("design") or data.get("layout")
     if not isinstance(updated_design, dict):
         return jsonify({"error": "design or layout object is required"}), 400
 
     updated_design, preflight = validate_and_repair_design(updated_design, repair=True)
-    # A saved edit makes any previous GLB stale. Require review and a new
-    # export rather than presenting old geometry as the edited design.
-    updated_design["layout_approved"] = False
+    version_note = str(data.get("note") or "").strip()
+    if len(version_note) > 500:
+        return jsonify({"error": "Version note cannot exceed 500 characters"}), 400
+    change_summary = summarize_design_changes(ver.get("design"), updated_design)
+    # The JSON is the source of truth. Its prior GLB remains only as a preview
+    # base until the automatic force-generation completes.
+    updated_design["layout_approved"] = keep_3d_view
     updated_design.pop("approved_at", None)
     updated_design.pop("glb_url", None)
+    updated_design.pop("model_url", None)
     # Run architectural validation after deterministic repairs.
     validator = ArchitecturalValidator(updated_design)
     is_valid, val_report = validator.validate()
@@ -622,14 +705,24 @@ def update_layout_for_version(project_id: str, version_id: str):
         {"_id": ver_obj_id},
         {"$set": {
             "design": updated_design,
-            "layout_approved": False,
-            "glb_url": None,
+            "layout_approved": keep_3d_view,
+            "glb_url": preview_glb_url,
+            "version_note": version_note,
+            "change_summary": change_summary,
             "updated_at": now,
         }}
     )
     ver["design"] = updated_design
-    ver["layout_approved"] = False
-    ver["glb_url"] = None
+    ver["layout_approved"] = keep_3d_view
+    ver["glb_url"] = preview_glb_url
+    ver["version_note"] = version_note
+    ver["change_summary"] = change_summary
+    ver["updated_at"] = now
+
+    projects_collection().update_one(
+        {"_id": proj_obj_id, "user_id": request.user["_id"]},
+        {"$set": {"updated_at": now}},
+    )
 
     return jsonify({
         "success": True,

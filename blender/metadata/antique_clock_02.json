@@ -1,5 +1,12 @@
 {
   "id": "antique_clock_02",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "-x",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Antique Clock 02",
   "category": "general",
   "room": "general",

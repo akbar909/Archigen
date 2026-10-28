@@ -485,6 +485,56 @@ class ArchitecturalPipelineTests(unittest.TestCase):
             self.assertEqual(source["anchor_wall"], requirements[source["id"]]["anchor_wall"])
             self.assertEqual(source["rotation"], requirements[source["id"]]["rotation_deg"])
 
+    def test_wall_mounted_height_reaches_blender(self):
+        design = self.make_design(["living_room"], (10, 12), 1)
+        item = design["floors"][0]["furniture"][0]
+        item.update({
+            "wall_mounted": True,
+            "mount_height": 1.25,
+            "placement_hint": "wall_exact",
+            "anchor_wall": "north",
+        })
+
+        adapted = adapt_gemini_to_blender_layout(
+            design, project_id="wall-mounted", version_num=1
+        )
+        requirement = next(
+            entry
+            for room in adapted["rooms"]
+            for entry in room["furniture_requirements"]
+            if entry["instance_id"] == item["id"]
+        )
+
+        self.assertTrue(requirement["wall_mounted"])
+        self.assertEqual(1.25, requirement["mount_height"])
+        self.assertEqual("wall_exact", requirement["placement_hint"])
+        self.assertEqual("north", requirement["anchor_wall"])
+
+    def test_finalize_glb_includes_layered_exterior_asset(self):
+        design = self.make_design(["living_room"], (10, 12), 1)
+        design.setdefault("exterior", {})["assets"] = [{
+            "id": "garden_urn_01_ground",
+            "category": "outdoor",
+            "asset_id": "garden_urn_01",
+            "position": {"x": 8.0, "y": 9.0, "z": 0.0},
+            "rotation": 30,
+            "dimensions": {"width": 0.8, "depth": 0.8, "height": 1.1},
+        }]
+
+        adapted = adapt_gemini_to_blender_layout(
+            design, project_id="exterior-layer", version_num=1
+        )
+        requirement = next(
+            entry
+            for room in adapted["rooms"]
+            for entry in room["furniture_requirements"]
+            if entry["instance_id"] == "garden_urn_01_ground"
+        )
+
+        self.assertEqual("garden_urn_01", requirement["preferred_id"])
+        self.assertEqual([8.0, 9.0, 0.0], requirement["position"])
+        self.assertIn("garden_urn_01_ground", adapted["expected_inventory"]["furniture_ids"])
+
     def test_door_and_window_on_same_wall_are_separated(self):
         design = self.make_design(["bedroom", "bathroom"], (12, 14), 1)
         floor = design["floors"][0]
@@ -633,6 +683,68 @@ class ArchitecturalPipelineTests(unittest.TestCase):
         moved = floor["furniture"][0]["position"]
         self.assertFalse(4.0 <= moved["x"] <= 5.15 and 1.1 <= moved["y"] <= 2.9)
         self.assertIn("Moved furniture 'chair_room_b' inside room 'room_b'.", report["repairs"])
+
+    def test_user_edited_vehicle_position_is_not_repacked_on_save(self):
+        garage = {
+            "id": "garage_01",
+            "position": {"x": 0, "y": 0, "z": 0},
+            "dimensions": {"width": 6, "depth": 6, "height": 3},
+        }
+        floor = {
+            "id": "ground_floor",
+            "doors": [],
+            "windows": [],
+            "furniture": [{
+                "id": "car_garage_01",
+                "category": "vehicle",
+                "room_id": "garage_01",
+                "position": {"x": 4.4, "y": 3.0, "z": 0},
+                "dimensions": {"width": 1.8, "depth": 4.2, "height": 1.5},
+                "rotation": 0,
+                "client_edited_3d": True,
+                "placement_hint": "user_exact",
+            }],
+        }
+        report = {"critical_errors": [], "warnings": [], "repairs": []}
+
+        _repair_furniture(floor, {garage["id"]: garage}, report)
+
+        saved = floor["furniture"][0]
+        self.assertAlmostEqual(4.4, saved["position"]["x"])
+        self.assertAlmostEqual(3.0, saved["position"]["y"])
+        self.assertTrue(saved["client_edited_3d"])
+        self.assertNotIn("Moved furniture 'car_garage_01' inside room 'garage_01'.", report["repairs"])
+
+    def test_user_added_wall_decor_remains_on_wall_plane_when_saved(self):
+        room = {
+            "id": "bedroom_01",
+            "position": {"x": 0, "y": 0, "z": 0},
+            "dimensions": {"width": 4, "depth": 4, "height": 3},
+        }
+        floor = {
+            "id": "ground_floor",
+            "doors": [],
+            "windows": [],
+            "furniture": [{
+                "id": "mirror_bedroom_01",
+                "category": "wall_decor",
+                "room_id": "bedroom_01",
+                "position": {"x": 2.0, "y": 0.09, "z": 0},
+                "dimensions": {"width": 1.0, "depth": 0.5, "height": 1.0},
+                "rotation": 0,
+                "wall_mounted": True,
+                "mount_height": 1.2,
+                "client_edited_3d": True,
+                "placement_hint": "wall_exact",
+            }],
+        }
+        report = {"critical_errors": [], "warnings": [], "repairs": []}
+
+        _repair_furniture(floor, {room["id"]: room}, report)
+
+        saved = floor["furniture"][0]
+        self.assertAlmostEqual(2.0, saved["position"]["x"])
+        self.assertAlmostEqual(0.09, saved["position"]["y"])
 
     def test_same_input_is_deterministic(self):
         first = self.make_design(["living_room", "kitchen", "bedroom", "bathroom"], (14, 18), 1)

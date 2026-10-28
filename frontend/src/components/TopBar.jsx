@@ -1,6 +1,7 @@
+/* eslint-disable react/prop-types */
 import { useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { Sparkles, Download, Loader2 } from 'lucide-react'
+import { CheckCircle2, Download, Loader2, Save, Sparkles } from 'lucide-react'
 import { useProjectStore } from '../store'
 import { getCachedModelUrl } from '../utils/modelCache'
 
@@ -11,23 +12,6 @@ const SidebarToggleIcon = () => (
   </svg>
 )
 
-const BuildingIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="4" y="2" width="16" height="20" rx="2" />
-    <path d="M9 22V12h6v10M9 7h1M14 7h1M9 11h1M14 11h1" />
-  </svg>
-)
-
-const JsonIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <line x1="16" y1="13" x2="8" y2="13" />
-    <line x1="16" y1="17" x2="8" y2="17" />
-    <polyline points="10 9 9 9 8 9" />
-  </svg>
-)
-
 const ShareLinkIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -35,17 +19,17 @@ const ShareLinkIcon = () => (
   </svg>
 )
 
-export default function TopBar({ onOpenWizard }) {
+export default function TopBar({ onOpenWizard, onOpenSave }) {
   const {
     projects,
     activeProjectId,
     activeVersionId,
     design,
-    activeTab,
-    setActiveTab,
     sidebarCollapsed,
     setSidebarCollapsed,
     setSidebarOpen,
+    isDirty,
+    isSavingVersion,
   } = useProjectStore()
 
   const activeProject = projects.find((p) => p.id === activeProjectId)
@@ -166,6 +150,25 @@ export default function TopBar({ onOpenWizard }) {
       </div>
 
       <div className="topbar-right">
+        {design && (
+          <button
+            type="button"
+            className={`version-save-trigger ${isDirty ? 'dirty' : 'saved'}`}
+            onClick={onOpenSave}
+            disabled={!isDirty || isSavingVersion}
+            title={isDirty ? 'Save design changes' : 'All changes are saved'}
+          >
+            {isSavingVersion ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : isDirty ? (
+              <Save size={14} />
+            ) : (
+              <CheckCircle2 size={14} />
+            )}
+            <span>{isSavingVersion ? 'Saving…' : isDirty ? 'Save changes' : 'Saved'}</span>
+          </button>
+        )}
+
         {activeProjectId && (
           <button
             type="button"

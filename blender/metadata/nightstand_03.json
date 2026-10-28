@@ -1,16 +1,16 @@
 {
   "id": "nightstand_03",
   "name": "Nightstand 03",
-  "category": "bed",
+  "category": "nightstand",
   "room": "bedroom",
   "style": [
     "modern",
     "contemporary",
     "scandinavian"
   ],
-  "width": 2.0,
-  "depth": 2.1,
-  "height": 1.1,
+  "width": 0.55,
+  "depth": 0.4,
+  "height": 0.65,
   "model_file": "assets/furniture/bedroom/nightstands/nightstand_03.glb",
   "format": "glb",
   "license": "CC0",

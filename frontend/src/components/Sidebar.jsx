@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
@@ -20,7 +21,7 @@ const PanelToggleIcon = () => (
     <path d="M9 4v16" />
   </svg>
 )
-const FolderIcon = ({ open }) => (
+const FolderIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
   </svg>
@@ -61,6 +62,25 @@ const SpinnerIcon = () => (
 function versionColor(n) {
   const colors = ['#10a37f', '#2563eb', '#7c3aed', '#d97706', '#dc2626']
   return colors[(n - 1) % colors.length]
+}
+
+function versionChangeTags(summary) {
+  if (!summary || typeof summary !== 'object') return []
+  const labels = {
+    rooms: 'Room',
+    walls: 'Wall',
+    doors: 'Door',
+    windows: 'Window',
+    furniture: 'Furniture',
+  }
+  const tags = []
+  Object.entries(labels).forEach(([key, label]) => {
+    const change = summary[key] || {}
+    if (change.added) tags.push(`+${change.added} ${label}`)
+    if (change.removed) tags.push(`-${change.removed} ${label}`)
+    if (change.modified) tags.push(`${change.modified} ${label} edited`)
+  })
+  return tags.slice(0, 2)
 }
 
 // ── Single project row (expandable) ──────────────────────────────────
@@ -224,7 +244,9 @@ function ProjectRow({
       {/* Expanded: versions list */}
       {isExpanded && (
         <div style={{ paddingLeft: 20, paddingBottom: 4 }}>
-          {versions.map((v) => (
+          {versions.map((v) => {
+            const changeTags = versionChangeTags(v.change_summary)
+            return (
             <div
               key={v.id}
               onClick={() => onSelectVersion(project.id, v.id, v.version_num)}
@@ -266,20 +288,50 @@ function ProjectRow({
               >
                 v{v.version_num}
               </span>
-              <span
+              <div
                 style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 3,
+                }}
+              >
+                <span
+                  title={v.version_note || v.prompt || 'Untitled'}
+                  style={{
                   fontSize: '0.75rem',
                   color: 'var(--text-secondary)',
-                  flex: 1,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                }}
-              >
-                {v.prompt || 'Untitled'}
-              </span>
+                  }}
+                >
+                  {v.version_note || v.prompt || 'Untitled'}
+                </span>
+                {changeTags.length > 0 && (
+                  <span style={{ display: 'flex', gap: 3, overflow: 'hidden' }}>
+                    {changeTags.map((tag) => (
+                      <span
+                        key={tag}
+                        style={{
+                          padding: '1px 4px',
+                          borderRadius: 3,
+                          background: 'rgba(16, 163, 127, 0.1)',
+                          color: 'var(--accent)',
+                          fontSize: '0.55rem',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
             </div>
-          ))}
+            )
+          })}
 
           <button
             onClick={(e) => {
@@ -333,9 +385,9 @@ export default function Sidebar(props) {
   const loading = props.loading ?? store.sidebarLoading
   const actionType = props.actionType ?? store.projectAction.type
   const actionProjectId = props.actionProjectId ?? store.projectAction.projectId
+  const isDirty = props.isDirty ?? store.isDirty
   const user = props.user ?? authStore.user
 
-  const onSelectVersion = props.onSelectVersion ?? store.selectVersion
   const onNewVersion = props.onNewVersion ?? store.createNewVersion
   const onNewProject = props.onNewProject ?? (() => store.createProject())
   const onRenameProject = props.onRenameProject ?? store.renameProject
@@ -352,15 +404,26 @@ export default function Sidebar(props) {
   )
 
   const handleSelectVersion = (pid, vid) => {
+    if (
+      isDirty
+      && vid !== activeVersionId
+      && !window.confirm('You have unsaved design changes. Discard them and switch versions?')
+    ) return
     navigate(`/app/projects/${pid}/versions/${vid}`)
     if (onClose) onClose()
   }
 
   const handleSelectProject = (pid) => {
+    if (
+      isDirty
+      && pid !== activeProjectId
+      && !window.confirm('You have unsaved design changes. Discard them and switch projects?')
+    ) return
     navigate(`/app/projects/${pid}`)
   }
 
   const handleNewProject = async () => {
+    if (isDirty && !window.confirm('You have unsaved design changes. Discard them and create a project?')) return
     const project = await onNewProject()
     if (project?.id) {
       navigate(`/app/projects/${project.id}`)

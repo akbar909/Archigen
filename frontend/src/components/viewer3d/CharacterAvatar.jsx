@@ -1,4 +1,4 @@
-import * as THREE from 'three'
+/* eslint-disable react/prop-types, react/no-unknown-property */
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { getRoomMeta } from './constants'
@@ -147,9 +147,9 @@ export function CharacterAvatar({ position, rotation, isMoving, walkCycle, isVis
 }
 
 // ── Smooth Camera Controller ─────────────────────────────────────────
-export function CameraController({ controlsRef, targetPos, targetCamPos, viewMode }) {
+export function CameraController({ controlsRef, targetPos, targetCamPos, viewMode, suspended = false }) {
   useFrame(() => {
-    if (!controlsRef.current || !targetPos.current) return
+    if (suspended || !controlsRef.current || !targetPos.current) return
     if (viewMode !== 'walkthrough') {
       controlsRef.current.target.lerp(targetPos.current, 0.09)
       if (targetCamPos.current) {

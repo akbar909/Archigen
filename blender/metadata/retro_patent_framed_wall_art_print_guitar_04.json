@@ -1,5 +1,12 @@
 {
   "id": "retro_patent_framed_wall_art_print_guitar_04",
+  "mounting": {
+    "surface": "wall",
+    "front_axis": "+z",
+    "up_axis": "+y",
+    "orientation_verified": true,
+    "orientation_version": 1
+  },
   "name": "Retro Patent Framed Wall Art Print Guitar 04",
   "category": "general",
   "room": "general",

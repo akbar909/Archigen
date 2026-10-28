@@ -1,0 +1,2838 @@
+{
+  "summary": {
+    "models": 169,
+    "metadata_records": 183,
+    "models_with_metadata": 167,
+    "wall_assets": 19,
+    "verified_wall_assets": 19,
+    "duplicate_content_groups": 6,
+    "issues": 2
+  },
+  "issues": [
+    {
+      "path": "assets/furniture/kitchen/countertops/countertop-dishwasher-built-in_01.glb",
+      "warning": "No source metadata; catalog uses measured proportions and category defaults"
+    },
+    {
+      "path": "assets/furniture/living_room/tv_walls/tv_stand_with_tv_&_wall.glb",
+      "warning": "No source metadata; catalog uses measured proportions and category defaults"
+    }
+  ],
+  "models": [
+    {
+      "path": "assets/appliances/electronics/led_tv_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 13,
+        "height": 7.753897190093994,
+        "depth": 2.151894450187685
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "led_tv",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.16553,
+        "height": 0.59645
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/electronics/led_tv_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 27.341366683636714,
+        "height": 94.22517053137761,
+        "depth": 152.40751389461968
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "led_tv",
+      "effective_dimensions": {
+        "width": 0.1794,
+        "depth": 1.0,
+        "height": 0.61824
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/kitchen/haier_refrigerator_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8333699703216559,
+        "height": 1.804190039634705,
+        "depth": 0.9180919826030735
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "refrigerator",
+      "effective_dimensions": {
+        "width": 0.77156,
+        "depth": 0.85,
+        "height": 1.67038
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/kitchen/microwave_old_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 5.015621873130798,
+        "height": 2.770405113000871,
+        "depth": 5.685367121980191
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "microwave_old",
+      "effective_dimensions": {
+        "width": 0.8822,
+        "depth": 1.0,
+        "height": 0.48729
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/kitchen/refrigerator_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5130118727684021,
+        "height": 1.0017739534378052,
+        "depth": 0.4643137454986572
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "refrigerator",
+      "effective_dimensions": {
+        "width": 0.92,
+        "depth": 0.83267,
+        "height": 1.79651
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/kitchen/vintage_microwave_1.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.0737111568450928,
+        "height": 0.5258261561393738,
+        "depth": 0.7455552816390991
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "vintage_microwave",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.69437,
+        "height": 0.48973
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/laundry/washing_machine_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 587.2225492522342,
+        "height": 851.8646153999035,
+        "depth": 527.3128699435101
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "washing_machine",
+      "effective_dimensions": {
+        "width": 0.68934,
+        "depth": 0.61901,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/appliances/laundry/washing_machine_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 490.3776715728393,
+        "height": 692.3455837981517,
+        "depth": 542.5404908690339
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "washing_machine",
+      "effective_dimensions": {
+        "width": 0.70828,
+        "depth": 0.78363,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/ceilings/designs/ceiling_lamp_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 7.972381114959717,
+        "height": 1.11744824051857,
+        "depth": 16.496437072753906
+      },
+      "catalog_group": "ceiling_asset",
+      "catalog_category": "ceiling_light",
+      "effective_dimensions": {
+        "width": 0.57993,
+        "depth": 1.2,
+        "height": 0.08129
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/ceilings/designs/ceiling_lamp_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 80.54080963134766,
+        "height": 118.9011344909668,
+        "depth": 80.54080581665039
+      },
+      "catalog_group": "ceiling_asset",
+      "catalog_category": "ceiling_light",
+      "effective_dimensions": {
+        "width": 0.44029,
+        "depth": 0.44029,
+        "height": 0.65
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/ceilings/fans/ceiling_fan_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 958.3499431610107,
+        "height": 958.3499073849543,
+        "depth": 332.7700358143369
+      },
+      "catalog_group": "ceiling_asset",
+      "catalog_category": "ceiling_light",
+      "effective_dimensions": {
+        "width": 1.2,
+        "depth": 1.2,
+        "height": 0.41668
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/ceilings/fans/ceiling_fan_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 14.78571605682373,
+        "height": 4.491438627243042,
+        "depth": 16.621376991271973
+      },
+      "catalog_group": "ceiling_asset",
+      "catalog_category": "ceiling_light",
+      "effective_dimensions": {
+        "width": 1.06747,
+        "depth": 1.2,
+        "height": 0.32426
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/columns/classical/column_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5881916284561157,
+        "height": 3.0034779608249664,
+        "depth": 0.6498076915740967
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/columns/classical/column_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8446426202809221,
+        "height": 4.148573889137454,
+        "depth": 0.6533131655773117
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/columns/modern/column_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.970989227294922,
+        "height": 14.579700646222307,
+        "depth": 2.970989227294922
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/columns/modern/column_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 40,
+        "height": 245,
+        "depth": 40.00000000000006
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/exterior/entrance_door_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1172.5602416992188,
+        "height": 1380.2935914993286,
+        "depth": 371.84739685058605
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/exterior/Gate.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 4.631317614141621,
+        "height": 2.149825831869804,
+        "depth": 0.17494389166239266
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/exterior/roller_garager_door_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.8400001525878906,
+        "height": 2.7100013809205166,
+        "depth": 0.3259785547852516
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/glass_french/french_door_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 8.96820983668243,
+        "height": 9.888120920104454,
+        "depth": 0.7015337124523255
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/glass_french/french_door_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5111538171768188,
+        "height": 4.987653732299805,
+        "depth": 4.505379915237427
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/interior/interior_door_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9144003391265869,
+        "height": 2.031813621520996,
+        "depth": 0.12506723403930664
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/interior/interior_door_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 5.4287196376460845,
+        "height": 9.168102329885553,
+        "depth": 1.7532763934693498
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/sliding/sliding_door_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.1435503363609314,
+        "height": 1.7755379676818848,
+        "depth": 1.7928439192473888
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/doors/sliding/sliding_door_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 3.055000500753522,
+        "height": 2.500000409781933,
+        "depth": 0.20000038038688217
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/l_shaped/stairs_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.17883522233248939,
+        "height": 0.190673915357523,
+        "depth": 0.1738558309260318
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/l_shaped/stairs_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 3.6346735189555526,
+        "height": 3.4050154878568164,
+        "depth": 4.2921086687123315
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/railings/railing_stairs_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.08300000958889697,
+        "height": 0.09396582919134255,
+        "depth": 0.08140521825973987
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/railings/railing_stairs_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.536789894104004,
+        "height": 1.505224943161011,
+        "depth": 1.0663250088691716
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/spiral/spiral_stairs_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 251.23800659179688,
+        "height": 311.8869934082031,
+        "depth": 140.84709835052496
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/spiral/spiral_stairs_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 4.148968223962426,
+        "height": 5.968282050107971,
+        "depth": 4.150001966892038
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/straight/straight_stairs_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 3.477201155188652,
+        "height": 3.423692855603406,
+        "depth": 1.624020959794053
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/stairs/straight/straight_stairs_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.5166687508339856,
+        "height": 2.559378813852433,
+        "depth": 3.0013142816283764
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/walls/designs/wall_panel_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9999999776482582,
+        "height": 0.9999999839086566,
+        "depth": 0.08292160437992897
+      },
+      "catalog_group": "wall_panel",
+      "catalog_category": "wall_panel",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.08292,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/architecture/walls/designs/wall_panel_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 3.0484920740127563,
+        "height": 3.403599977493286,
+        "depth": 0.1812700044351807
+      },
+      "catalog_group": "wall_panel",
+      "catalog_category": "wall_panel",
+      "effective_dimensions": {
+        "width": 0.89567,
+        "depth": 0.05326,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/architecture/windows/sliding/Window_with_sliding_door_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.200000047683716,
+        "height": 2.0999999955522632,
+        "depth": 0.1499518472701311
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/windows/standard/standard_window_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 7.5326080322265625,
+        "height": 6.463051080703735,
+        "depth": 1.4800919306740479
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/architecture/windows/standard/standard_window_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.2200000286102295,
+        "height": 1.0199999902397394,
+        "depth": 0.30000001192092896
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/carpets_rugs/carpet_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.9946367526278266,
+        "height": 0.02010158285643371,
+        "depth": 3.059020026812888
+      },
+      "catalog_group": "floor_overlay",
+      "catalog_category": "rug",
+      "effective_dimensions": {
+        "width": 1.95615,
+        "depth": 3.0,
+        "height": 0.01971
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/carpets_rugs/persian_qashqai_rug_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9920987486839294,
+        "height": 0.004000000189989805,
+        "depth": 0.6451240181922913
+      },
+      "catalog_group": "floor_overlay",
+      "catalog_category": "rug",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.65026,
+        "height": 0.00403
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/carpets_rugs/rug_with_tassles_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.5409737446029492,
+        "height": 0.014114852284959865,
+        "depth": 3.6883309790999412
+      },
+      "catalog_group": "floor_overlay",
+      "catalog_category": "rug",
+      "effective_dimensions": {
+        "width": 0.68892,
+        "depth": 1.0,
+        "height": 0.00383
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/clocks/antique_clock_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 287.5472888946533,
+        "height": 1320.5640258789065,
+        "depth": 629.2702941894534
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.47652,
+        "depth": 0.21775,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "-x",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/clocks/clock_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 157.94077980698074,
+        "height": 295.7314997895479,
+        "depth": 208.63072920934502
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "table_clock",
+      "effective_dimensions": {
+        "width": 0.1552,
+        "depth": 0.11749,
+        "height": 0.22
+      },
+      "mounting": {
+        "surface": "tabletop",
+        "front_axis": "+x",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/clocks/clock_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.000015124505881,
+        "height": 2,
+        "depth": 0.9313496124166845
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.46567,
+        "height": 0.99999
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 232.77354665777875,
+        "height": 229.46996476407557,
+        "depth": 27.502742767334055
+      },
+      "catalog_group": "curtain",
+      "catalog_category": "curtain",
+      "effective_dimensions": {
+        "width": 1.8,
+        "depth": 0.21267,
+        "height": 1.77445
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 8.12025901547226,
+        "height": 8.009033878061771,
+        "depth": 0.6412570271519087
+      },
+      "catalog_group": "curtain",
+      "catalog_category": "curtain",
+      "effective_dimensions": {
+        "width": 1.8,
+        "depth": 0.14215,
+        "height": 1.77534
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.11532999947667122,
+        "height": 3.040150023996831,
+        "depth": 2.317389965057374
+      },
+      "catalog_group": "curtain",
+      "catalog_category": "curtain",
+      "effective_dimensions": {
+        "width": 1.7532,
+        "depth": 0.08725,
+        "height": 2.3
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "-x",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtains_04.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 112.73706841864112,
+        "height": 83.51282948611282,
+        "depth": 4.426708155748459
+      },
+      "catalog_group": "curtain",
+      "catalog_category": "curtain",
+      "effective_dimensions": {
+        "width": 1.8,
+        "depth": 0.07068,
+        "height": 1.3334
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/curtain_blinds_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 5.643299453482786,
+        "height": 3.810997530203859,
+        "depth": 0.3500022016075499
+      },
+      "catalog_group": "curtain",
+      "catalog_category": "curtain",
+      "effective_dimensions": {
+        "width": 1.8,
+        "depth": 0.11164,
+        "height": 1.21556
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/curtains_blinds/window_blinds_low_poly_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 10.69647216796875,
+        "height": 197.9100738193619,
+        "depth": 208.68924052348245
+      },
+      "catalog_group": "curtain",
+      "catalog_category": "curtain",
+      "effective_dimensions": {
+        "width": 1.8,
+        "depth": 0.09226,
+        "height": 1.70703
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+x",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/mirrors/luxury_gold_carved_mirror_04.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 427.51129150390625,
+        "height": 689.484619140625,
+        "depth": 23.762199789285813
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.62004,
+        "depth": 0.03446,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/mirrors/mirror_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 82.88365173339844,
+        "height": 178.6767578125,
+        "depth": 2.2823443412781157
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.46387,
+        "depth": 0.01277,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/mirrors/mirror_a_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.7161760551592096,
+        "height": 1.7644461380441596,
+        "depth": 0.36767672670610096
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "floor_mirror",
+      "effective_dimensions": {
+        "width": 0.65,
+        "depth": 0.3337,
+        "height": 1.60141
+      },
+      "mounting": {
+        "surface": "floor",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/mirrors/ornate_mirror_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.3658039569854736,
+        "height": 2.0000000012843433,
+        "depth": 0.1115176676782148
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.6829,
+        "depth": 0.05576,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/plants_greenery/indoor_plant_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.0805669724941254,
+        "height": 1.0648891236633062,
+        "depth": 1.035344958305359
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/plants_greenery/indoor_plant_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 3.7787351608276367,
+        "height": 5.582149267196655,
+        "depth": 3.8279651403427133
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/tabletop_decor/tableTop_books_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.9491900205612183,
+        "height": 0.9451099932193763,
+        "depth": 3.2639899253845215
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/tabletop_decor/tableTop_books_decor_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.3172767019157444,
+        "height": 0.3071568580629199,
+        "depth": 0.6885667295284268
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/decorations/wall_art/cafe_wall_pictures_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.026181364636016703,
+        "height": 0.7888878122624121,
+        "depth": 1.831509296440645
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.01429,
+        "height": 0.43073
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+x",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/wall_art/city_map_framed_wall_art_print_amsterdam_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 50.00003242492676,
+        "height": 49.999996185302734,
+        "depth": 1.0000001192093118
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.02,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/wall_art/retro_patent_framed_wall_art_print_guitar_04.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 30.0000057220459,
+        "height": 42,
+        "depth": 0.9996485412121006
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.71429,
+        "depth": 0.0238,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/decorations/wall_art/wall_art_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.20602000504732132,
+        "height": 0.5361500233411789,
+        "depth": 0.0308999987319113
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.38426,
+        "depth": 0.05763,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/doors/door_standard.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.7398420572280808,
+        "height": 4.1976558756883025,
+        "depth": 0.42111613732663167
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/doors/door_standard_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.7398421987891728,
+        "height": 4.197656993275344,
+        "depth": 0.42111613732665565
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/doors/door_standard_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.4860000014305115,
+        "height": 1.0095319747924805,
+        "depth": 0.1134000001475215
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/hardware/door_handle_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 19.781099319458022,
+        "height": 55.000000000000014,
+        "depth": 15.000000000000027
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/hardware/door_handle_1.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 105.40360369863265,
+        "height": 48.49961292753568,
+        "depth": 41.48299191764864
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/plumbing/drain_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 82.65318298339844,
+        "height": 3.8364299386739917,
+        "depth": 82.65318298339844
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/plumbing/kitchen_faucet_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 6.419447497139055,
+        "height": 4.4361687832477354,
+        "depth": 4.013111367242547
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/plumbing/kitchen_faucet_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.42249704897403717,
+        "height": 0.4062863650506188,
+        "depth": 0.2941207438707353
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/plumbing/shower_head_from_poly_by_google_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 268.6122055053711,
+        "height": 188.69635009765625,
+        "depth": 123.53577423095703
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/plumbing/shr_head_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.3279151916503906,
+        "height": 0.33666205406188965,
+        "depth": 0.3048591613769531
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/fixtures/plumbing/small_drain_cover_decal_1.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.6042640550971612,
+        "height": 0.02667657077290344,
+        "depth": 0.30000006958842107
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/bathtubs/bathtub_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5339075326919556,
+        "height": 0.420841708779335,
+        "depth": 1.0037460327148438
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bathtub",
+      "effective_dimensions": {
+        "width": 0.45213,
+        "depth": 0.85,
+        "height": 0.35638
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/bathtubs/vitto_bathtub_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 83.8582992553711,
+        "height": 88.97637939453126,
+        "depth": 40.531513052844986
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bathtub",
+      "effective_dimensions": {
+        "width": 0.61261,
+        "depth": 0.2961,
+        "height": 0.65
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/showers/shower_high_poly_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.3598107248544693,
+        "height": 1.3183732330799103,
+        "depth": 0.6020039841532707
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "shower",
+      "effective_dimensions": {
+        "width": 0.57313,
+        "depth": 0.95892,
+        "height": 2.1
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/showers/shower_set_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.37419700622558594,
+        "height": 0.9584970474243164,
+        "depth": 0.5871791839599609
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "shower",
+      "effective_dimensions": {
+        "width": 0.63728,
+        "depth": 1.0,
+        "height": 1.63238
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/toilets/toilet_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5727962553501129,
+        "height": 0.9996671974658966,
+        "depth": 0.8959689140319824
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "toilet",
+      "effective_dimensions": {
+        "width": 0.44751,
+        "depth": 0.7,
+        "height": 0.78102
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/toilets/toilet_002.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 71.45273389489746,
+        "height": 103.66193791453568,
+        "depth": 45.093126934104916
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "toilet",
+      "effective_dimensions": {
+        "width": 0.45,
+        "depth": 0.28399,
+        "height": 0.65285
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/vanities/bathroom_sink_cabinet_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 48,
+        "height": 34.67418813705444,
+        "depth": 23.728800000000007
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bathroom_sink",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.49435,
+        "height": 0.72238
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/vanities/bathroom_vanity_with_marble_topfree_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.6847970410351536,
+        "height": 3.010383213930051,
+        "depth": 1.6756856013941221
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bathroom_sink",
+      "effective_dimensions": {
+        "width": 0.89185,
+        "depth": 0.55664,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bathroom/vanities/sink_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5193873047828674,
+        "height": 0.5300353765487671,
+        "depth": 1.0037664771080017
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bathroom_sink",
+      "effective_dimensions": {
+        "width": 0.51744,
+        "depth": 1.0,
+        "height": 0.52805
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/ArmChair_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8484309017658234,
+        "height": 1.065087635157397,
+        "depth": 0.7657602727413177
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "armchair",
+      "effective_dimensions": {
+        "width": 0.66913,
+        "depth": 0.60393,
+        "height": 0.84
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.765596977744142,
+        "height": 2.4111661921032814,
+        "depth": 2.7474227895817744
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 0.80548,
+        "depth": 1.2534,
+        "height": 1.1
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9053834080696106,
+        "height": 0.4772714078426361,
+        "depth": 1.0016339421272278
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 1.98859,
+        "depth": 2.2,
+        "height": 1.04828
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 198.72670006752014,
+        "height": 100.00000000000004,
+        "depth": 233.48929977416992
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 1.78735,
+        "depth": 2.1,
+        "height": 0.8994
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/bed_04.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 8.174263022840023,
+        "height": 4.9371268545528455,
+        "depth": 7.870178937911988
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 1.82124,
+        "depth": 1.75349,
+        "height": 1.1
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/GothicBed_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.493751883506775,
+        "height": 1.5338402975614969,
+        "depth": 2.0399999022483826
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 1.31472,
+        "depth": 1.79549,
+        "height": 1.35
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/single_bed_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.7863654914565643,
+        "height": 0.6819246556924731,
+        "depth": 1.7557344044208278
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 0.94056,
+        "depth": 2.1,
+        "height": 0.81564
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/beds/single_bed_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.2625668362443387,
+        "height": 1.120000053197146,
+        "depth": 2.070000098319724
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bed",
+      "effective_dimensions": {
+        "width": 1.24002,
+        "depth": 2.03304,
+        "height": 1.1
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/desk_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.0035037398338318,
+        "height": 0.46044209599494934,
+        "depth": 0.4349534809589386
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "desk",
+      "effective_dimensions": {
+        "width": 1.4,
+        "depth": 0.60681,
+        "height": 0.64237
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/dressers/dressers_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5745298266410828,
+        "height": 1.908161997795105,
+        "depth": 1.1743241846561432
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dresser",
+      "effective_dimensions": {
+        "width": 0.30109,
+        "depth": 0.61542,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/dressers/dressers_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 89.86519622802734,
+        "height": 177.17181396484375,
+        "depth": 55.8209533691407
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dresser",
+      "effective_dimensions": {
+        "width": 0.50722,
+        "depth": 0.31507,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/modren_wooden_cabinet_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.4400004148483276,
+        "height": 0.6801425069570541,
+        "depth": 0.5200000107288361
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "modren_wooden_cabinet",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.21311,
+        "height": 0.27875
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/bedside_table_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8575865030288696,
+        "height": 1.0020093321800232,
+        "depth": 0.8564020097255707
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "nightstand",
+      "effective_dimensions": {
+        "width": 0.45062,
+        "depth": 0.45,
+        "height": 0.52651
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/nightstand_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 56.01034462451935,
+        "height": 98.86455297853803,
+        "depth": 37.67642052364016
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "nightstand",
+      "effective_dimensions": {
+        "width": 0.36825,
+        "depth": 0.24771,
+        "height": 0.65
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/nightstand_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.6928687051256972,
+        "height": 0.8073057571082958,
+        "depth": 0.7625706680924582
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "nightstand",
+      "effective_dimensions": {
+        "width": 0.54516,
+        "depth": 0.6,
+        "height": 0.6352
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/nightstands/nightstand_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 44.999998807907104,
+        "height": 53.99999617687597,
+        "depth": 32.00000254315747
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "nightstand",
+      "effective_dimensions": {
+        "width": 0.54167,
+        "depth": 0.38519,
+        "height": 0.65
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/vanity_tables/vanity_table_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.3413189588192331,
+        "height": 1.4385819542724945,
+        "depth": 1.2684759619427626
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "vanity_table",
+      "effective_dimensions": {
+        "width": 0.93239,
+        "depth": 0.88175,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/vanity_tables/vanity_table_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1624.2954196267847,
+        "height": 3202.3217686377066,
+        "depth": 1209.6329473960468
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "vanity_table",
+      "effective_dimensions": {
+        "width": 0.50722,
+        "depth": 0.37774,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 966.2102155153074,
+        "height": 1623.1707042544037,
+        "depth": 475.41529983951955
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "wardrobe",
+      "effective_dimensions": {
+        "width": 0.59526,
+        "depth": 0.29289,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.4700002625868285,
+        "height": 2.700000747003015,
+        "depth": 1.9600005573073858
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "wardrobe",
+      "effective_dimensions": {
+        "width": 0.91481,
+        "depth": 0.72593,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_04.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.7952729958572717,
+        "height": 2.4136452065028804,
+        "depth": 0.6084167252417579
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "wardrobe",
+      "effective_dimensions": {
+        "width": 0.7438,
+        "depth": 0.25207,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/bedroom/wardrobes/wardrobe_modern_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.6517095666974377,
+        "height": 2.057534683634799,
+        "depth": 1.564706563949585
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "wardrobe",
+      "effective_dimensions": {
+        "width": 0.31674,
+        "depth": 0.76048,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_chairs/dining_chair_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.1910787224769592,
+        "height": 1.9098873734474182,
+        "depth": 1.1679655313491821
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dining_chair",
+      "effective_dimensions": {
+        "width": 0.5,
+        "depth": 0.4903,
+        "height": 0.80175
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_chairs/dining_chair_002.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5923689305782318,
+        "height": 0.739298403263092,
+        "depth": 0.5372882038354874
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dining_chair",
+      "effective_dimensions": {
+        "width": 0.5,
+        "depth": 0.45351,
+        "height": 0.62402
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_tables/dining_table_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.0035947561264038,
+        "height": 0.38119374215602875,
+        "depth": 0.45911863446235657
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dining_table",
+      "effective_dimensions": {
+        "width": 1.8,
+        "depth": 0.82345,
+        "height": 0.68369
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_tables/dining_table_with_chairs_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1505.362495929643,
+        "height": 1245.6055962449173,
+        "depth": 1979.8506449416454
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dining_table",
+      "effective_dimensions": {
+        "width": 1.32939,
+        "depth": 1.74842,
+        "height": 1.1
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/dining_tables/dining_table_with_chairs_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 671.6198403203285,
+        "height": 330.00011818528833,
+        "depth": 1091.6198277028457
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "dining_table",
+      "effective_dimensions": {
+        "width": 1.59965,
+        "depth": 2.6,
+        "height": 0.78599
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/sideboards/sideboard_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.0035706162452698,
+        "height": 0.40717506408691406,
+        "depth": 0.23263446241617203
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "sideboard",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.23181,
+        "height": 0.40573
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/dining_room/sideboards/sideboard_002.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.3865685006144344,
+        "height": 0.715110153774425,
+        "depth": 0.9304400692875971
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "sideboard",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.67104,
+        "height": 0.51574
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/entryway/benches/bench_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.12476153778893302,
+        "height": 0.06489182945822404,
+        "depth": 0.05613138733948428
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bench",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.44991,
+        "height": 0.52013
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/entryway/benches/entryway_bench_with_drawer_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 7.516834233026928,
+        "height": 3.9907552590052338,
+        "depth": 2.4999999441206464
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "entryway_bench_with_drawer",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.33259,
+        "height": 0.53091
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/entryway/shoe_storage/metal_shoe_rack_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8464820981025696,
+        "height": 0.4946484863758087,
+        "depth": 0.35636913776397705
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "metal_shoe_rack",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.421,
+        "height": 0.58436
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/entryway/shoe_storage/shoe_rack_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8405232429504395,
+        "height": 0.44015273451805115,
+        "depth": 0.3437831401824951
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "shoe_rack",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.40901,
+        "height": 0.52367
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/garage/car.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.271301746368408,
+        "height": 1.130518525838852,
+        "depth": 4.947663307189941
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "vehicle",
+      "effective_dimensions": {
+        "width": 0.45907,
+        "depth": 1.0,
+        "height": 0.2285
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/home_office/bookshelves/bookshelves_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 10.002184167455486,
+        "height": 15.026072693585789,
+        "depth": 4.7000026291068835
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bookshelf",
+      "effective_dimensions": {
+        "width": 0.74484,
+        "depth": 0.35,
+        "height": 1.11896
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/home_office/bookshelves/bookshelves_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 4.000247955322266,
+        "height": 6.588981714407787,
+        "depth": 1.4673793695243522
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bookshelf",
+      "effective_dimensions": {
+        "width": 0.95414,
+        "depth": 0.35,
+        "height": 1.57161
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/home_office/desks/office_desk_metallic_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.7324053567855344,
+        "height": 0.9236672576442226,
+        "depth": 0.9690527127149837
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "desk",
+      "effective_dimensions": {
+        "width": 1.25141,
+        "depth": 0.7,
+        "height": 0.66722
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/home_office/desks/office_desk_with_drawers_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.6451161640327427,
+        "height": 0.801068697332763,
+        "depth": 0.7777526763824483
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "desk",
+      "effective_dimensions": {
+        "width": 1.4,
+        "depth": 0.66187,
+        "height": 0.68171
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/home_office/office_chairs/office_chair_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9339581392917391,
+        "height": 1.4619139190116797,
+        "depth": 0.963523451655008
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "office_chair",
+      "effective_dimensions": {
+        "width": 0.63886,
+        "depth": 0.65908,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/home_office/office_chairs/office_chair_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.7250370122751925,
+        "height": 1.1602470824418536,
+        "depth": 0.7130721238462476
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "office_chair",
+      "effective_dimensions": {
+        "width": 0.6249,
+        "depth": 0.61459,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/bar_stools/bar_stool_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 40.57182884216311,
+        "height": 108.42011642456058,
+        "depth": 43.26386833190925
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bar_stool",
+      "effective_dimensions": {
+        "width": 0.37421,
+        "depth": 0.39904,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/bar_stools/leather_high_bar_stool_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5963173968957443,
+        "height": 0.9907543049358686,
+        "depth": 0.4633702668939501
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bar_stool",
+      "effective_dimensions": {
+        "width": 0.60188,
+        "depth": 0.46769,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/cabinets_base/kitchen_cabinet_1.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.30005295260328246,
+        "height": 0.18951175717494276,
+        "depth": 0.18449915602305472
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "kitchen_cabinet",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.61489,
+        "height": 0.63159
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/cabinets_base/kitchen_cabinet_2.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5295035243034363,
+        "height": 2.061187021434307,
+        "depth": 2.69772732257843
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "kitchen_cabinet",
+      "effective_dimensions": {
+        "width": 0.19628,
+        "depth": 1.0,
+        "height": 0.76405
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/cabinet_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.0035706162452698,
+        "height": 0.40717506408691406,
+        "depth": 0.23263446241617203
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "cabinet",
+      "effective_dimensions": {
+        "width": 1.2,
+        "depth": 0.27817,
+        "height": 0.48687
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/countertops/countertop-dishwasher-built-in_01.glb",
+      "has_metadata": false,
+      "source_dimensions": {
+        "width": 21.457931475662008,
+        "height": 17.77144525051017,
+        "depth": 19.409474009273254
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "countertop-dishwasher-built-in",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.90454,
+        "height": 0.8282
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/islands/kitchen_island_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9975470006465912,
+        "height": 0.33528171479701996,
+        "depth": 0.40855473279953003
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "kitchen_island",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.40956,
+        "height": 0.33611
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/islands/kitchen_island_002.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.400000503451475,
+        "height": 0.9200000962283897,
+        "depth": 0.8000001013278961
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "kitchen_island",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.33333,
+        "height": 0.38333
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/islands/kitchen_island_003.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 3.2728331089019775,
+        "height": 1.2932080030441284,
+        "depth": 1.5236210823059082
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "kitchen_island",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.46554,
+        "height": 0.39513
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/kitchen/sink_001.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.989838719367981,
+        "height": 0.7384128868579865,
+        "depth": 0.466397762298584
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "sink",
+      "effective_dimensions": {
+        "width": 0.9,
+        "depth": 0.42407,
+        "height": 0.67139
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8484309017658234,
+        "height": 1.065087635157397,
+        "depth": 0.7657602727413177
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "armchair",
+      "effective_dimensions": {
+        "width": 0.66913,
+        "depth": 0.60393,
+        "height": 0.84
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.6985367976456103,
+        "height": 0.8559655446741349,
+        "depth": 0.6960467743063037
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "armchair",
+      "effective_dimensions": {
+        "width": 0.68551,
+        "depth": 0.68306,
+        "height": 0.84
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.6985367976456103,
+        "height": 0.8559655446741349,
+        "depth": 0.6960467743063037
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "armchair",
+      "effective_dimensions": {
+        "width": 0.68551,
+        "depth": 0.68306,
+        "height": 0.84
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_04.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.985592128552036,
+        "height": 2.5974025808067456,
+        "depth": 1.5151975094904535
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "armchair",
+      "effective_dimensions": {
+        "width": 0.64214,
+        "depth": 0.49001,
+        "height": 0.84
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/armchairs/ArmChair_05.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8364063578274198,
+        "height": 0.6423547844667323,
+        "depth": 0.8618400168300869
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "armchair",
+      "effective_dimensions": {
+        "width": 0.85403,
+        "depth": 0.88,
+        "height": 0.65589
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/bookshelves/bookshelves_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 10.002184167455486,
+        "height": 15.026072693585789,
+        "depth": 4.7000026291068835
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bookshelf",
+      "effective_dimensions": {
+        "width": 0.74484,
+        "depth": 0.35,
+        "height": 1.11896
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/bookshelves/bookshelves_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 4.000247955322266,
+        "height": 6.588981714407787,
+        "depth": 1.4673793695243522
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "bookshelf",
+      "effective_dimensions": {
+        "width": 0.95414,
+        "depth": 0.35,
+        "height": 1.57161
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/coffee_tables/CoffeeTable_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1316.1753387451172,
+        "height": 402.36401025518506,
+        "depth": 947.8481919765472
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "coffee_table",
+      "effective_dimensions": {
+        "width": 0.90259,
+        "depth": 0.65,
+        "height": 0.27593
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/coffee_tables/CoffeeTable_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2,
+        "height": 0.5502480705592291,
+        "depth": 1.0000000240521052
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "coffee_table",
+      "effective_dimensions": {
+        "width": 1.1,
+        "depth": 0.55,
+        "height": 0.30264
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/coffee_tables/CoffeeTable_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.5400111079216003,
+        "height": 0.523237330140546,
+        "depth": 0.972847044467926
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "coffee_table",
+      "effective_dimensions": {
+        "width": 1.02895,
+        "depth": 0.65,
+        "height": 0.3496
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/floor_lamp.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.2799999937415123,
+        "height": 0.5000000467925553,
+        "depth": 0.2799999937415123
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "floor",
+      "effective_dimensions": {
+        "width": 0.56,
+        "depth": 0.56,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/side_tables/sidetable_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.3712623951508127,
+        "height": 0.7702744083235086,
+        "depth": 0.7195698334168033
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "side_table",
+      "effective_dimensions": {
+        "width": 0.30957,
+        "depth": 0.6,
+        "height": 0.64228
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/side_tables/sidetable_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 709.6956176757812,
+        "height": 659.7233851552012,
+        "depth": 724.2182617187502
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "side_table",
+      "effective_dimensions": {
+        "width": 0.58797,
+        "depth": 0.6,
+        "height": 0.54657
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/sofas/L_shaped_sofa_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.9755080342292786,
+        "height": 0.5498259961605072,
+        "depth": 2.0012600421905518
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "sofa",
+      "effective_dimensions": {
+        "width": 0.93778,
+        "depth": 0.95,
+        "height": 0.261
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/sofas/sofa_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2,
+        "height": 0.6017000315124779,
+        "depth": 0.7836620333412223
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "sofa",
+      "effective_dimensions": {
+        "width": 2.2,
+        "depth": 0.86203,
+        "height": 0.66187
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/tv_units/modren_wooden_cabinet_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.4400004148483276,
+        "height": 0.6801425069570541,
+        "depth": 0.5200000107288361
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "tv_unit",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.21311,
+        "height": 0.27875
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/tv_units/tv_stand_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.8080921173095703,
+        "height": 0.3682732880115509,
+        "depth": 0.46308092772960663
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "tv_unit",
+      "effective_dimensions": {
+        "width": 1.0,
+        "depth": 0.25612,
+        "height": 0.20368
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/tv_units/tv_stand_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.469999997243285,
+        "height": 0.4250004409497483,
+        "depth": 2.4000000922286278
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "tv_unit",
+      "effective_dimensions": {
+        "width": 0.19583,
+        "depth": 1.0,
+        "height": 0.17708
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/living_room/tv_walls/tv_stand_with_tv_&_wall.glb",
+      "has_metadata": false,
+      "source_dimensions": {
+        "width": 67.7165448486328,
+        "height": 94.48820197300722,
+        "depth": 18.267693041992175
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "tv_stand_with_tv_&",
+      "effective_dimensions": {
+        "width": 0.71667,
+        "depth": 0.19333,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/outdoor/lounge_seating/patio_furniture_set_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 2.918290138244629,
+        "height": 0.9091309905052193,
+        "depth": 3.8473699092864995
+      },
+      "catalog_group": "ground_decor",
+      "catalog_category": "outdoor",
+      "effective_dimensions": {
+        "width": 0.75852,
+        "depth": 1.0,
+        "height": 0.2363
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/outdoor/lounge_seating/patio_set_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 273.6646728515625,
+        "height": 256.44086721307553,
+        "depth": 275.77523461604335
+      },
+      "catalog_group": "ground_decor",
+      "catalog_category": "outdoor",
+      "effective_dimensions": {
+        "width": 0.99235,
+        "depth": 1.0,
+        "height": 0.92989
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/outdoor/planters/garden_urn_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 65.13165664672852,
+        "height": 117.13101939882957,
+        "depth": 68.91912320224961
+      },
+      "catalog_group": "ground_decor",
+      "catalog_category": "outdoor",
+      "effective_dimensions": {
+        "width": 0.55606,
+        "depth": 0.58839,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/furniture/outdoor/planters/giardino_urn__roses_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1.4966599941253662,
+        "height": 1.9949620366096497,
+        "depth": 1.4938059449195862
+      },
+      "catalog_group": "ground_decor",
+      "catalog_category": "outdoor",
+      "effective_dimensions": {
+        "width": 0.75022,
+        "depth": 0.74879,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/ceiling_lights/antique_chandelier_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 1073.7098693847656,
+        "height": 2135.10492564418,
+        "depth": 934.6644545986869
+      },
+      "catalog_group": "ceiling_asset",
+      "catalog_category": "ceiling_light",
+      "effective_dimensions": {
+        "width": 0.32687,
+        "depth": 0.28454,
+        "height": 0.65
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/ceiling_lights/chandelier_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.023492398929020775,
+        "height": 0.02975831948760927,
+        "depth": 0.02304351993552923
+      },
+      "catalog_group": "ceiling_asset",
+      "catalog_category": "ceiling_light",
+      "effective_dimensions": {
+        "width": 0.51314,
+        "depth": 0.50333,
+        "height": 0.65
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/floor_lamps/floor_lamp_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.2799999937415123,
+        "height": 0.5000000467925553,
+        "depth": 0.2799999937415123
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "floor_lamp",
+      "effective_dimensions": {
+        "width": 0.56,
+        "depth": 0.56,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/floor_lamps/floor_lamp_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.8064702133085131,
+        "height": 1.6498578936391886,
+        "depth": 0.7536749409027323
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "floor_lamp",
+      "effective_dimensions": {
+        "width": 0.48881,
+        "depth": 0.45681,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/floor_lamps/vintage_floor_lamp_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.5260519981384277,
+        "height": 2.0000100357482022,
+        "depth": 0.5269381028581392
+      },
+      "catalog_group": "furniture",
+      "catalog_category": "floor_lamp",
+      "effective_dimensions": {
+        "width": 0.26302,
+        "depth": 0.26347,
+        "height": 1.0
+      },
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/switches_sockets/electrical_switch_board__power_socket_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.2873368813617603,
+        "height": 0.12879646709993864,
+        "depth": 0.033506457375508614
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/switches_sockets/single_plug_socket_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 8.696100115776062,
+        "height": 8.600000468600555,
+        "depth": 1.8344002694440276
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/table_lamps/classic_table_lamp_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.24856124322352002,
+        "height": 0.5783268058674004,
+        "depth": 0.31198203343193154
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/table_lamps/table_lamp_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 27.451900482177734,
+        "height": 46.687179565429695,
+        "depth": 27.451892852783214
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/lighting/wall_sconces/stylized_gothic_wall_torch_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.197658970952034,
+        "height": 0.75,
+        "depth": 0.27295634150505066
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.26355,
+        "depth": 0.36394,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/lighting/wall_sconces/wall_lamp_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.15862977791601632,
+        "height": 0.29462637872156006,
+        "depth": 0.27906736236659824
+      },
+      "catalog_group": "wall_decor",
+      "catalog_category": "wall_decor",
+      "effective_dimensions": {
+        "width": 0.53841,
+        "depth": 0.94719,
+        "height": 1.0
+      },
+      "mounting": {
+        "surface": "wall",
+        "front_axis": "+z",
+        "up_axis": "+y",
+        "orientation_verified": true,
+        "orientation_version": 1
+      }
+    },
+    {
+      "path": "assets/windows/window_standard_01.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.9999085664749146,
+        "height": 0.874176025390625,
+        "depth": 0.3137359917163849
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/windows/window_standard_02.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.05000030994415283,
+        "height": 0.5999999940395355,
+        "depth": 0.560000091791153
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    },
+    {
+      "path": "assets/windows/window_standard_03.glb",
+      "has_metadata": true,
+      "source_dimensions": {
+        "width": 0.928198313340545,
+        "height": 1.2379511546889923,
+        "depth": 0.14110422777870182
+      },
+      "catalog_group": null,
+      "catalog_category": null,
+      "effective_dimensions": null,
+      "mounting": {}
+    }
+  ]
+}

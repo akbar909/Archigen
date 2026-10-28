@@ -53,7 +53,7 @@ function extractNumber(str) {
   return m ? parseInt(m[0], 10) : null
 }
 
-export function roomPlacement(room, detectedRooms = [], floorHeight = 3) {
+export function roomPlacement(room, detectedRooms = [], floorHeight = 3, zSign = 1) {
   if (!room) return { x: 0, y: 0, z: 0, w: 8, l: 8, level: 0 }
 
   const level = objectFloorLevel(room)
@@ -136,8 +136,9 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3) {
 
     if (match) {
       return {
+        id: room.id,
         x: match.center.x,
-        y: Number.isFinite(match.center.y) ? match.center.y : level * floorHeight,
+        y: Number.isFinite(match.center.y) ? match.center.y + (Number(match.size.y) || 0) / 2 : level * floorHeight,
         z: match.center.z,
         w: match.size.x,
         l: match.size.z,
@@ -159,9 +160,10 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3) {
     : (Number.isFinite(room.elevation) ? Number(room.elevation) : level * floorHeight)
 
   return {
+    id: room.id,
     x: px + width / 2,
     y: elevation,
-    z: py + depth / 2,
+    z: (py + depth / 2) * zSign,
     w: width,
     l: depth,
     level,
