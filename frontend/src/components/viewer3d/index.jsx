@@ -9,8 +9,11 @@ import { getCachedModelUrl } from '../../utils/modelCache'
 import { fetchUploadedAssetCatalog, refreshUploadedAsset } from '../../services'
 import { canApplyAccentColor, objectDimensions } from '../../utils/assetModel'
 import { applySurfaceTexture, surfaceFaceKey } from '../../utils/sceneEditing'
+import { createBoundaryDecor } from '../../utils/exteriorEditing'
+import { assetSurface, compatibleOpening, placeOnSupport, tabletopSupports } from '../../utils/assetCompatibility'
 import { adjustAssetPlacement, createAssetPlacement, placementCameraView, placementRoom } from '../../utils/assetPlacement'
 import { wallMountNormal, wallMountRotation } from '../../utils/wallMount'
+import { setOpeningOverride } from '../../utils/openingEditing'
 import ViewerStage from './ViewerStage'
 import { createNavigationModel, moveWithCollisions, normalizeNavigationDoors, WALK_SPEED, LOOK_SENSITIVITY } from '../../utils/navigation'
 import {
@@ -62,7 +65,7 @@ async function applyTextureToObject(object, asset, repeat = 2, onCatalogAssetRef
 
 
 // ── Main Professional Viewer3D Component ─────────────────────────────
-export default function Viewer3D({ design }) {
+export default function Viewer3D({ design, interactionBlocked = false, onRequestSave }) {
   const {
     regenerate3D,
     reloadSaved3D,
@@ -77,10 +80,12 @@ export default function Viewer3D({ design }) {
     isApprovingLayout,
     setDraftDesign,
     isDirty,
+    sidebarOpen,
   } = useProjectStore()
+  const controlsBlocked = interactionBlocked || sidebarOpen
 
   const rawGlbUrl = design?.glb_url || design?.model_url || null
-  const [effectiveGlbUrl, setEffectiveGlbUrl] = useState(rawGlbUrl)
+  const [effectiveGlbUrl, setEffectiveGlbUrl] = useState({ source: rawGlbUrl, url: rawGlbUrl })
   const [uploadedAssets, setUploadedAssets] = useState([])
   const replaceUploadedAsset = useCallback((fresh) => {
     if (!fresh?.s3_key) return
@@ -101,7 +106,7 @@ export default function Viewer3D({ design }) {
   useEffect(() => {
     let isCancelled = false
     if (!rawGlbUrl) {
-      setEffectiveGlbUrl(null)
+      setEffectiveGlbUrl({ source: rawGlbUrl, url: null })
       return
     }
 
@@ -109,14 +114,14 @@ export default function Viewer3D({ design }) {
       .then((cachedBlobUrl) => {
         if (!isCancelled) {
           if (cachedBlobUrl) {
-            setEffectiveGlbUrl(cachedBlobUrl)
+            setEffectiveGlbUrl({ source: rawGlbUrl, url: cachedBlobUrl })
           } else {
-            setEffectiveGlbUrl(rawGlbUrl)
+            setEffectiveGlbUrl({ source: rawGlbUrl, url: rawGlbUrl })
           }
         }
       })
       .catch(() => {
-        if (!isCancelled) setEffectiveGlbUrl(rawGlbUrl)
+        if (!isCancelled) setEffectiveGlbUrl({ source: rawGlbUrl, url: rawGlbUrl })
       })
 
     return () => {
@@ -124,28 +129,37 @@ export default function Viewer3D({ design }) {
     }
   }, [rawGlbUrl])
 
-  const glbUrl = effectiveGlbUrl
+  const glbUrl = effectiveGlbUrl.source === rawGlbUrl ? effectiveGlbUrl.url : rawGlbUrl
   // Exclusively use Cloud Blender 3D photorealistic model
   const [viewSource, setViewSource] = useState('blender')
-  const [isModelRendered, setIsModelRendered] = useState(false)
   const [modelReloadKey, setModelReloadKey] = useState(0)
+  // Associate the existing readiness state with its model, so a URL/version
+  // change cannot expose controls for one render before an effect resets it.
+  const modelLoadId = `${activeVersionId}:${rawGlbUrl}:${glbUrl}:${modelReloadKey}:${isGenerating3D}`
+  const [renderedModelId, setRenderedModelId] = useState(null)
+  const isModelRendered = renderedModelId === modelLoadId && !isGenerating3D
+  const setIsModelRendered = useCallback((ready) => {
+    setRenderedModelId((current) => ready ? modelLoadId : current === modelLoadId ? null : current)
+  }, [modelLoadId])
 
   // Reset rendered flag whenever glbUrl changes or 3D is being re-synthesized
   useEffect(() => {
     setIsModelRendered(false)
-  }, [glbUrl, isGenerating3D])
+  }, [glbUrl, isGenerating3D, setIsModelRendered])
 
   const wasGeneratingRef = useRef(false)
+  const viewModeUserSelectedRef = useRef(false)
   useEffect(() => {
     if (isGenerating3D) {
       wasGeneratingRef.current = true
+      viewModeUserSelectedRef.current = false
     }
   }, [isGenerating3D])
 
   useEffect(() => {
     if (isModelRendered && wasGeneratingRef.current) {
       wasGeneratingRef.current = false
-      setViewMode('dollhouse')
+      if (!viewModeUserSelectedRef.current) setViewMode('dollhouse')
     }
   }, [isModelRendered])
 
@@ -175,7 +189,7 @@ export default function Viewer3D({ design }) {
       setViewSource('blender')
       // A newly saved GLB should not pull someone out of the bedroom they are
       // editing. Keep walkthrough active; otherwise use the overview entry.
-      setViewMode((current) => (current === 'walkthrough' ? current : 'dollhouse'))
+      setViewMode((current) => (viewModeUserSelectedRef.current || current === 'walkthrough' ? current : 'dollhouse'))
       setPlanSubMode('3d')
     }
     previousModelIdentityRef.current = identity
@@ -304,6 +318,11 @@ export default function Viewer3D({ design }) {
     if (room) {
       return {
         ...placementRoom(room, detectedRooms),
+        furniture: [...new Map([
+          ...(room.furniture || []), ...(design.furniture || []),
+          ...(design.floors || []).flatMap((floor) => floor.furniture || []),
+        ].filter((item) => String(item.room_id || item.roomId || room.id) === String(room.id))
+          .map((item) => [item.id, item])).values()],
         openings: [...doors, ...windows],
       }
     }
@@ -312,14 +331,17 @@ export default function Viewer3D({ design }) {
     return {
       id: 'exterior_ground',
       name: 'Exterior Ground',
-      position: { x: 0, y: 0, z: 0 },
+      position: { x: 0, y: 0, z: selectedFurniture?.boundary_bounds?.base ?? selectedFurniture?.position?.z ?? 0 },
       dimensions: {
         width: Number(plot.width) || 30,
         depth: Number(plot.depth) || 30,
-        height: 3,
+        height: selectedFurniture?.boundary_bounds?.height || 3,
       },
     }
-  }, [design, selectedEntity?.roomId, doors, windows, detectedRooms])
+  }, [design, selectedEntity?.roomId, doors, windows, detectedRooms, selectedFurniture])
+  const ceilingFocusRoom = useMemo(() => selectedEntity?.type === 'ceiling' && selectedEditRoom
+    ? roomPlacement(selectedEditRoom, detectedRooms, Number(design?.building?.floor_height) || 3, viewSource === 'blender' ? -1 : 1)
+    : null, [selectedEntity?.type, selectedEditRoom, detectedRooms, design?.building?.floor_height, viewSource])
 
   useEffect(() => {
     setSelectedEntity(null)
@@ -406,7 +428,7 @@ export default function Viewer3D({ design }) {
     const dimensions = objectDimensions(object)
     const elevation = furniture.ceiling_mounted
       ? ceilingMountedPosition({ ...furniture, dimensions }, room).z
-      : Number(room.position?.z) || 0
+      : furniture.support_id ? Number(furniture.position?.z) || 0 : Number(room.position?.z) || 0
     const wallMounted = furniture.wall_mounted === true
     const mountHeight = clampMountHeight({ ...furniture, dimensions }, room, worldPosition.y - elevation)
     const rotation = normalizeDegrees(-THREE.MathUtils.radToDeg(worldEuler.y))
@@ -480,6 +502,14 @@ export default function Viewer3D({ design }) {
       selectedFurniture.position || {},
     )
     updateSelectedFurniture({ rotation, rotation_y: rotation, position })
+  }
+
+  const swapSelectedOpening = (catalogItem) => {
+    if (!selectedEntity?.opening) return
+    if (catalogItem && !compatibleOpening(catalogItem, selectedEntity.opening, selectedEditRoom)) return
+    setDraftDesign((draft) => setOpeningOverride(draft, selectedEntity, catalogItem))
+    // Release the old selection box while the replacement loads.
+    setSelectedEntity((current) => current ? { ...current, object: null } : current)
   }
 
   const swapSelectedFurniture = (catalogItem) => {
@@ -584,11 +614,15 @@ export default function Viewer3D({ design }) {
     toast.success(`Added another ${String(selectedFurniture.name || selectedFurniture.category || 'item').replaceAll('_', ' ')}`)
   }
 
-  const addModelAsNewFurniture = (catalogItem) => {
+  const addModelAsNewFurniture = (catalogItem, supportId) => {
     if (!selectedEditRoom || !catalogItem?.model_path) return
     if (selectedEntity?.type === 'library') {
       if (roomTransition) return
-      const item = createAssetPlacement(catalogItem, selectedEditRoom, `placement_${++placementSequence.current}`)
+      let item = createAssetPlacement(catalogItem, selectedEditRoom, `placement_${++placementSequence.current}`)
+      if (item && assetSurface(catalogItem) === 'tabletop') {
+        item = placeOnSupport(item, tabletopSupports(selectedEditRoom).find((entry) => entry.id === supportId))
+        if (!item) { toast.error('Choose a table large enough for this item.'); return }
+      }
       if (item) setPendingPlacement({ asset: catalogItem, item, roomId: selectedEditRoom.id, status: 'loading' })
       return
     }
@@ -662,9 +696,15 @@ export default function Viewer3D({ design }) {
     if (!pending || pending.status !== 'ready' || roomTransition
       || selectedEntity?.type !== 'library' || pending.roomId !== selectedEntity.roomId
       || pending.roomId !== selectedRoomId || committedPlacements.current.has(pending.item.id)) return
+    const resolvedItem = pending.item.support_id
+      ? placeOnSupport(pending.item, tabletopSupports(selectedEditRoom).find((entry) => entry.id === pending.item.support_id))
+      : pending.item
+    if (!resolvedItem) {
+      setPendingPlacement(null); toast.error('The selected table is no longer available or does not fit.'); return
+    }
     committedPlacements.current.add(pending.item.id)
     const id = `${pending.asset.id}_${pending.roomId}_${Date.now()}_${++placementSequence.current}`
-    const item = { ...pending.item, id, position: { ...pending.item.position }, dimensions: { ...pending.item.dimensions } }
+    const item = { ...resolvedItem, id, position: { ...resolvedItem.position }, dimensions: { ...resolvedItem.dimensions } }
     setDraftDesign((draft) => addFurnitureToRoom(draft, pending.roomId, item))
     setPendingPlacement(null)
     setSelectedEntity({ type: 'furniture', id, roomId: pending.roomId, object: null, source: 'blender' })
@@ -686,8 +726,19 @@ export default function Viewer3D({ design }) {
     const angle = (Number(selectedFurniture.rotation) || 0) * Math.PI / 180
     const footprintWidth = Math.abs(Math.cos(angle)) * currentDimensions.width + Math.abs(Math.sin(angle)) * currentDimensions.depth
     const footprintDepth = Math.abs(Math.sin(angle)) * currentDimensions.width + Math.abs(Math.cos(angle)) * currentDimensions.depth
-    factor = Math.min(factor, (Number(roomDims.width) - 0.3) / footprintWidth,
-      (Number(roomDims.depth) - 0.3) / footprintDepth, (Number(roomDims.height) - 0.2) / currentDimensions.height)
+    if (selectedFurniture.room_id === 'exterior_ground') {
+      const bounds = selectedFurniture.boundary_bounds || selectedFurniture.placement_bounds
+      if (selectedFurniture.boundary_bounds) {
+        const span = Math.abs(selectedFurniture.wall_normal?.z || 0) > 0.5 ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY
+        factor = Math.min(factor, span / currentDimensions.width,
+          (bounds.height - (Number(selectedFurniture.mount_height) || 0)) / currentDimensions.height)
+      } else if (bounds) {
+        factor = Math.min(factor, (bounds.maxX - bounds.minX) / footprintWidth, (bounds.maxY - bounds.minY) / footprintDepth)
+      }
+    } else {
+      factor = Math.min(factor, (Number(roomDims.width) - 0.3) / footprintWidth,
+        (Number(roomDims.depth) - 0.3) / footprintDepth, (Number(roomDims.height) - 0.2) / currentDimensions.height)
+    }
     if (!Number.isFinite(factor) || factor <= 0) return
     const dimensions = Object.fromEntries(Object.entries(currentDimensions)
       .map(([key, value]) => [key, Math.max(0.02, Number(value) * factor)]))
@@ -791,20 +842,21 @@ export default function Viewer3D({ design }) {
 
   const setSelectedWallFinish = async (finish) => {
     if (!finish || !selectedEntity?.wallId) return
-    const normal = selectedEntity.surfaceNormal
+    const selection = selectedEntity
+    const normal = selection.surfaceNormal
     if (!normal) { toast.error('Please select the room-facing side of the wall.'); return }
     const face = surfaceFaceKey(normal)
-    finish = await applyTextureToObject(selectedEntity.object, finish, 1.8, replaceUploadedAsset, normal)
+    finish = await applyTextureToObject(selection.object, finish, 1.8, replaceUploadedAsset, normal)
     if (!finish) return
     setDraftDesign((draft) => {
-      draft.wall_face_overrides = { ...(draft.wall_face_overrides || {}), [selectedEntity.wallId]: {
-        ...(draft.wall_face_overrides?.[selectedEntity.wallId] || {}), [face]: {
+      draft.wall_face_overrides = { ...(draft.wall_face_overrides || {}), [selection.wallId]: {
+        ...(draft.wall_face_overrides?.[selection.wallId] || {}), [face]: {
         pattern: finish.id, asset_id: finish.asset_id || finish.id,
         s3_key: finish.s3_key, texture_url: finish.url, normal,
       } } }
       return draft
     })
-    setDraftDesign((draft) => updateWallById(draft, selectedEntity.wallId, (wall) => {
+    setDraftDesign((draft) => updateWallById(draft, selection.wallId, (wall) => {
       wall.material_overrides = { ...(wall.material_overrides || {}), [face]: {
         pattern: finish.id,
         asset_id: finish.asset_id || finish.id,
@@ -813,7 +865,7 @@ export default function Viewer3D({ design }) {
         normal,
       } }
     }))
-    if (!selectedEditRoom || !selectedEntity?.wallSide) return
+    if (selection.exterior || !selectedEditRoom || !selection.wallSide) return
     setDraftDesign((draft) => updateRoomById(draft, selectedEditRoom.id, (room) => {
       const pattern = finish.pattern || finish.id
       room.materials = {
@@ -821,7 +873,7 @@ export default function Viewer3D({ design }) {
         accent_wall: {
           pattern,
           color: finish.color,
-          side: selectedEntity.wallSide,
+          side: selection.wallSide,
           asset_id: finish.asset_id || finish.id,
           s3_key: finish.s3_key,
           texture_url: finish.url,
@@ -832,7 +884,7 @@ export default function Viewer3D({ design }) {
         accent_wall: {
           pattern,
           color: finish.color,
-          side: selectedEntity.wallSide,
+          side: selection.wallSide,
           asset_id: finish.asset_id || finish.id,
           s3_key: finish.s3_key,
           texture_url: finish.url,
@@ -846,6 +898,7 @@ export default function Viewer3D({ design }) {
     if (finish.kind === 'model' && finish.model_path) {
       const hit = selectedEntity?.hitPoint || {}
       const id = `${finish.id}_ground_${Date.now()}`
+      const groundBox = selectedEntity?.object ? new THREE.Box3().setFromObject(selectedEntity.object) : null
       const item = {
         id,
         name: finish.name,
@@ -856,7 +909,8 @@ export default function Viewer3D({ design }) {
         model_path: finish.model_path,
         s3_key: finish.s3_key,
         room_id: 'exterior_ground',
-        position: { x: Number(hit.x) || 0, y: Number.isFinite(Number(hit.z)) ? -Number(hit.z) : 0, z: 0 },
+        position: { x: Number(hit.x) || 0, y: Number.isFinite(Number(hit.z)) ? -Number(hit.z) : 0, z: Number(hit.y) || 0 },
+        placement_bounds: groundBox ? { minX: groundBox.min.x, maxX: groundBox.max.x, minY: -groundBox.max.z, maxY: -groundBox.min.z } : undefined,
         rotation: 0,
         dimensions: { ...finish.dimensions },
         client_edited_3d: true,
@@ -908,6 +962,14 @@ export default function Viewer3D({ design }) {
       }
       setDraftDesign((draft) => addFurnitureToRoom(draft, selectedEditRoom.id, item))
       setSelectedEntity({ type: 'furniture', id, roomId: selectedEditRoom.id, object: null, source: 'blender' })
+      return
+    }
+    if (selectedEntity?.exterior) {
+      const id = `${decor.id}_boundary_${Date.now()}`
+      const item = createBoundaryDecor(decor, selectedEntity, id)
+      if (!item) { toast.error('Select a vertical wall face and an asset that fits this boundary segment.'); return }
+      setDraftDesign((draft) => addExteriorAsset(draft, item))
+      setSelectedEntity({ type: 'furniture', id, roomId: 'exterior_ground', object: null, source: 'blender' })
       return
     }
     if (!selectedEntity?.wallSide) return
@@ -1076,6 +1138,21 @@ export default function Viewer3D({ design }) {
     return rooms.map((room) => roomPlacement(room, detectedRooms, floorHeight, viewSource === 'blender' ? -1 : 1))
   }, [rooms, detectedRooms, design?.building?.floor_height, design?.house?.floorHeight, viewSource])
 
+  const cameraViewForRoom = useCallback((room) => {
+    const actual = getRoom3DPosition(room)
+    const sign = viewSource === 'blender' ? -1 : 1
+    const view = placementCameraView({
+    ...room,
+    position: { x: actual.x - actual.w / 2, y: actual.z * sign - actual.l / 2, z: actual.y },
+    dimensions: { ...room?.dimensions, width: actual.w, depth: actual.l },
+    furniture: editableFurniture.filter((item) => String(item.room_id || item.roomId) === String(room.id)),
+    openings: [...doors, ...windows].filter((item) => String(item.room_id || item.roomId) === String(room.id)),
+    })
+    view.position[2] *= -sign
+    view.target[2] *= -sign
+    return view
+  }, [getRoom3DPosition, viewSource, editableFurniture, doors, windows])
+
   // When real GLB 3D rooms are detected, re-sync character position to active selected room
   useEffect(() => {
     if (detectedRooms.length > 0 && selectedRoomId && selectedRoomId !== 'overview') {
@@ -1157,6 +1234,7 @@ export default function Viewer3D({ design }) {
   const [isMoving, setIsMoving] = useState(false)
   const [walkCycle, setWalkCycle] = useState(0)
   const keysRef = useRef({ w: false, a: false, s: false, d: false })
+  const touchMoveRef = useRef({ x: 0, y: 0 })
 
   // Mouse look state & angles
   const [isMouseLookLocked, setIsMouseLookLocked] = useState(false)
@@ -1305,7 +1383,8 @@ export default function Viewer3D({ design }) {
       lastTime = now
 
       const { w, a, s, d } = keysRef.current
-      const hasInput = !isEditing3D && (w || s || a || d)
+      const touch = viewMode === 'walkthrough' ? touchMoveRef.current : { x: 0, y: 0 }
+      const hasInput = isModelRendered && !controlsBlocked && !isEditing3D && !roomTransition && (w || s || a || d || touch.x || touch.y)
 
       if (hasInput) {
         if (!isMovingLocal) {
@@ -1329,9 +1408,11 @@ export default function Viewer3D({ design }) {
           if (s) move.sub(forward)
           if (d) move.add(right)
           if (a) move.sub(right)
+          move.addScaledVector(forward, -touch.y)
+          move.addScaledVector(right, touch.x)
 
           if (move.lengthSq() > 0) {
-            move.normalize().multiplyScalar(speed)
+            move.multiplyScalar(speed / Math.max(1, move.length()))
 
             const curCamX = cam.position.x
             const curCamZ = cam.position.z
@@ -1396,7 +1477,7 @@ export default function Viewer3D({ design }) {
 
     animId = requestAnimationFrame(update)
     return () => cancelAnimationFrame(animId)
-  }, [navigationModel, viewMode, charFloorLevel, isEditing3D])
+  }, [navigationModel, viewMode, charFloorLevel, isEditing3D, isModelRendered, roomTransition, controlsBlocked])
 
   // Select room camera jump (jumps directly into the true 3D room center)
   const handleSelectRoom = (room) => {
@@ -1413,14 +1494,13 @@ export default function Viewer3D({ design }) {
     setCharPos(p)
 
     if (viewMode === 'walkthrough') {
-      yawRef.current = 0
-      pitchRef.current = 0
-      targetCamPos.current.set(rx, ry + 1.65, rz + 0.2)
-      targetPos.current.set(rx, ry + 1.6, rz - 2.0)
-      eyeHeightRef.current = ry + 1.65
+      const view = cameraViewForRoom(room)
+      targetCamPos.current.fromArray(view.position)
+      targetPos.current.fromArray(view.target)
+      eyeHeightRef.current = view.position[1]
       if (controlsRef.current) {
-        controlsRef.current.object.position.set(rx, ry + 1.65, rz + 0.2)
-        controlsRef.current.target.set(rx, ry + 1.6, rz - 2.0)
+        controlsRef.current.object.position.fromArray(view.position)
+        controlsRef.current.target.fromArray(view.target)
         controlsRef.current.update()
       }
     } else if (viewMode === 'plan') {
@@ -1437,9 +1517,10 @@ export default function Viewer3D({ design }) {
     const cameraRoom = camera && navigationRooms.find((entry) => entry.level === charFloorLevel
       && Math.abs(camera.position.x - entry.x) < entry.w / 2
       && Math.abs(camera.position.z - entry.z) < entry.l / 2)
-    const room = rooms.find((entry) => String(entry.id) === String(requestedRoomId || cameraRoom?.id || selectedRoomId)) || rooms[0]
+    const room = rooms.find((entry) => String(entry.id) === String(requestedRoomId || selectedEntity?.roomId || cameraRoom?.id || selectedRoomId)) || rooms[0]
     if (!room) return
-    const normalized = placementRoom(room, detectedRooms)
+    const changingRoom = requestedRoomId != null
+      && String(requestedRoomId) !== String(selectedEntity?.type === 'library' ? selectedEntity.roomId : cameraRoom?.id || selectedRoomId)
     const pos = getRoom3DPosition(room)
     setPendingPlacement(null)
     setIsTransforming(false)
@@ -1448,9 +1529,10 @@ export default function Viewer3D({ design }) {
     libraryFloorChange.current = { level: pos.level, roomId: room.id }
     setActiveFloorLevel(pos.level)
     setCharFloorLevel(pos.level)
-    setViewMode('walkthrough')
     keysRef.current = { w: false, a: false, s: false, d: false }
-    const view = placementCameraView(normalized)
+    if (!changingRoom) return
+    setViewMode('walkthrough')
+    const view = cameraViewForRoom(room)
     eyeHeightRef.current = view.position[1]
     charPosRef.current = { x: view.position[0], y: view.position[1] - 1.55, z: view.position[2] }
     setCharPos({ ...charPosRef.current })
@@ -1459,6 +1541,17 @@ export default function Viewer3D({ design }) {
 
   // View mode switcher
   const handleModeChange = (mode) => {
+    viewModeUserSelectedRef.current = true
+    setRoomTransition(null)
+    keysRef.current = { w: false, a: false, s: false, d: false }
+    if (isEditing3D) {
+      setIsEditing3D(false)
+      setSelectedEntity(null)
+      setPendingPlacement(null)
+      setRoomTransition(null)
+      setIsTransforming(false)
+      keysRef.current = { w: false, a: false, s: false, d: false }
+    }
     if (mode !== 'walkthrough' && document.pointerLockElement) {
       document.exitPointerLock?.()
     }
@@ -1504,6 +1597,8 @@ export default function Viewer3D({ design }) {
       pitchRef.current = 0
       const cur = currentRoom || rooms[0]
       const pos = getRoom3DPosition(cur)
+      setActiveFloorLevel(pos.level)
+      setCharFloorLevel(pos.level)
       const rx = pos.x
       const ry = pos.y
       const rz = pos.z
@@ -1511,17 +1606,12 @@ export default function Viewer3D({ design }) {
       charPosRef.current = p
       setCharPos(p)
 
-      targetCamPos.current.set(rx, ry + 1.65, rz + 0.2)
-      targetPos.current.set(rx, ry + 1.6, rz - 2.0)
-      eyeHeightRef.current = ry + 1.65
+      const view = cameraViewForRoom(cur)
+      targetCamPos.current.fromArray(view.position)
+      targetPos.current.fromArray(view.target)
+      eyeHeightRef.current = view.position[1]
 
-      if (controlsRef.current) {
-        controlsRef.current.object.position.set(rx, ry + 1.65, rz + 0.2)
-        controlsRef.current.target.set(rx, ry + 1.6, rz - 2.0)
-        controlsRef.current.minDistance = 0.1
-        controlsRef.current.maxDistance = 6.0
-        controlsRef.current.update()
-      }
+      // CameraController applies this after the new controls and avatar visibility commit.
     }
   }
 
@@ -1529,13 +1619,18 @@ export default function Viewer3D({ design }) {
   const toggleFullscreen = () => {
     if (!containerRef.current) return
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(() => {})
-      setIsFullscreen(true)
+      const target = window.matchMedia('(max-width: 768px), (max-height: 500px) and (pointer: coarse)').matches
+        ? containerRef.current.closest('.app-shell') || containerRef.current : containerRef.current
+      target.requestFullscreen?.().catch(() => {})
     } else {
       document.exitFullscreen().catch(() => {})
-      setIsFullscreen(false)
     }
   }
+  useEffect(() => {
+    const changed = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', changed)
+    return () => document.removeEventListener('fullscreenchange', changed)
+  }, [])
 
   // Reset Camera to complete house view
   const handleResetCamera = () => {
@@ -1546,8 +1641,8 @@ export default function Viewer3D({ design }) {
   return (
     <ViewerStage
       state={{
-        containerRef, isFullscreen, isNightMode, viewMode, planSubMode, design,
-        approveFloorPlan, activeProjectId, activeVersionId, isApprovingLayout,
+        containerRef, isFullscreen, isNightMode, viewMode, planSubMode, design, touchMoveRef, controlsBlocked,
+        approveFloorPlan, activeProjectId, activeVersionId, isApprovingLayout, onRequestSave,
         handleSelectRoom, selectedRoomId, glbUrl, viewSource, modelReloadKey,
         handleBlenderError, handleReloadSavedModel, setDetectedRooms, setDetectedDoors,
         setIsModelRendered, showRoof, activeFloorLevel, visibleRooms, visibleDoors,
@@ -1560,10 +1655,10 @@ export default function Viewer3D({ design }) {
         floors, setPlanSubMode, charFloorLevel,
         isEditing3D, toggleEditing3D, selectedEntity, setSelectedEntity,
         handleSelectEntity, handleSelectionObjectReady, selectedFurniture,
-        selectedEditRoom, transformMode, setTransformMode, isTransforming,
+        selectedEditRoom, ceilingFocusRoom, transformMode, setTransformMode, isTransforming,
         setIsTransforming, transformRevision, commitGizmoTransform, nudgeSelectedFurniture,
         constrainGizmoTransform, resizeSelectedFurniture,
-        rotateSelectedFurniture, swapSelectedFurniture, duplicateSelectedFurniture,
+        rotateSelectedFurniture, swapSelectedFurniture, swapSelectedOpening, duplicateSelectedFurniture,
         addModelAsNewFurniture, deleteSelectedFurniture,
         pendingPlacement, cancelPlacement, confirmPlacement, onPlacementStatus,
         roomTransition, onRoomTransitionComplete, openAssetLibrary,

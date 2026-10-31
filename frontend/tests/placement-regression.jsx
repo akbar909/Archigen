@@ -12,6 +12,9 @@ const rooms = [
   { id: 'bedroom', name: 'Bedroom', type: 'bedroom', floor_level: 0, position: { x: 6, y: 0, z: 0 }, dimensions: { width: 4, depth: 4, height: 3.4 } },
   { id: 'upper_bedroom', name: 'Upper Bedroom', type: 'bedroom', floor_level: 1, position: { x: 6, y: 6, z: 3.4 }, dimensions: { width: 4, depth: 4, height: 3.4 } },
 ]
+rooms[1].furniture = [{ id: 'bedroom_table', name: 'Bedroom table', category: 'side_table', room_id: 'bedroom',
+  model_path: '/asset-test/furniture/living_room/side_tables/sidetable_01.glb', client_edited_3d: true,
+  position: { x: 8, y: 2, z: 0 }, dimensions: { width: 0.8, depth: 0.6, height: 0.7 } }]
 const furniture = [{ id: 'existing_counter', category: 'kitchen_cabinet', room_id: 'kitchen', position: { x: 2, y: 2, z: 0 }, dimensions: { width: 1, depth: 0.6, height: 1 } }]
 const design = { rooms, furniture, layout_approved: true, building: { floor_height: 3.4 },
   glb_url: `${location.origin}/asset-test/architecture/walls/designs/wall_panel_01.glb`,

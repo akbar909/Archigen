@@ -96,7 +96,9 @@ function App() {
       <button type="button" className="viewer-edit-toggle active">Done editing</button>
       <button type="button" className="viewer-add-assets" onClick={() => setSelectionType('library')}>+ Add assets</button>
     </div>
-    <InteriorEditorDrawer selection={{ type: selectionType, id: selectionType === 'furniture' ? 'curtain' : 'surface', roomId: libraryRoom }} furniture={item} room={{ id: libraryRoom, name: libraryRoom }} transformMode="translate"
+    <InteriorEditorDrawer selection={{ type: selectionType, id: selectionType === 'furniture' ? 'curtain' : 'surface', roomId: libraryRoom,
+      opening: ['window', 'door'].includes(selectionType) ? { type: selectionType, door_type: 'main_gate', width: 1.4, height: 1.1 } : null }} furniture={item} room={{ id: libraryRoom, name: libraryRoom }} transformMode="translate"
+      onSwapOpening={(asset) => { window.editorOpening = asset?.id || 'original' }}
       canAccentColor={tintable}
       rooms={[{ id: 'bedroom', name: 'Bedroom' }, { id: 'kitchen', name: 'Kitchen' }, { id: 'bathroom', name: 'Bathroom' }]}
       onLibraryRoomChange={setLibraryRoom}

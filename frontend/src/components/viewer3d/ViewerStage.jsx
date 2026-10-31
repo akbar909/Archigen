@@ -13,12 +13,13 @@ import FloorPlanVectorViewer from '../FloorPlanVectorViewer'
 import InteriorEditorDrawer from './InteriorEditorDrawer'
 import { SelectionBox, SelectionQuickActions } from './SelectionAdornment'
 import EditorCameraFraming from './EditorCameraFraming'
-import { WalkthroughCameraGuard, WalkthroughDragLook } from './WalkthroughControls'
+import { WalkthroughCameraGuard, WalkthroughDragLook, WalkthroughJoystick, WalkthroughLens } from './WalkthroughControls'
 import SelectionClickGuard from './SelectionClickGuard'
 import { isSelectionClick } from '../../utils/selectionGesture'
 import { canApplyAccentColor } from '../../utils/assetModel'
 import AssetPlacementPreview from './AssetPlacementPreview'
 import PlacementRoomCamera from './PlacementRoomCamera'
+import OrbitWallGuard from './OrbitWallGuard'
 
 // Preload HDRI environment maps so toggling Day / Night is instantaneous
 try {
@@ -32,7 +33,7 @@ export default function ViewerStage({ state }) {
   const [isCameraDragging, setIsCameraDragging] = useState(false)
   const [previewObject, setPreviewObject] = useState(null)
   const {
-    containerRef,
+    containerRef, touchMoveRef, controlsBlocked,
     isFullscreen,
     isNightMode,
     viewMode,
@@ -42,6 +43,7 @@ export default function ViewerStage({ state }) {
     activeProjectId,
     activeVersionId,
     isApprovingLayout,
+    onRequestSave,
     handleSelectRoom,
     selectedRoomId,
     glbUrl,
@@ -95,6 +97,7 @@ export default function ViewerStage({ state }) {
     handleSelectionObjectReady,
     selectedFurniture,
     selectedEditRoom,
+    ceilingFocusRoom,
     transformMode,
     setTransformMode,
     isTransforming,
@@ -105,6 +108,7 @@ export default function ViewerStage({ state }) {
     nudgeSelectedFurniture,
     rotateSelectedFurniture,
     swapSelectedFurniture,
+    swapSelectedOpening,
     duplicateSelectedFurniture,
     addModelAsNewFurniture,
     deleteSelectedFurniture,
@@ -122,10 +126,16 @@ export default function ViewerStage({ state }) {
     roomTransition, onRoomTransitionComplete, openAssetLibrary, adjustPlacement,
   } = state
 
+  const is3DReady = Boolean(glbUrl && isModelRendered && !isGenerating3D)
+  const isVector = viewMode === 'plan' && planSubMode === 'vector'
+  const editorOpen = is3DReady && isEditing3D && Boolean(selectedEntity)
+  const roofEditing = is3DReady && isEditing3D && !pendingPlacement && ['roof', 'ceiling'].includes(selectedEntity?.type)
+
   return (
     <div
       ref={containerRef}
-      className="viewer-container"
+      className={`viewer-container ${isVector ? 'cad-vector-active' : ''} ${editorOpen ? 'editor-open' : ''} ${viewMode === 'walkthrough' ? 'walkthrough-active' : ''}`}
+      aria-busy={!isVector && Boolean(glbUrl) && !is3DReady}
       style={{
         position: 'relative',
         width: '100%',
@@ -146,6 +156,10 @@ export default function ViewerStage({ state }) {
             isApproving={isApprovingLayout}
             onSelectRoom={handleSelectRoom}
             selectedRoomId={selectedRoomId}
+            contextKey={`${activeProjectId}:${activeVersionId}`}
+            assets={uploadedAssets}
+            interactionBlocked={controlsBlocked || isGenerating3D}
+            onRequestSave={onRequestSave}
           />
         </div>
       ) : (
@@ -202,11 +216,11 @@ export default function ViewerStage({ state }) {
                   url={glbUrl}
                   onRoomsDetected={setDetectedRooms}
                   onDoorsDetected={setDetectedDoors}
-                  onLoaded={() => setIsModelRendered(true)}
+                  onLoaded={setIsModelRendered}
                   showRoof={showRoof}
                   activeFloorLevel={activeFloorLevel}
                   viewMode={viewMode}
-                  editingEnabled={isEditing3D}
+                  editingEnabled={is3DReady && isEditing3D}
                   furnitureItems={editableFurniture}
                   rooms={rooms}
                   design={design}
@@ -230,7 +244,9 @@ export default function ViewerStage({ state }) {
                   furniture={r.furniture}
                   doors={visibleDoors}
                   windows={visibleWindows}
-                  editingEnabled={isEditing3D}
+                  openingOverrides={design?.opening_overrides}
+                  uploadedAssets={uploadedAssets}
+                  editingEnabled={is3DReady && isEditing3D}
                   selectedEntity={selectedEntity}
                   onSelectEntity={handleSelectEntity}
                   onSelectionObjectReady={handleSelectionObjectReady}
@@ -239,11 +255,11 @@ export default function ViewerStage({ state }) {
             </group>
           )}
 
-          {isEditing3D && selectedEntity?.object && (
+          {is3DReady && isEditing3D && selectedEntity?.object && (
             <SelectionBox object={selectedEntity.object} />
           )}
 
-          {isEditing3D && selectedEntity?.type === 'furniture' && selectedEntity.object && (
+          {is3DReady && isEditing3D && selectedEntity?.type === 'furniture' && selectedEntity.object && (
             <>
               <TransformControls
                 object={selectedEntity.object}
@@ -274,8 +290,9 @@ export default function ViewerStage({ state }) {
           )}
 
           {!glbUrl && !dismissedSynthesisPrompt && (
-            <Html center style={{ pointerEvents: 'auto', transform: 'translate3d(-50%, -70px, 0)' }}>
+            <Html center wrapperClass="viewer-loading-anchor" className="viewer-loading-content" style={{ pointerEvents: 'auto', transform: 'translate3d(-50%, -70px, 0)' }}>
               <div
+                className="viewer-loading-card"
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -417,7 +434,7 @@ export default function ViewerStage({ state }) {
             isMoving={isMoving}
             walkCycle={walkCycle}
             isVisible={
-              !isEditing3D
+              is3DReady && !isEditing3D
               &&
               viewMode !== 'walkthrough'
               && (activeFloorLevel === null || activeFloorLevel === undefined || activeFloorLevel === charFloorLevel)
@@ -427,10 +444,10 @@ export default function ViewerStage({ state }) {
           <AssetPlacementPreview placement={pendingPlacement} onStatus={onPlacementStatus} onObjectReady={setPreviewObject} />
           <PlacementRoomCamera request={roomTransition} controlsRef={controlsRef} targetPos={targetPos}
             targetCamPos={targetCamPos} onComplete={onRoomTransitionComplete} />
-          <CameraController controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} viewMode={viewMode} suspended={Boolean(roomTransition) || isCameraDragging || (isEditing3D && Boolean(selectedEntity))} />
           <EditorCameraFraming
+            ceilingRoom={ceilingFocusRoom}
             selection={pendingPlacement && previewObject ? { type: 'furniture', id: pendingPlacement.item.id, object: previewObject } : selectedEntity}
-            enabled={isEditing3D && !roomTransition}
+            enabled={is3DReady && isEditing3D && !roomTransition}
             controlsRef={controlsRef}
             targetPos={targetPos}
             targetCamPos={targetCamPos}
@@ -438,14 +455,17 @@ export default function ViewerStage({ state }) {
             isTransforming={isTransforming}
             isCameraDragging={isCameraDragging}
           />
-          <WalkthroughDragLook enabled={viewMode === 'walkthrough' && !isMouseLookLocked && !roomTransition} isTransforming={isTransforming}
+          <WalkthroughLens enabled={is3DReady && viewMode === 'walkthrough'} editing={isEditing3D}
+            interactive={!controlsBlocked && !isTransforming && !roomTransition} />
+          <WalkthroughDragLook enabled={is3DReady && !controlsBlocked && viewMode === 'walkthrough' && !isMouseLookLocked && !roomTransition} isTransforming={isTransforming}
             controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} onDragChange={setIsCameraDragging} />
-          <WalkthroughCameraGuard enabled={viewMode === 'walkthrough' && !roomTransition} navigation={navigationModel} level={charFloorLevel}
+          <WalkthroughCameraGuard enabled={is3DReady && !roofEditing && viewMode === 'walkthrough' && !roomTransition} navigation={navigationModel} level={charFloorLevel}
             controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} />
 
           <OrbitControls
+            key={viewMode}
             ref={controlsRef}
-            enabled={!roomTransition && !isTransforming && viewMode !== 'walkthrough'}
+            enabled={is3DReady && !roomTransition && !isTransforming && viewMode !== 'walkthrough'}
             rotateSpeed={0.35}
             onStart={() => setIsCameraDragging(true)}
             onEnd={() => {
@@ -458,9 +478,12 @@ export default function ViewerStage({ state }) {
             enableDamping
             dampingFactor={0.08}
             minDistance={isEditing3D ? 0.2 : (viewMode === 'walkthrough' ? 0.1 : 2)}
-            maxDistance={viewMode === 'walkthrough' ? 4.5 : 95}
-            maxPolarAngle={viewMode === 'plan' ? 0.05 : Math.PI / 2.05}
+            maxDistance={roofEditing ? Infinity : viewMode === 'walkthrough' ? 4.5 : 95}
+            maxPolarAngle={roofEditing ? selectedEntity.type === 'ceiling' ? Math.PI - 0.05 : Math.PI / 2.05 : viewMode === 'plan' ? 0.05 : Math.PI / 2.05}
           />
+          <CameraController controlsRef={controlsRef} targetPos={targetPos} targetCamPos={targetCamPos} viewMode={viewMode} suspended={Boolean(roomTransition) || isCameraDragging || (isEditing3D && Boolean(selectedEntity))} />
+          <OrbitWallGuard enabled={viewMode === 'dollhouse' && !roomTransition && !isTransforming}
+            controlsRef={controlsRef} targetCamPos={targetCamPos} />
           {/* Isolate Environment loading so preset changes (Day/Night) don't trigger the model loader or blank screen */}
           <Suspense fallback={null}>
             <Environment preset={isNightMode ? 'night' : 'city'} />
@@ -468,7 +491,7 @@ export default function ViewerStage({ state }) {
         </Canvas>
       )}
 
-      {design && glbUrl && viewSource === 'blender' && !(viewMode === 'plan' && planSubMode === 'vector') && (
+      {is3DReady && design && glbUrl && viewSource === 'blender' && !(viewMode === 'plan' && planSubMode === 'vector') && (
         <div className="viewer-editor-actions" role="group" aria-label="3D editing actions">
         <button
           type="button"
@@ -483,7 +506,7 @@ export default function ViewerStage({ state }) {
         </div>
       )}
 
-      {isEditing3D && selectedEntity && (
+      {editorOpen && (
         <InteriorEditorDrawer
           selection={selectedEntity}
           furniture={selectedFurniture && selectedEntity?.object?.userData?.asset_info
@@ -504,6 +527,7 @@ export default function ViewerStage({ state }) {
           onRotate={rotateSelectedFurniture}
           onResize={resizeSelectedFurniture}
           onSwapModel={swapSelectedFurniture}
+          onSwapOpening={swapSelectedOpening}
           onDuplicate={duplicateSelectedFurniture}
           onAddModelAsNew={addModelAsNewFurniture}
           onColorChange={setSelectedFurnitureColor}
@@ -519,9 +543,14 @@ export default function ViewerStage({ state }) {
 
       {roomTransition && <div key={roomTransition.id} className="placement-room-transition" role="status" aria-label="Moving to selected room" />}
 
+      {is3DReady && !controlsBlocked && viewMode === 'walkthrough' && !isEditing3D && !roomTransition && (
+        <WalkthroughJoystick movementRef={touchMoveRef} />
+      )}
+
       <ViewerOverlay
         viewMode={viewMode}
         onModeChange={(mode) => {
+          setIsCameraDragging(false)
           handleModeChange(mode)
         }}
         viewSource={viewSource}
@@ -530,7 +559,7 @@ export default function ViewerStage({ state }) {
           setViewSource(source)
         }}
         glbUrl={glbUrl}
-        isModelRendered={isModelRendered}
+        isModelRendered={is3DReady}
         isGenerating3D={isGenerating3D}
         onRegenerate3D={() => regenerate3D(activeProjectId, activeVersionId)}
         showCallouts={showCallouts}

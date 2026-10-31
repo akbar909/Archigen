@@ -13,8 +13,12 @@ const ROOM_CATEGORIES = [
 // Recommendations only: the full uploaded library remains available in every
 // room. Never infer upload availability or invent an asset from a room type.
 export function isAssetRecommendedForRoom(asset, room) {
-  if (asset.group === 'ceiling_asset' || asset.group === 'floor_overlay' || asset.category === 'floor_lamp') return true
   const roomName = `${room?.type || ''} ${room?.name || ''}`.toLowerCase().replaceAll('_', ' ')
+  if (/bath|washroom|toilet|powder/.test(roomName) && asset.group === 'ceiling_asset') {
+    return /ceiling_lamp|ceiling_light|recessed|flush|bath/i.test(`${asset.id || ''} ${asset.name || ''}`) && !/chandelier|fan|pendant/i.test(`${asset.id || ''} ${asset.name || ''}`)
+  }
+  if (asset.group === 'ceiling_asset' || asset.group === 'floor_overlay' || asset.category === 'floor_lamp') return true
+  if (asset.category === 'table_clock') return !/bath|garage|parking/.test(roomName)
   const rule = ROOM_CATEGORIES.find(([pattern]) => pattern.test(roomName))
   if (!rule) return true
   return rule[1].test(String(asset.category || '').toLowerCase())

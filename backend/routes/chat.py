@@ -26,7 +26,7 @@ from utils.gemini_layout import infer_layout_constraints
 from utils.middleware import require_auth
 from utils.architectural_validator import ArchitecturalValidator
 from utils.architectural_preflight import validate_and_repair_design
-from utils.architectural_refinement import apply_targeted_refinement, is_explicit_full_redesign
+from utils.architectural_refinement import apply_targeted_refinement, apply_layout_refinement, is_explicit_full_redesign
 from utils.architectural_schema_v3 import validate_schema_v3
 from utils.versioning import summarize_design_changes
 from utils.asset_catalog import ASSET_ROOT, browser_url, list_uploaded_assets
@@ -648,6 +648,50 @@ def approve_layout_for_version(project_id: str, version_id: str):
     })
 
 
+@chat_bp.post("/projects/<project_id>/versions/<version_id>/layout/refine")
+@require_auth
+def refine_layout_draft(project_id: str, version_id: str):
+    """Return a validated local edit; persistence remains an explicit save."""
+    try:
+        project_oid, version_oid = ObjectId(project_id), ObjectId(version_id)
+    except Exception:
+        return jsonify({"error": "Invalid project or version id"}), 400
+    version = versions_collection().find_one({
+        "_id": version_oid, "project_id": project_oid, "user_id": request.user["_id"],
+    })
+    if not version:
+        return jsonify({"error": "Version not found"}), 404
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "A JSON object is required"}), 400
+    prompt = data.get("prompt")
+    design = data.get("design", version.get("design"))
+    if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1500:
+        return jsonify({"error": "Enter an edit of 1–1500 characters"}), 400
+    if not isinstance(design, dict) or not isinstance(design.get("floors"), list):
+        return jsonify({"error": "A design with floors is required"}), 400
+    if design.get("schema_version") in ("3.0", "3.0.0"):
+        valid, errors = validate_schema_v3(design)
+        if not valid:
+            return jsonify({"error": "The draft does not match the architectural schema", "details": errors}), 400
+    try:
+        refined, report = apply_layout_refinement(design, prompt.strip(), data.get('selection'))
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
+        logging.warning("Invalid local layout refinement: %s", exc)
+        return jsonify({"error": "This draft could not be refined. Check its geometry and target identifiers."}), 422
+    if refined is None:
+        return jsonify({"error": "; ".join(report.get("errors") or ["The requested edit is not supported"]), "report": report}), 422
+    if refined.get('schema_version') in ('3.0','3.0.0'):
+        valid, errors = validate_schema_v3(refined)
+        if not valid:
+            return jsonify({'error':'This edit would create invalid dimensions. Try a smaller adjustment.','details':errors}),422
+    # Retain the saved preview while the edited JSON is reviewed and saved.
+    for name in ("glb_url", "model_url", "layout_approved", "approved_at"):
+        if name in design:
+            refined[name] = design[name]
+    return jsonify({"success": True, "design": refined, "report": report})
+
+
 @chat_bp.patch("/projects/<project_id>/versions/<version_id>/layout")
 @require_auth
 def update_layout_for_version(project_id: str, version_id: str):
@@ -677,6 +721,11 @@ def update_layout_for_version(project_id: str, version_id: str):
     updated_design = data.get("design") or data.get("layout")
     if not isinstance(updated_design, dict):
         return jsonify({"error": "design or layout object is required"}), 400
+
+    if updated_design.get("schema_version") in ("3.0", "3.0.0"):
+        schema_valid, schema_errors = validate_schema_v3(updated_design)
+        if not schema_valid:
+            return jsonify({"error": "Invalid architectural layout", "details": schema_errors}), 400
 
     updated_design, preflight = validate_and_repair_design(updated_design, repair=True)
     version_note = str(data.get("note") or "").strip()

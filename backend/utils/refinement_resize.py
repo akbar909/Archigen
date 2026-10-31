@@ -13,6 +13,8 @@ def _room_depth(room: Dict[str, Any]) -> float:
 
 
 def _minimum_width(room: Dict[str, Any]) -> float:
+    if room.get('_editor_min_width') is not None:
+        return float(room['_editor_min_width'])
     room_type = _type_group(room.get("type"))
     if room_type == "master_bedroom":
         key = "master_bedroom"
@@ -121,8 +123,11 @@ def _apply_room_resize(
     requested_type = intent["room_type"]
     matches: List[Tuple[int, Dict[str, Any]]] = []
     for floor_index, floor in enumerate(base_design.get("floors", [])):
+        if intent.get('floor_id') and str(floor.get('id')) != str(intent['floor_id']):
+            continue
         for room in floor.get("rooms", []):
-            if _room_type_matches(requested_type, room.get("type")):
+            matches_target = str(room.get('id')) == str(intent['room_id']) if intent.get('room_id') else _room_type_matches(requested_type, room.get("type"))
+            if matches_target:
                 matches.append((floor_index, room))
     if not matches:
         report["errors"].append(f"No {requested_type.replace('_', ' ')} exists in this layout.")

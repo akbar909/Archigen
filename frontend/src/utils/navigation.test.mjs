@@ -72,6 +72,16 @@ test('canonical wall thickness and door opening are respected by the collision m
   assert.ok(moveWithCollisions(model, 2, -1, 4, 0, 0).x < 3.62)
 })
 
+test('legacy detected floors use room position to distinguish similarly sized rooms', () => {
+  const detected = [
+    { roomId: '', meshId: '', name: 'Floor_A', level: 0, center: { x: 2, y: 0, z: -2 }, size: { x: 4, y: 0.2, z: 4 } },
+    { roomId: '', meshId: '', name: 'Floor_B', level: 0, center: { x: 10, y: 0, z: -2 }, size: { x: 4, y: 0.2, z: 4 } },
+  ]
+  const room = roomPlacement({ id: 'ensuite', position: { x: 8, y: 0, z: 0 }, dimensions: { width: 4, depth: 4 } }, detected, 3, -1)
+  assert.equal(room.x, 10)
+  assert.equal(room.z, -2)
+})
+
 test('editing drag turns slowly in place, clamps pitch, and never orbits outside the room', () => {
   const camera = new THREE.PerspectiveCamera()
   camera.position.set(2, 1.65, -2)

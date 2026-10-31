@@ -30,7 +30,19 @@ test('destination camera is within room walls and on the destination storey', ()
   assert.ok(view.position[0] > 6 && view.position[0] < 10)
   assert.ok(-view.position[2] > 2 && -view.position[2] < 7)
   assert.equal(view.position[1], 5.05)
-  assert.deepEqual(view.target, [8, 4.3, -4.5])
+  assert.deepEqual(view.target, [8, 4.55, -4.5])
+})
+
+test('room camera chooses a clear interior quadrant away from furniture and openings', () => {
+  const occupied = { ...room,
+    furniture: [{ position: { x: 6.7, y: 3.4 }, dimensions: { width: 1.4, depth: 1.4 } }],
+    openings: [{ position: { x: 9.3, y: 3.4 } }],
+  }
+  const view = placementCameraView(occupied)
+  assert.ok(-view.position[2] > 5)
+  assert.ok(Math.hypot(view.position[0] - 6.7, -view.position[2] - 3.4) > 2)
+  assert.ok(Math.hypot(view.position[0] - 9.3, -view.position[2] - 3.4) > 2)
+  assert.deepEqual(view.target, [8, 4.55, -4.5])
 })
 
 test('real floor slab height is shared by preview and camera; ceiling assets stay overhead', () => {

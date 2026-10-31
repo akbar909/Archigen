@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { cleanOpeningScene } from './openingGeometry.js'
 import { assetYawOffset } from './wallMount.js'
 
 export function canApplyAccentColor(root) {
@@ -35,7 +36,7 @@ export function objectDimensions(object) {
 // independently: collections such as a table with chairs share one scale.
 export function prepareAssetModel(scene, item) {
   const object = new THREE.Group()
-  const clone = cloneSkeleton(scene)
+  const clone = cloneSkeleton(cleanOpeningScene(scene, item))
   const yaw = assetYawOffset(item)
   clone.rotation.y += THREE.MathUtils.degToRad(yaw)
   clone.rotation.x += THREE.MathUtils.degToRad(Number(item.canonical_pitch_offset_deg) || 0)

@@ -1,5 +1,6 @@
 {
   "id": "french_door_02",
+  "canonical_yaw_offset_deg": 90,
   "name": "French Door 02",
   "category": "general",
   "room": "general",

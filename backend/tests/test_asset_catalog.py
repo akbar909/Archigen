@@ -17,6 +17,32 @@ from utils.blender_service import _canonical_blender_layout
 
 
 class UploadedAssetCatalogTests(unittest.TestCase):
+    @patch("utils.asset_catalog._s3_keys")
+    def test_identical_wall_textures_share_one_card_with_legacy_alias(self, keys):
+        keys.return_value = [
+            'assets/textures/walls/painted_plaster_wall_diff_2k.jpg',
+            'assets/textures/walls/plaster_wall_diff_2k.jpg',
+            'assets/textures/walls/brick_wall_diff_2k.jpg',
+        ]
+        assets, _ = list_uploaded_assets()
+        self.assertEqual(2, len(assets))
+        plaster = next(item for item in assets if item['id'] == 'plaster_wall_diff_2k')
+        self.assertEqual(['assets/textures/walls/painted_plaster_wall_diff_2k.jpg'], plaster['alias_s3_keys'])
+
+
+    def test_openings_are_separate_from_curtains_and_have_reviewed_orientation(self):
+        for path, group, yaw, pitch in [
+            ('assets/windows/window_standard_02.glb', 'window', 90, 0),
+            ('assets/architecture/windows/standard/standard_window_01.glb', 'window', 0, 0),
+            ('assets/architecture/doors/glass_french/french_door_02.glb', 'door', 90, 0),
+            ('assets/architecture/doors/exterior/Gate.glb', 'door', 0, 180),
+            ('assets/decorations/curtains_blinds/window_blinds_low_poly_01.glb', 'curtain', -90, 0),
+        ]:
+            entry = _entry(path, 'test')
+            self.assertEqual(group, entry['group'])
+            self.assertEqual(yaw, entry['canonical_yaw_offset_deg'])
+            self.assertEqual(pitch, entry['canonical_pitch_offset_deg'])
+
     @patch("routes.chat.get_s3_client")
     def test_stable_texture_endpoint_streams_uploaded_s3_image(self, get_client_mock):
         class Body:

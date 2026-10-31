@@ -9,6 +9,7 @@ export default defineConfig({
     include: ['three', '@react-three/fiber', '@react-three/drei'],
   },
   server: {
+    host: true, // Exposes Vite on 0.0.0.0 so mobile devices on LAN can access the frontend
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5000',

@@ -8,6 +8,8 @@ import { canApplyAccentColor, prepareAssetModel } from '../../utils/assetModel'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { applySurfaceTexture, findEditableSurface as findSurfaceRoot, isVisibleInHierarchy, setSubtreePickable } from '../../utils/sceneEditing'
 import { isSelectionClick } from '../../utils/selectionGesture'
+import { canonicalOpenings, collectOpeningRoots, openingFromObject, resolveOpeningAsset } from '../../utils/openingEditing'
+import OpeningAsset from './OpeningAsset'
 
 // Enable Draco decompression via local WASM decoders or Google CDN fallback
 const DRACO_DECODER_PATH = '/draco/gltf/'
@@ -143,6 +145,7 @@ function BlenderReplacementAsset({ item, visible, isSelected, onSelect, onObject
       visible={visible}
       position={[Number(position.x) || 0, elevation + mountHeight + ceilingOffset + floorOffset, -(Number(position.y) || 0)]}
       rotation={[0, rotation, 0]}
+      scale={[item.flip_x ? -1 : 1, 1, item.flip_y ? -1 : 1]}
       userData={{
         isSelectable: true,
         entityType: 'furniture',
@@ -265,8 +268,9 @@ export function BlenderLoadingFallback({ onRetry }) {
   const percent = Math.min(Math.round(progress || 0), 100)
 
   return (
-    <Html center style={{ pointerEvents: 'auto', transform: 'translate3d(-50%, -100px, 0)' }}>
+    <Html center wrapperClass="viewer-loading-anchor" className="viewer-loading-content" style={{ pointerEvents: 'auto', transform: 'translate3d(-50%, -100px, 0)' }}>
       <div
+        className="viewer-loading-card"
         style={{
           background: 'rgba(18, 18, 18, 0.96)',
           backdropFilter: 'blur(20px)',
@@ -376,9 +380,15 @@ export function BlenderHouseModel({
     }
   }, [url])
 
+  // Announce readiness after scene metadata effects and a rendered frame.
   useEffect(() => {
-    if (scene && onLoaded) {
-      onLoaded()
+    if (!scene || !onLoaded) return undefined
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => onLoaded(true))
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      onLoaded(false)
     }
   }, [scene, onLoaded])
 
@@ -724,11 +734,14 @@ export function BlenderHouseModel({
     },
     [furnitureItems, cloneBundle, uploadedAssets],
   )
+  const openingLayoutKey = JSON.stringify(canonicalOpenings(design))
+  const openingRoots = useMemo(() => cloneBundle
+    ? collectOpeningRoots(cloneBundle.scene, JSON.parse(openingLayoutKey)) : new Map(), [cloneBundle, openingLayoutKey])
   const replacementKey = replacementItems.map((item) => item.id).sort().join('|')
 
   useEffect(() => {
     if (!cloneBundle || !design) return
-    const urlByKey = new Map(uploadedAssets.map((asset) => [asset.s3_key, asset.url]))
+    const urlByKey = new Map(uploadedAssets.flatMap((asset) => [asset.s3_key, ...(asset.alias_s3_keys || [])].map((key) => [key, asset.url])))
     const resolveFinishUrl = (finish) => urlByKey.get(finish?.s3_key) || finish?.texture_url || null
     const wallFinishes = new Map(Object.entries(design.surface_overrides || {}))
     const wallFaces = new Map(Object.entries(design.wall_face_overrides || {}))
@@ -819,6 +832,8 @@ export function BlenderHouseModel({
       const mountHeight = item.wall_mounted ? Math.max(0, Number(item.mount_height) || 0) : 0
       root.position.set(Number(position.x) || 0, elevation + mountHeight, -(Number(position.y) || 0))
       root.rotation.y = THREE.MathUtils.degToRad(-(Number(item.rotation ?? item.rotation_y) || 0))
+      root.scale.x = Math.abs(root.scale.x) * (item.flip_x ? -1 : 1)
+      root.scale.z = Math.abs(root.scale.z) * (item.flip_y ? -1 : 1)
       if (item.color && canApplyAccentColor(root)) {
         root.traverse((child) => {
           if (!child.isMesh || !child.material) return
@@ -872,18 +887,29 @@ export function BlenderHouseModel({
           event.stopPropagation()
           let normal = event.face?.normal?.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(event.object.matrixWorld))
           if (surface.type === 'roof' || surface.type === 'ceiling') {
-            surface.type = normal?.y < -0.5 ? 'ceiling' : 'roof'
+            // Double-sided slabs may be hit from behind their stored normal.
+            // Keep the actual clicked side, including imported/rotated meshes.
+            if (normal?.dot(event.ray.direction) > 0) normal.negate()
+            surface.type = normal?.y < -1e-5 ? 'ceiling' : 'roof'
           }
-          const room = roomForSurface(surface, event.point, rooms, event.ray.origin)
+          const cameraRoom = surface.type === 'ceiling'
+            ? roomForSurface({ type: 'ceiling' }, event.ray.origin, rooms)
+            : null
+          const room = cameraRoom || roomForSurface(surface, event.point, rooms, event.ray.origin)
           const wallSurface = surface.type === 'wall' || surface.type === 'window'
-          const wallSide = wallSurface ? wallSideAtPoint(room, event.point) : null
-          if (surface.type === 'wall' && Math.abs(normal?.y || 0) > 0.5 && room) {
+          const wallSide = wallSurface && !surface.exterior ? wallSideAtPoint(room, event.point) : null
+          const boundaryBox = surface.exterior ? new THREE.Box3().setFromObject(surface.object) : null
+          if (surface.type === 'wall' && !surface.exterior && Math.abs(normal?.y || 0) > 0.5 && room) {
             const inward = { front: [0, 0, 1], back: [0, 0, -1], left: [1, 0, 0], right: [-1, 0, 0] }
             normal = new THREE.Vector3(...inward[wallSide])
           }
           onSelectEntity?.({
             ...surface,
-            roomId: surface.type === 'ground' ? 'exterior_ground' : (surface.roomId || room?.id || null),
+            ...(['roof', 'ceiling'].includes(surface.type) ? { surfaceObject: event.object } : {}),
+            boundaryBounds: boundaryBox ? { minX: boundaryBox.min.x, maxX: boundaryBox.max.x, minY: -boundaryBox.max.z, maxY: -boundaryBox.min.z, base: boundaryBox.min.y, height: boundaryBox.max.y - boundaryBox.min.y } : null,
+            opening: openingFromObject(surface.object),
+            roomId: surface.type === 'ceiling' ? room?.id || null
+              : surface.type === 'ground' ? 'exterior_ground' : (surface.roomId || room?.id || null),
             wallId: wallSurface ? (surface.type === 'wall' ? surface.id : null) : null,
             wallSide,
             surfaceNormal: normal ? { x: normal.x, y: normal.y, z: normal.z } : null,
@@ -892,6 +918,30 @@ export function BlenderHouseModel({
           })
         }}
       />
+      {[...openingRoots].map(([key, entry]) => {
+        const asset = resolveOpeningAsset(design?.opening_overrides?.[key], uploadedAssets)
+        if (!asset) return null
+        const { opening, originals } = entry
+        const point = new THREE.Vector3(...opening.position)
+        const room = roomForSurface({}, point, rooms)
+        const selection = { type: opening.type, id: opening.id, opening, source: 'blender',
+          roomId: selectedEntity?.type === opening.type && selectedEntity.id === opening.id
+            ? selectedEntity.roomId : room?.id,
+          wallSide: selectedEntity?.type === opening.type && selectedEntity.id === opening.id
+            ? selectedEntity.wallSide : wallSideAtPoint(room, point),
+          surfaceNormal: selectedEntity?.type === opening.type && selectedEntity.id === opening.id
+            ? selectedEntity.surfaceNormal : null }
+        return <OpeningAsset key={key} asset={asset} opening={opening} originals={originals}
+          visible={entry.visible}
+          selection={selection} onSelect={editingEnabled ? (entity) => {
+            const hit = new THREE.Vector3(entity.hitPoint.x, entity.hitPoint.y, entity.hitPoint.z)
+            const hitRoom = roomForSurface({}, hit, rooms, entity.cameraPoint)
+            const wallSide = wallSideAtPoint(hitRoom, hit)
+            onSelectEntity?.({ ...entity, roomId: hitRoom?.id, wallSide, surfaceNormal: null })
+          } : null}
+          selected={selectedEntity?.type === opening.type && selectedEntity.id === opening.id}
+          onObjectReady={onSelectionObjectReady} />
+      })}
       {replacementItems.map((item) => {
         const original = cloneBundle.furnitureRoots.get(item.id)
         const visible = original

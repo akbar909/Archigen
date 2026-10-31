@@ -17,6 +17,42 @@ from generate_house_runtime import (
     place_furniture,
 )
 
+def furniture_mount_error(root, room, min_z: float, max_z: float) -> Optional[str]:
+    """Check the surface an item is attached to using evaluated mesh bounds."""
+    bounds = room.get("bounds", {})
+    floor_z = float(bounds.get("z", 0.0))
+    ceiling_z = floor_z + float(room.get("height", bounds.get("height", 3.0)))
+    if not all(math.isfinite(value) for value in (min_z, max_z, floor_z, ceiling_z)):
+        return "has non-finite mounting bounds."
+    if root.get("archgen_ceiling_mounted", False):
+        clearance = max(0.0, float(root.get("archgen_ceiling_clearance", 0.06)))
+        expected_top = ceiling_z - clearance
+        if min_z < floor_z - 0.002 or abs(max_z - expected_top) > 0.004:
+            return f"is not attached to its ceiling: top={max_z:.3f}, expected={expected_top:.3f}."
+    elif root.get("archgen_wall_mounted", False):
+        expected_bottom = (floor_z + float(root.get("archgen_floor_clearance", 0.0))
+                           + max(0.0, float(root.get("archgen_mount_height", 0.0))))
+        if (min_z < floor_z - 0.002 or abs(min_z - expected_bottom) > 0.004
+                or max_z > ceiling_z + 0.004):
+            return f"is not at its wall mounting height: bottom={min_z:.3f}, expected={expected_bottom:.3f}."
+    else:
+        expected_bottom = floor_z + float(root.get("archgen_floor_clearance", 0.0))
+        if min_z < floor_z - 0.002 or abs(min_z - expected_bottom) > 0.004:
+            return f"is not seated on its finished floor: bottom={min_z:.3f}, expected={expected_bottom:.3f}."
+    return None
+
+
+def doorways_overlapping_height(doors, min_z, max_z):
+    """Filter each doorway by its actual elevation and height before 2D checks."""
+    result = []
+    for door in doors:
+        base = place_furniture._opening_xy(door)[2]
+        height = float(door.get("height", door.get("dimensions", {}).get("height", 2.1)))
+        if min_z < base + height and max_z > base:
+            result.append(door)
+    return result
+
+
 def validate_generated_scene(
     layout_data: Dict[str, Any], rooms: List[Dict[str, Any]], expected_ids: List[str]
 ) -> Dict[str, Any]:
@@ -53,7 +89,7 @@ def validate_generated_scene(
         corners = [obj.matrix_world @ mathutils.Vector(corner) for obj in meshes for corner in obj.bound_box]
         min_x, max_x = min(p.x for p in corners), max(p.x for p in corners)
         min_y, max_y = min(p.y for p in corners), max(p.y for p in corners)
-        min_z = min(p.z for p in corners)
+        min_z, max_z = min(p.z for p in corners), max(p.z for p in corners)
         bounds = room.get("bounds", {})
         rx, ry = float(bounds.get("x", 0.0)), float(bounds.get("y", 0.0))
         rw, rd = float(bounds.get("width", 0.0)), float(bounds.get("depth", 0.0))
@@ -65,7 +101,8 @@ def validate_generated_scene(
             )
         if str(room.get("type", "")).lower() != "garage":
             actual_footprint = (min_x, min_y, max_x, max_y)
-            for zone in place_furniture._door_clearance_zones(room, validation_doors):
+            relevant_doors = doorways_overlapping_height(validation_doors, min_z, max_z)
+            for zone in place_furniture._door_clearance_zones(room, relevant_doors):
                 if place_furniture._rectangles_overlap(actual_footprint, zone, 0.01):
                     errors.append(
                         f"Furniture '{item_id}' blocks a door approach in room '{room_id}': "
@@ -73,14 +110,9 @@ def validate_generated_scene(
                         f"clearance={tuple(round(value, 2) for value in zone)}."
                     )
                     break
-        floor_z = float(bounds.get("z", 0.0))
-        expected_clearance = float(root.get("archgen_floor_clearance", 0.0))
-        expected_bottom = floor_z + expected_clearance
-        if min_z < floor_z - 0.002 or abs(min_z - expected_bottom) > 0.004:
-            errors.append(
-                f"Furniture '{item_id}' is not seated on its finished floor: "
-                f"bottom={min_z:.3f}, expected={expected_bottom:.3f}."
-            )
+        mount_error = furniture_mount_error(root, room, min_z, max_z)
+        if mount_error:
+            errors.append(f"Furniture '{item_id}' {mount_error}")
 
     expected_inventory = layout_data.get("expected_inventory", {})
     for kind, key in (("door", "door_ids"), ("window", "window_ids")):

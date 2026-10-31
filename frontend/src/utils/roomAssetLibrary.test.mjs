@@ -14,7 +14,7 @@ for (const [room, category, unrelated] of [
   test(`${room} recommends its uploaded categories without unrelated models`, () => {
     assert.equal(isAssetRecommendedForRoom({ category }, { type: room }), true)
     assert.equal(isAssetRecommendedForRoom({ category: unrelated }, { type: room }), false)
-    assert.equal(isAssetRecommendedForRoom({ group: 'ceiling_asset' }, { type: room }), true)
+    assert.equal(isAssetRecommendedForRoom({ group: 'ceiling_asset' }, { type: room }), room !== 'bathroom')
   })
 }
 

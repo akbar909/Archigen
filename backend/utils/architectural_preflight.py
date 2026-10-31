@@ -95,7 +95,8 @@ def _wall_geometry(room: Dict[str, Any], side: str) -> Tuple[str, float, float, 
 
 
 def _resolve_wall_id(
-    walls: Iterable[Dict[str, Any]], room: Dict[str, Any], side: str, coordinate: float
+    walls: Iterable[Dict[str, Any]], room: Dict[str, Any], side: str, coordinate: float,
+    intended_ids: Iterable[str] = (), preferred_id: str = "",
 ) -> str:
     axis, fixed, start, end = _wall_geometry(room, side)
     rid = room.get("id")
@@ -118,6 +119,13 @@ def _resolve_wall_id(
         overlap = min(end, b) - max(start, a)
         coordinate_penalty = max(a - coordinate, 0.0, coordinate - b)
         score = abs(wall_fixed - fixed) + coordinate_penalty + (100.0 if overlap <= EPS else 0.0)
+        # Coincident segments at a T junction may have the same distance. Prefer
+        # a real shared host satisfying the doorway's intended room connection.
+        intended = set(str(value) for value in intended_ids)
+        if intended and not intended.issubset(set(str(value) for value in connected)):
+            score += 1.0
+        if str(wall.get("id")) == str(preferred_id):
+            score -= 0.000001
         if best is None or score < best[0]:
             best = (score, str(wall.get("id") or ""))
     return best[1] if best and best[0] < 0.08 and best[1] else f"{rid}:{side}"
@@ -227,7 +235,12 @@ def _repair_openings(
             side = _infer_side(room, opening)
             opening["wall_side"] = side
             center = _opening_coordinate(opening, room, side)
-            wall_id = _resolve_wall_id(walls, room, side, center)
+            intended = opening.get("connected_room_ids") or [value for value in (rid, opening.get("connected_room_id")) if value]
+            wall_id = _resolve_wall_id(walls, room, side, center, intended, str(opening.get("wall_id") or ""))
+            # Preserve useful diagnostics if no wall can fulfil an interior
+            # connection; never turn a disconnected door into an exterior exit.
+            if wall_id not in walls_by_id:
+                wall_id = _resolve_wall_id(walls, room, side, center)
             opening["wall_id"] = wall_id
             width = max(0.45, _number(opening.get("width"), 0.9 if kind == "doors" else 1.2))
             _, _, start, end = _wall_geometry(room, side)
@@ -238,12 +251,17 @@ def _repair_openings(
                 )
             elif kind == "doors" and str(opening.get("type", "")).lower() not in ("main_entrance", "garage_door"):
                 intended = [str(value) for value in opening.get("connected_room_ids", [])]
-                hosted = [str(value) for value in host_wall.get("connected_rooms", [])]
+                hosted = [str(value) for value in (host_wall.get("connected_rooms") or host_wall.get("room_ids") or [])]
                 if len(intended) >= 2 and not set(intended[:2]).issubset(set(hosted)):
                     report["critical_errors"].append(
                         f"Door '{oid}' intends to connect {intended[:2]} but its wall '{wall_id}' connects {hosted}."
                     )
             if host_wall:
+                hosted = list(host_wall.get("connected_rooms") or host_wall.get("room_ids") or [])
+                if len(intended) <= 1 or set(intended).issubset(set(hosted)):
+                    opening["connected_room_ids"] = hosted
+                    opening["connected_rooms"] = hosted
+                    opening["connected_room_id"] = next((value for value in hosted if value != room["id"]), None)
                 wall_start, wall_end = host_wall.get("start", {}), host_wall.get("end", {})
                 if side in ("south", "north"):
                     start, end = sorted((_number(wall_start.get("x")), _number(wall_end.get("x"))))
@@ -257,7 +275,7 @@ def _repair_openings(
             opening["height"] = max(0.5, _number(opening.get("height"), 2.1 if kind == "doors" else 1.2))
             if kind == "windows":
                 opening["sill_height"] = max(0.0, _number(opening.get("sill_height"), 0.9))
-            if kind == "doors" and str(opening.get("type", "")).lower() not in ("main_entrance", "garage_door"):
+            if kind == "doors" and not opening.get("client_edited_2d") and str(opening.get("type", "")).lower() not in ("main_entrance", "garage_door"):
                 # Interior doors are placed near a wall end, preserving the
                 # larger uninterrupted wall area for circulation/furniture.
                 corner_center = start + WALL_MARGIN + width / 2.0 + 0.10
@@ -558,6 +576,11 @@ def _repair_furniture(
         item["rotation"] = _number(item.get("rotation")) % 360.0
         item["dimensions"] = _dimensions(item)
         pos = _position(item)
+        if item.get("support_id"):
+            # Resolve against repaired tables after all floor furniture is placed.
+            # A clock resting on a table must not reserve another floor footprint.
+            valid_items.append(item)
+            continue
         ceiling_mounted = item.get("ceiling_mounted") is True
         if ceiling_mounted:
             clearance = max(0.0, _number(item.get("ceiling_clearance"), 0.06))
@@ -693,6 +716,39 @@ def _repair_furniture(
         if not ceiling_mounted:
             occupied[rid].append((box, item))
         valid_items.append(item)
+    by_id = {str(item["id"]): item for item in valid_items}
+    for item in valid_items:
+        if not item.get("support_id"):
+            continue
+        support = by_id.get(str(item["support_id"]))
+        rid = item["room_id"]
+        category = str((support or {}).get("category", ""))
+        valid = support and support.get("room_id") == rid and not support.get("support_id") and any(
+            token in category for token in ("table", "desk", "nightstand", "console"))
+        if valid:
+            dims, sd = _dimensions(item), _dimensions(support)
+            angle = math.radians(_number(item.get("rotation")) - _number(support.get("rotation")))
+            width = abs(math.cos(angle)) * dims["width"] + abs(math.sin(angle)) * dims["depth"]
+            depth = abs(math.sin(angle)) * dims["width"] + abs(math.cos(angle)) * dims["depth"]
+            valid = width + 0.02 <= sd["width"] and depth + 0.02 <= sd["depth"]
+        if not valid:
+            item.pop("support_id", None)
+            item["position"] = {**_position(item), "z": _position(rooms[rid])["z"]}
+            report["warnings"].append(f"Tabletop support for '{item['id']}' is unavailable; placed on floor.")
+            continue
+        p, sp = _position(item), _position(support)
+        origin = item.get("support_origin") or sp
+        old = math.radians(_number(item.get("support_rotation", support.get("rotation"))))
+        dx, dy = p["x"] - _number(origin.get("x")), p["y"] - _number(origin.get("y"))
+        lx, ly = (sd["width"] - width) / 2 - 0.01, (sd["depth"] - depth) / 2 - 0.01
+        x = max(-lx, min(lx, math.cos(old) * dx + math.sin(old) * dy))
+        y = max(-ly, min(ly, -math.sin(old) * dx + math.cos(old) * dy))
+        turn = math.radians(_number(support.get("rotation")))
+        item["position"] = {"x": sp["x"] + math.cos(turn) * x - math.sin(turn) * y,
+                            "y": sp["y"] + math.sin(turn) * x + math.cos(turn) * y,
+                            "z": sp["z"] + sd["height"] + 0.002}
+        item["support_origin"] = dict(sp)
+        item["support_rotation"] = _number(support.get("rotation"))
     floor["furniture"] = valid_items
 
 

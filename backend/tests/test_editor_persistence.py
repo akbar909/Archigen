@@ -36,6 +36,64 @@ def editor_design():
 
 
 class EditorPersistenceTests(unittest.TestCase):
+    def test_exterior_positions_and_boundary_mounts_survive_save_and_export(self):
+        design = editor_design()
+        design['exterior'] = {'assets': [
+            {'id': 'outdoor_chair', 'category': 'outdoor', 'room_id': 'exterior_ground',
+             'position': {'x': -5, 'y': -4, 'z': -0.22}, 'dimensions': {'width': 1, 'depth': 1, 'height': 1}},
+            {'id': 'boundary_panel', 'category': 'wall_panel', 'room_id': 'exterior_ground',
+             'position': {'x': -0.15, 'y': 3, 'z': 0}, 'dimensions': {'width': 1, 'depth': 0.1, 'height': 1},
+             'wall_mounted': True, 'wall_id': 'Exterior_Boundary_Wall_1', 'mount_height': 0.5,
+             'wall_side': 'right', 'wall_normal': {'x': -1, 'y': 0, 'z': 0}, 'wall_anchor': {'x': -0.075, 'y': 3}},
+        ]}
+        design['wall_face_overrides'] = {'Exterior_Boundary_Wall_1': {'nx': {'s3_key': 'assets/textures/walls/plaster_wall_diff_2k.jpg'}}}
+        original = copy.deepcopy(design['exterior'])
+        for _ in range(2):
+            design = prepare_design_snapshot(json.loads(json.dumps(design)))
+            design, report = validate_and_repair_design(design)
+            self.assertEqual(original, design['exterior'])
+            self.assertIn('Exterior_Boundary_Wall_1', design['wall_face_overrides'])
+        exported = adapt_gemini_to_blender_layout(design)
+        items = {item['id']: item for item in exported['rooms'][0]['furniture_requirements']}
+        self.assertEqual([-5, -4, -0.22], items['outdoor_chair']['position'])
+        self.assertEqual('user_exact', items['outdoor_chair']['placement_hint'])
+        self.assertEqual('wall_exact', items['boundary_panel']['placement_hint'])
+        self.assertEqual(0.5, items['boundary_panel']['mount_height'])
+        self.assertEqual('exterior_ground', items['boundary_panel']['room_id'])
+
+
+    def test_tabletop_height_survives_repeated_save_and_blender_export(self):
+        design = editor_design()
+        floor = design['floors'][0]
+        floor['furniture'].extend([
+            {'id': 'table', 'category': 'side_table', 'room_id': 'bedroom', 'client_edited_3d': True,
+             'position': {'x': 4, 'y': 2, 'z': 0}, 'dimensions': {'width': 1, 'depth': 0.7, 'height': 0.8}},
+            {'id': 'clock', 'category': 'table_clock', 'room_id': 'bedroom', 'client_edited_3d': True,
+             'support_id': 'table', 'placement_hint': 'user_exact',
+             'position': {'x': 4, 'y': 2, 'z': 0.802}, 'dimensions': {'width': 0.18, 'depth': 0.12, 'height': 0.22}},
+        ])
+        for _ in range(3):
+            design = prepare_design_snapshot(json.loads(json.dumps(design)))
+            design, report = validate_and_repair_design(design)
+            self.assertEqual([], report['critical_errors'])
+            clock = next(item for item in design['floors'][0]['furniture'] if item['id'] == 'clock')
+            self.assertAlmostEqual(0.802, clock['position']['z'])
+            self.assertEqual('table', clock['support_id'])
+        exported = adapt_gemini_to_blender_layout(design)
+        clock = next(item for item in exported['rooms'][0]['furniture_requirements'] if item['id'] == 'clock')
+        self.assertAlmostEqual(0.802, clock['position'][2])
+
+
+    def test_opening_replacements_survive_repeated_save(self):
+        design = editor_design()
+        replacements = {'window:window_1': {'asset_id': 'standard_window_02',
+                         's3_key': 'assets/architecture/windows/standard/standard_window_02.glb'}}
+        design['opening_overrides'] = replacements
+        for _ in range(3):
+            design = prepare_design_snapshot(json.loads(json.dumps(design)))
+            design, _ = validate_and_repair_design(design)
+            self.assertEqual(replacements, design['opening_overrides'])
+
     def test_wall_face_finishes_survive_save_and_blender_adapter(self):
         design = editor_design()
         faces = {

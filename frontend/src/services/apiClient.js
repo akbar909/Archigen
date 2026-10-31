@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE = 'http://localhost:7860/api'
+const API_BASE = 'http://192.168.18.6:7860/api'
 // const API_BASE = 'https://akbar909-archigen.hf.space/api'
 
 export const apiClient = axios.create({

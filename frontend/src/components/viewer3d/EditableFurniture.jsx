@@ -106,6 +106,7 @@ export default function EditableFurniture({
       ref={rootRef}
       position={[Number(position.x) || 0, Number(position.y) || 0, Number(position.z) || 0]}
       rotation={[0, rotation, 0]}
+      scale={[item.flip_x ? -1 : 1, 1, item.flip_y ? -1 : 1]}
       userData={{
         isSelectable: true,
         entityType: 'furniture',

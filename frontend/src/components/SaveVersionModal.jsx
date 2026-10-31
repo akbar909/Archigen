@@ -130,7 +130,7 @@ export default function SaveVersionModal({
 
         <div className="save-version-footer">
           <p>
-            Furniture and finish edits reuse the current 3D house. Blender rebuilds only structural changes.
+            Save your draft here. Use Build 3D when the layout is ready.
           </p>
           <div className="save-version-actions">
             <button type="button" className="save-version-cancel" onClick={onClose} disabled={isSaving}>

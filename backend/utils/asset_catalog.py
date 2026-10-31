@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -29,6 +30,22 @@ _inventory_keys: list[str] = []
 _inventory_refresh_at = 0.0
 
 
+@lru_cache(maxsize=256)
+def _texture_hash(path: str, modified: int, size: int) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _local_texture_hash(relative: str) -> str | None:
+    path = (ASSET_ROOT / relative).resolve()
+    if not path.is_relative_to(ASSET_ROOT.resolve()):
+        return None
+    try:
+        stat = path.stat()
+        return _texture_hash(str(path), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
 def _friendly_name(value: str) -> str:
     return " ".join(part.capitalize() for part in value.replace("-", "_").split("_") if part)
 
@@ -37,6 +54,10 @@ def _classification(relative_key: str) -> tuple[str, str]:
     key = relative_key.lower().replace("\\", "/")
     if 'curtains_blinds/' in key:
         return 'curtain', 'curtain'
+    if key.startswith(('architecture/windows/', 'windows/')):
+        return 'window', 'window'
+    if key.startswith(('architecture/doors/', 'doors/', 'architecture/gates/', 'gates/')):
+        return 'door', 'door'
     if 'architecture/ceilings/' in key or 'lighting/ceiling_lights/' in key:
         return 'ceiling_asset', 'ceiling_light'
     if 'roof' in key and key.endswith('.glb'):
@@ -135,14 +156,16 @@ def _entry(key: str, source: str) -> dict[str, Any] | None:
         dimensions = {'width': 2.6, 'depth': 2.6, 'height': 1.1}
     raw = audit.get('dimensions', {})
     yaw = float(metadata.get('canonical_yaw_offset_deg') or 0)
-    pitch = 90 if '/fans/' in relative and raw.get('depth', 1) < min(raw.get('height', 0), raw.get('width', 0)) * 0.6 else 0
+    pitch = float(metadata.get('canonical_pitch_offset_deg') or 0)
+    if '/fans/' in relative and raw.get('depth', 1) < min(raw.get('height', 0), raw.get('width', 0)) * 0.6:
+        pitch = 90
     # Bounding boxes cannot distinguish a decorated front from its blank back,
     # and a projecting lamp can be deeper than it is wide. Use reviewed axes.
     if mounting.get('orientation_verified') and mounting.get('up_axis') == '+y':
         yaw = {'+z': 0, '-z': 180, '+x': -90, '-x': 90}.get(mounting.get('front_axis'), yaw)
     if raw and all(raw.get(k, 0) > 0 for k in dimensions):
         oriented = dict(raw)
-        if pitch:
+        if abs(pitch % 180) > 0.001:
             oriented['height'], oriented['depth'] = raw['depth'], raw['height']
         if abs(yaw % 180) > 0.001:
             oriented['width'], oriented['depth'] = raw['depth'], raw['width']
@@ -154,12 +177,13 @@ def _entry(key: str, source: str) -> dict[str, Any] | None:
         "name": metadata.get("name") or _friendly_name(asset_id),
         "group": group,
         "category": category,
+        "door_type": ("garage" if any(token in relative.lower() for token in ("garage", "garager", "roller")) else "main_gate" if "gate" in relative.lower() else "entrance" if any(token in relative.lower() for token in ("exterior", "entrance")) else "interior") if group == "door" else None,
         "kind": "model" if suffix in MODEL_EXTENSIONS else "texture",
         "s3_key": f"assets/{relative}",
         "relative_path": relative,
         "dimensions": dimensions,
         "source": source,
-        "content_hash": audit.get('sha256'),
+        "content_hash": _local_texture_hash(relative) if suffix in IMAGE_EXTENSIONS else audit.get('sha256'),
         "canonical_yaw_offset_deg": yaw,
         "canonical_pitch_offset_deg": pitch,
         "mounting": mounting,
@@ -224,6 +248,14 @@ def list_uploaded_assets() -> tuple[list[dict[str, Any]], str]:
     if not keys:
         keys = _local_keys()
     raw_entries = [entry for key in keys if (entry := _entry(key, source))]
+    # The repaired arched window is bundled with the app, including deployments
+    # whose uploaded inventory still contains the mislabeled castle-door file.
+    arch_key = "assets/architecture/windows/arched/arched_window_01.glb"
+    raw_entries = [entry for entry in raw_entries if entry["id"].lower() != "arched_window_01"]
+    if any(Path(key).stem.lower() == "arched_window_01" for key in keys) and (ASSET_ROOT / "architecture/windows/arched/arched_window_01.glb").is_file():
+        arch = _entry(arch_key, "local_sync")
+        if arch:
+            raw_entries.append(arch)
     # Older uploads include convenience copies such as
     # furniture/dining_room/dining_chair_001.glb alongside the curated
     # dining_chairs/dining_chair_001.glb. Show each uploaded asset identity
@@ -231,8 +263,15 @@ def list_uploaded_assets() -> tuple[list[dict[str, Any]], str]:
     unique: dict[tuple[str, str, str], dict[str, Any]] = {}
     for entry in raw_entries:
         identity = entry.get('content_hash') or entry['id'].lower()
+        if entry['kind'] == 'texture':
+            identity = (entry['group'], identity)
         current = unique.get(identity)
-        if current is None or entry["relative_path"].count("/") > current["relative_path"].count("/"):
+        prefer = current is None or entry["relative_path"].count("/") > current["relative_path"].count("/")
+        if current and entry['kind'] == 'texture':
+            prefer = len(entry['id']) < len(current['id'])
+            kept, duplicate = (entry, current) if prefer else (current, entry)
+            kept['alias_s3_keys'] = sorted(set(kept.get('alias_s3_keys', []) + duplicate.get('alias_s3_keys', []) + [duplicate['s3_key']]))
+        if prefer:
             unique[identity] = entry
     entries = list(unique.values())
     entries.sort(key=lambda item: (item["group"], item["category"], item["name"]))

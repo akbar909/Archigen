@@ -621,6 +621,12 @@ def populate_room_furniture(
                     instance_id=instance_id,
                 )
                 obj["archgen_asset_error"] = str(exc)
+            if req.get("flip_x"):
+                obj.scale.x *= -1.0
+            if req.get("flip_y"):
+                obj.scale.y *= -1.0
+            obj["archgen_flip_x"] = bool(req.get("flip_x", False))
+            obj["archgen_flip_y"] = bool(req.get("flip_y", False))
             mount_height = max(0.0, float(req.get("mount_height", 0.0) or 0.0))
             if req.get("ceiling_mounted"):
                 # Attach using evaluated top bounds, independent of an asset's
@@ -634,6 +640,7 @@ def populate_room_furniture(
                 obj.location.z += ceiling_z - clearance - actual_top
                 obj['archgen_ceiling_mounted'] = True
                 obj['archgen_ceiling_z'] = ceiling_z
+                obj['archgen_ceiling_clearance'] = clearance
                 bpy.context.view_layer.update()
             elif req.get("wall_mounted") or mount_height > 0.0:
                 obj.location.z += mount_height
@@ -653,7 +660,7 @@ def populate_room_furniture(
                     plane = mathutils.Vector((float(anchor['x']), float(anchor['y']), 0.0)).dot(inward)
                     obj.location += inward * (plane + 0.012 - back)
                     bpy.context.view_layer.update()
-            obj["archgen_room_id"] = room_data.get("id", "")
+            obj["archgen_room_id"] = req.get("room_id") or room_data.get("id", "")
             obj["archgen_entity_type"] = "furniture"
             obj["archgen_model_id"] = str(preferred_id or meta.get("id") or category or "furniture")
             obj["archgen_semantic_rotation_deg"] = float(rot)

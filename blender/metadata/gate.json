@@ -1,5 +1,6 @@
 {
   "id": "gate",
+  "canonical_pitch_offset_deg": 180,
   "name": "Gate",
   "category": "general",
   "room": "general",

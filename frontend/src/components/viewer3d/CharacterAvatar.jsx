@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types, react/no-unknown-property */
 import { Html } from '@react-three/drei'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { getRoomMeta } from './constants'
 
@@ -148,6 +149,23 @@ export function CharacterAvatar({ position, rotation, isMoving, walkCycle, isVis
 
 // ── Smooth Camera Controller ─────────────────────────────────────────
 export function CameraController({ controlsRef, targetPos, targetCamPos, viewMode, suspended = false }) {
+  const appliedMode = useRef(null)
+  useFrame(() => {
+    if (appliedMode.current === viewMode) return
+    const controls = controlsRef.current
+    if (!controls) return
+    appliedMode.current = viewMode
+    // Mode changes teleport; interpolating out of an interior hits the wall guard.
+    const damping = controls.enableDamping
+    controls.enableDamping = false
+    controls.update()
+    controls.object.clearViewOffset()
+    controls.object.position.copy(targetCamPos.current)
+    controls.target.copy(targetPos.current)
+    controls.object.lookAt(targetPos.current)
+    controls.update()
+    controls.enableDamping = damping
+  }, -0.5)
   useFrame(() => {
     if (suspended || !controlsRef.current || !targetPos.current) return
     if (viewMode !== 'walkthrough') {

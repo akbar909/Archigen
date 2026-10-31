@@ -125,10 +125,15 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3, zSign =
     if (!match && sameLevel.length > 0) {
       const width = Number(room.dimensions?.width ?? room.bounds?.width ?? room.width)
       const depth = Number(room.dimensions?.depth ?? room.bounds?.depth ?? room.length)
+      const position = room.position || room.bounds || {}
+      const expectedX = (Number(position.x) || 0) + width / 2
+      const expectedZ = ((Number(position.y) || 0) + depth / 2) * zSign
       if (Number.isFinite(width) && Number.isFinite(depth)) {
         match = sameLevel.reduce((best, curr) => {
-          const diffCurr = Math.abs(curr.size.x - width) + Math.abs(curr.size.z - depth)
-          const diffBest = best ? Math.abs(best.size.x - width) + Math.abs(best.size.z - depth) : Infinity
+          const score = (candidate) => Math.abs(candidate.size.x - width) + Math.abs(candidate.size.z - depth)
+            + Math.hypot(candidate.center.x - expectedX, candidate.center.z - expectedZ) * 0.35
+          const diffCurr = score(curr)
+          const diffBest = best ? score(best) : Infinity
           return diffCurr < diffBest ? curr : best
         }, null)
       }

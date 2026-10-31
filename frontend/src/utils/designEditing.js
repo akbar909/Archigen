@@ -1,4 +1,6 @@
 import { snapToWallPlane, wallMountNormal, wallMountRotation } from './wallMount.js'
+import { placeOnSupport } from './assetCompatibility.js'
+import { clampExteriorPosition } from './exteriorEditing.js'
 
 const asArray = (value) => (Array.isArray(value) ? value : [])
 
@@ -75,11 +77,29 @@ export function updateFurnitureById(design, furnitureId, patchOrUpdater) {
     const patch = typeof patchOrUpdater === 'function' ? patchOrUpdater(item) : patchOrUpdater
     if (patch && typeof patch === 'object') Object.assign(item, patch)
   })
+  visitFurniture(design, (item) => {
+    if (!item.support_id) return
+    const support = findFurnitureById(design, item.support_id)
+    const placed = placeOnSupport(item, support)
+    if (placed) Object.assign(item, placed, { client_edited_3d: true })
+    else {
+      delete item.support_id
+      item.position = { ...item.position, z: Number(findRoomById(design, item.room_id)?.position?.z) || 0 }
+      item.client_edited_3d = true
+    }
+  })
   return design
 }
 
 export function removeFurnitureById(design, furnitureId) {
   if (!design || !furnitureId) return design
+  // Keep tabletop objects when their supporting table is removed.
+  visitFurniture(design, (item) => {
+    if (item.support_id !== furnitureId) return
+    delete item.support_id
+    item.position = { ...item.position, z: Number(findRoomById(design, item.room_id)?.position?.z) || 0 }
+    item.client_edited_3d = true
+  })
   // Reused house GLBs still contain their original meshes. Persist a tombstone
   // so reopening this version also hides and disables the embedded object.
   design.deleted_furniture_ids = [...new Set([
@@ -116,6 +136,7 @@ export function addExteriorAsset(design, item) {
 
 export function addFurnitureToRoom(design, roomId, item) {
   if (!design || !roomId || !item) return design
+  if (roomId === 'exterior_ground') return addExteriorAsset(design, item)
   const cloneItem = () => ({
     ...item,
     position: { ...(item.position || {}) },
@@ -162,6 +183,7 @@ export function updateWallById(design, wallId, updater) {
 }
 
 export function clampFurniturePosition(item, room, nextPosition) {
+  if (item.room_id === 'exterior_ground' || room?.id === 'exterior_ground') return clampExteriorPosition(item, nextPosition)
   if (!room) return nextPosition
   const roomPosition = room.position || room.bounds || {}
   const roomDimensions = room.dimensions || room.bounds || {}
@@ -234,7 +256,7 @@ export function ceilingMountedPosition(item, room) {
 }
 
 export function clampMountHeight(item, room, height) {
-  const roomHeight = Number((room?.dimensions || room?.bounds)?.height) || 3
+  const roomHeight = Number(item.boundary_bounds?.height || (room?.dimensions || room?.bounds)?.height) || 3
   return Math.max(0, Math.min(roomHeight - furnitureDimensions(item).height - 0.1, Number(height) || 0))
 }
 export function alignWallFurniture(item, room, catalog) {
