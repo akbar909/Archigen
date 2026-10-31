@@ -1,4 +1,6 @@
 import React from 'react'
+import { doorSectors } from '../../utils/wallOpenings.js'
+import { distance as distance2D } from '../../utils/cadGeometry.js'
 
 // Convert meters to formatted display string (feet or meters)
 export function formatDim(meters, displayUnit = 'ft') {
@@ -44,8 +46,8 @@ export function CadFurnitureItem({ item, scale, mapX, mapY }) {
   const cat = String(item.category || item.type || item.asset || '').toLowerCase()
   const rawX = Number(item.position?.x ?? 0)
   const rawY = Number(item.position?.y ?? item.position?.z ?? 0)
-  const fw = Math.max(0.4, Number(item.dimensions?.width ?? 1.0)) * scale
-  const fd = Math.max(0.4, Number(item.dimensions?.depth ?? 1.0)) * scale
+  const fw = Math.max(0.005, Number(item.dimensions?.width ?? 1.0)) * scale
+  const fd = Math.max(0.005, Number(item.dimensions?.depth ?? 1.0)) * scale
   const rot = Number(item.rotation ?? item.rotation_y ?? 0)
 
   const cx = mapX(rawX)
@@ -232,19 +234,19 @@ export function CadDoorItem({ door, scale, mapX, mapY, rooms = [] }) {
   let rawX = Number(door.position?.x ?? 0)
   let rawY = Number(door.position?.y ?? 0)
   const rawZ = Number(door.position?.z ?? 0)
-  if (rawY <= 1.5 && rawZ > 1.5) rawY = rawZ
+  if (!door.wall_id && rawY <= 1.5 && rawZ > 1.5) rawY = rawZ
 
-  const dw = Math.max(0.7, Number(door.width || 0.9)) * scale
+  const dw = Math.max(0.05, Number(door.width || 0.9)) * scale
   const wallSide = String(door.wall_side || door.wall || 'south').toLowerCase()
   const swing = String(door.swing || 'inward_right').toLowerCase()
-  const hingeOnRight = swing.includes('right')
-  const opensOutward = swing.includes('outward')
+  const hingeOnRight = door.hinge_side ? door.hinge_side === 'right' : swing.includes('right')
+  const opensOutward = door.swing_direction ? door.swing_direction === 'outward' : swing.includes('outward')
   const isGarage = door.type === 'garage_door' || door.type === 'overhead' || door.swing === 'overhead'
   const isMain = door.type === 'main_entrance' || door.id?.includes('main')
 
   // Room anchor lookup: snap door directly to room perimeter wall
   const targetRoom = rooms.find((r) => r.id === (door.roomId || door.room_id))
-  if (targetRoom) {
+  if (targetRoom && !door.wall_id) {
     const rx = Number(targetRoom.position?.x || 0)
     const ry = Number(targetRoom.position?.y || targetRoom.position?.z || 0)
     const rw = Number(targetRoom.dimensions?.width || targetRoom.width || 4)
@@ -267,6 +269,22 @@ export function CadDoorItem({ door, scale, mapX, mapY, rooms = [] }) {
 
   const cx = mapX(rawX)
   const cy = mapY(rawY)
+
+  if (door.wall_id && !isGarage) {
+    const vertical = ['east', 'west'].includes(wallSide), sliding = /sliding/.test(door.type || '')
+    const color = isMain ? '#fbbf24' : '#38bdf8'
+    return <g>
+      <rect x={vertical ? cx - 5 : cx - dw / 2} y={vertical ? cy - dw / 2 : cy - 5} width={vertical ? 10 : dw} height={vertical ? dw : 10} fill="#0d1117" />
+      {sliding ? <g transform={`translate(${cx} ${cy}) rotate(${vertical ? -90 : 0})`}>
+        <path d={`M ${-dw / 2} -2 H 0 V 2 H ${dw / 2} M ${-dw / 2} -5 V 5 M ${dw / 2} -5 V 5`} fill="none" stroke={color} strokeWidth="2" />
+        <path d={`M ${-dw / 4} -8 H ${dw / 4} l -5 -3 m 5 3 l -5 3`} fill="none" stroke={color} strokeWidth="1" />
+      </g> : doorSectors({ ...door, hinge_side:door.hinge_side || (hingeOnRight ? 'right' : 'left'), swing_direction:door.swing_direction || (opensOutward ? 'outward' : 'inward') }).map((sector,index) => {
+        const hinge=sector[0], closed=sector[1], opened=sector.at(-1), radius=distance2D(hinge,closed)*scale
+        const cross=(closed.x-hinge.x)*(opened.y-hinge.y)-(closed.y-hinge.y)*(opened.x-hinge.x)
+        return <g key={index}><line x1={mapX(hinge.x)} y1={mapY(hinge.y)} x2={mapX(opened.x)} y2={mapY(opened.y)} stroke={color} strokeWidth="2" /><path d={`M ${mapX(closed.x)} ${mapY(closed.y)} A ${radius} ${radius} 0 0 ${cross > 0 ? 0 : 1} ${mapX(opened.x)} ${mapY(opened.y)}`} fill="none" stroke={color} strokeWidth="1" strokeDasharray="4 3" opacity=".6" /></g>
+      })}
+    </g>
+  }
 
   // Overhead Garage Roll-up Door
   if (isGarage) {
@@ -356,15 +374,15 @@ export function CadWindowItem({ windowItem, scale, mapX, mapY, rooms = [] }) {
   let rawX = Number(windowItem.position?.x ?? 0)
   let rawY = Number(windowItem.position?.y ?? 0)
   const rawZ = Number(windowItem.position?.z ?? 0)
-  if (rawY <= 1.5 && rawZ > 1.5) rawY = rawZ
+  if (!windowItem.wall_id && rawY <= 1.5 && rawZ > 1.5) rawY = rawZ
 
-  const ww = Math.max(0.8, Number(windowItem.width || 1.4)) * scale
+  const ww = Math.max(0.05, Number(windowItem.width || 1.4)) * scale
   const wallSide = String(windowItem.wall_side || windowItem.wall || 'south').toLowerCase()
   const isHoriz = !wallSide.includes('east') && !wallSide.includes('west') && !wallSide.includes('left') && !wallSide.includes('right')
 
   // Room anchor lookup: snap window directly to room exterior wall
   const targetRoom = rooms.find((r) => r.id === (windowItem.roomId || windowItem.room_id))
-  if (targetRoom) {
+  if (targetRoom && !windowItem.wall_id) {
     const rx = Number(targetRoom.position?.x || 0)
     const ry = Number(targetRoom.position?.y || targetRoom.position?.z || 0)
     const rw = Number(targetRoom.dimensions?.width || targetRoom.width || 4)

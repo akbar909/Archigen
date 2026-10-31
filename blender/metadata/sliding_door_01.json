@@ -1,5 +1,6 @@
 {
   "id": "sliding_door_01",
+  "canonical_yaw_offset_deg": 90,
   "name": "Sliding Door 01",
   "category": "general",
   "room": "general",

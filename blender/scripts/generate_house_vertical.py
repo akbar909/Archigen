@@ -45,7 +45,7 @@ def setup_lighting():
 # ─── Multi-Floor Staircases, Intermediate Slabs, Roof & Site ──────────────────
 
 def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upper_elevation: float = 3.0) -> List[Any]:
-    """Build a code-compliant U-shaped stair inside its reserved vertical core."""
+    """Build the selected flight geometry inside its reserved vertical core."""
     if bpy is None or not stair_def:
         return []
     pos = stair_def.get("position", {})
@@ -79,15 +79,64 @@ def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upp
         obj["archgen_stair_id"] = str(stair_def.get("id", name_prefix))
         obj["archgen_stair_component"] = component
 
-    def add_tread(name, x, y, z, width, depth):
+    def add_tread(name, x, y, z, width, depth, component="tread"):
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, z))
         obj = bpy.context.active_object
         obj.name = name
         obj.scale = (width, depth, min(0.16, riser_h * 0.85))
-        tag(obj, "tread")
+        tag(obj, component)
         if wood_mat:
             obj.data.materials.append(wood_mat)
         created.append(obj)
+
+    stair_type = str(stair_def.get("type", "u_shaped"))
+    if stair_type in ("straight", "l_shaped"):
+        clear_w = min(float(stair_def.get("clear_width", 1.1)), sw)
+
+        def rail_between(name, start, end):
+            a, b = mathutils.Vector(start), mathutils.Vector(end)
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(a + b) / 2.0)
+            rail = bpy.context.active_object
+            rail.name = name
+            rail.scale = (0.045, 0.045, (b - a).length)
+            rail.rotation_euler = (b - a).to_track_quat('Z', 'Y').to_euler()
+            tag(rail, "handrail")
+            if metal_mat:
+                rail.data.materials.append(metal_mat)
+            created.append(rail)
+
+        if stair_type == "straight":
+            straight_landing = min(.9, sd * .2)
+            straight_run = sd - straight_landing
+            tread = straight_run / steps_count
+            for index in range(steps_count):
+                add_tread(f"{name_prefix}_Straight_{index + 1:02d}", sx + sw / 2.0,
+                          sy + (index + .5) * tread, lower_elevation + (index + 1) * riser_h,
+                          sw, tread + .025)
+            add_tread(f"{name_prefix}_StraightLanding", sx + sw / 2, sy + straight_run + straight_landing / 2,
+                      upper_elevation, sw, straight_landing, component="landing")
+            for x in (sx + .04, sx + sw - .04):
+                rail_between(f"{name_prefix}_StraightRail", (x, sy, lower_elevation + .9),
+                             (x, sy + straight_run, upper_elevation + .9))
+        else:
+            # Northbound lower flight, square landing, eastbound upper flight.
+            run_y, run_x = max(.1, sd - clear_w), max(.1, sw - clear_w)
+            tread_y, tread_x = run_y / steps_per_flight, run_x / steps_per_flight
+            for index in range(steps_per_flight):
+                add_tread(f"{name_prefix}_L_Lower_{index + 1:02d}", sx + clear_w / 2,
+                          sy + (index + .5) * tread_y, lower_elevation + (index + 1) * riser_h,
+                          clear_w, tread_y + .025)
+                add_tread(f"{name_prefix}_L_Upper_{index + 1:02d}", sx + clear_w + (index + .5) * tread_x,
+                          sy + sd - clear_w / 2, lower_elevation + (steps_per_flight + index + 1) * riser_h,
+                          tread_x + .025, clear_w)
+            add_tread(f"{name_prefix}_L_Landing", sx + clear_w / 2, sy + sd - clear_w / 2,
+                      lower_elevation + sh / 2, clear_w, clear_w, component="landing")
+            for offset in (.04, clear_w - .04):
+                rail_between(f"{name_prefix}_L_LowerRail", (sx + offset, sy, lower_elevation + .9),
+                             (sx + offset, sy + run_y, lower_elevation + sh / 2 + .9))
+                rail_between(f"{name_prefix}_L_UpperRail", (sx + clear_w, sy + sd - offset, lower_elevation + sh / 2 + .9),
+                             (sx + sw, sy + sd - offset, upper_elevation + .9))
+        return created
 
     # Lower flight climbs north on the left; upper flight turns at the landing
     # and climbs south on the right. This fits a realistic 1 m clear width.
@@ -281,6 +330,37 @@ def build_roof_structure(
     return created
 
 
+def clip_path_start_after_driveway(
+    start_x: float, start_y: float, end_x: float, end_y: float,
+    drive_x0: float, drive_y0: float, drive_width: float, drive_depth: float,
+) -> tuple[float, float] | None:
+    """Remove the portion already covered by the driveway to prevent coplanar overlap."""
+    x1, y1 = drive_x0 + drive_width, drive_y0 + drive_depth
+    if not (drive_x0 <= start_x <= x1 and drive_y0 <= start_y <= y1):
+        return start_x, start_y
+    if drive_x0 <= end_x <= x1 and drive_y0 <= end_y <= y1:
+        return None
+    dx, dy = end_x - start_x, end_y - start_y
+    exits = []
+    if dx > 1e-6:
+        exits.append((x1 - start_x) / dx)
+    elif dx < -1e-6:
+        exits.append((drive_x0 - start_x) / dx)
+    if dy > 1e-6:
+        exits.append((y1 - start_y) / dy)
+    elif dy < -1e-6:
+        exits.append((drive_y0 - start_y) / dy)
+    valid = [amount for amount in exits if 0.0 <= amount <= 1.0]
+    if not valid:
+        return start_x, start_y
+    amount = min(valid)
+    # Two centimetres of overlap avoids a hairline gap without creating a broad
+    # coplanar region that flickers or appears cut away near the gate.
+    overlap = min(0.02 / max(math.hypot(dx, dy), 1e-6), amount)
+    amount -= overlap
+    return start_x + dx * amount, start_y + dy * amount
+
+
 def build_exterior_features(
     site_data: Dict[str, Any],
     exterior_data: Dict[str, Any],
@@ -337,6 +417,8 @@ def build_exterior_features(
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, by, bw_h / 2.0))
             bw_obj = bpy.context.active_object
             bw_obj.name = f"Exterior_Boundary_Wall_{idx+1}"
+            bw_obj["archgen_wall_id"] = bw_obj.name
+            bw_obj["archgen_exterior_feature"] = "boundary_wall"
             bw_obj.scale = (b_w, b_d, bw_h)
             if wall_mat:
                 bw_obj.data.materials.append(wall_mat)
@@ -372,6 +454,12 @@ def build_exterior_features(
         start_y = float(start.get("y", 0.0))
         end_x = float(end.get("x", start_x))
         end_y = float(end.get("y", sb_f))
+        clipped_start = clip_path_start_after_driveway(
+            start_x, start_y, end_x, end_y, drive_x0, 0.0, drive_w, drive_d,
+        ) if drive_cfg and drive_d > 0.05 else (start_x, start_y)
+        if clipped_start is None:
+            return created
+        start_x, start_y = clipped_start
         path_w = max(0.8, float(entrance_path_cfg.get("width", 1.2)))
         delta_x, delta_y = end_x - start_x, end_y - start_y
         path_length = math.hypot(delta_x, delta_y)

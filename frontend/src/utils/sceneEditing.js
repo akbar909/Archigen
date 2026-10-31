@@ -25,16 +25,36 @@ export function isVisibleInHierarchy(object) {
 }
 
 export function findEditableSurface(hitObject, sceneRoot) {
+  // Child primitives may carry incomplete extras. Use the resolved opening
+  // wrapper first so selection and replacement target the same whole object.
+  for (let node = hitObject; node && node !== sceneRoot.parent; node = node.parent) {
+    const opening = node.userData?.__archgenResolvedOpening
+    if (opening) return { type: opening.type, id: opening.id, object: node }
+    if (node === sceneRoot) break
+  }
   let fallback = null
   for (let node = hitObject; node && node !== sceneRoot.parent; node = node.parent) {
     const name = String(node.name || '').toLowerCase()
     const wallId = node.userData?.archgen_wall_id
     const roomId = node.userData?.archgen_room_id
+    const openingKind = node.userData?.archgen_opening_kind
+    const resolvedOpening = node.userData?.__archgenResolvedOpening
+    if (node.userData?.archgen_exterior_feature === 'boundary_wall' || /^exterior_boundary_wall_\d+$/i.test(node.name)) {
+      return { type: 'wall', id: String(wallId || node.name), object: node, exterior: true, roomId: 'exterior_ground' }
+    }
+    if (resolvedOpening) return { type: resolvedOpening.type, id: resolvedOpening.id, object: node }
+    if (node.userData?.archgen_exterior_feature === 'main_gate' || node.name === 'Exterior_Entrance_Gate') {
+      return { type: 'door', id: 'exterior_main_gate', object: node }
+    }
+    if (['window', 'door'].includes(openingKind) && node.userData.archgen_opening_id != null) {
+      return { type: openingKind, id: String(node.userData.archgen_opening_id), object: node }
+    }
     // A GLB wall can be a group containing several material primitives.
     // Prefer its stable metadata root over a similarly named child mesh.
     if (wallId) return { type: 'wall', id: String(wallId), object: node }
     if (roomId && name.startsWith('floor')) return { type: 'floor', id: String(roomId), roomId: String(roomId), object: node }
     if (name.startsWith('window_')) fallback = { type: 'window', id: node.name, object: node }
+    else if (/^door(?:_|frame_)/.test(name)) fallback = { type: 'door', id: node.name, object: node }
     else if (name.startsWith('wall_')) fallback = { type: 'wall', id: node.name, object: node }
     else if (name.startsWith('roof_') || name.startsWith('ceiling_')) fallback = { type: 'roof', id: node.name, object: node }
     else if (name.startsWith('floor_') && !/foundation|podium|intermediate|ground|garden|stair/.test(name)) fallback = { type: 'floor', id: node.name, object: node }

@@ -1,10 +1,13 @@
 /* eslint-disable react/prop-types, react/no-unknown-property */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { getRoomMeta, makeSurfaceTexture } from './constants'
 import { makeFloorTexture } from '../../utils/furnitureBuilder'
 import EditableFurniture from './EditableFurniture'
 import { isSelectionClick } from '../../utils/selectionGesture'
+import OpeningAsset from './OpeningAsset'
+import { doorType } from '../../utils/assetCompatibility'
+import { openingKey, resolveOpeningAsset } from '../../utils/openingEditing'
 
 // ── Solid Architectural Wall with Cap & Baseboard ───────────────────
 function ArchitecturalWall({ width, height, thickness, position, isAccent, accentMat, defaultMat, wallCapMat, baseboardMat, userData, onClick }) {
@@ -93,6 +96,8 @@ function WallWithOpening({
   position,
   rotation = [0, 0, 0],
   opening = null,
+  openingAsset,
+  onSelectOpening,
   isAccent,
   accentMat,
   defaultMat,
@@ -102,6 +107,8 @@ function WallWithOpening({
   onClick,
 }) {
   const mat = isAccent && accentMat ? accentMat : defaultMat
+  const [original, setOriginal] = useState(null)
+  const originals = useMemo(() => original ? [original] : [], [original])
 
   if (!opening) {
     return (
@@ -191,6 +198,11 @@ function WallWithOpening({
       )}
 
       {/* 3D Architectural Frame & Core */}
+      <group ref={setOriginal} onClick={(event) => {
+        if (!onSelectOpening || !isSelectionClick(event)) return
+        event.stopPropagation()
+        onSelectOpening(event, { width: opW, height: opH, depth: thickness })
+      }}>
       {isDoor ? (
         <group position={[0, -height / 2 + opH / 2, 0]}>
           <mesh castShadow>
@@ -226,6 +238,13 @@ function WallWithOpening({
           </mesh>
         </group>
       )}
+      </group>
+      {openingAsset && original && <OpeningAsset asset={openingAsset}
+        opening={{ width: opW, height: opH, depth: thickness,
+          position: [0, -height / 2 + sillH, 0], rotation: 0 }}
+        originals={originals} onSelect={onSelectOpening ? (entity) => onSelectOpening({
+          eventObject: entity.object, point: entity.hitPoint,
+        }, { width: opW, height: opH, depth: thickness }) : null} selection={{}} />}
     </group>
   )
 }
@@ -239,6 +258,8 @@ export default function RoomVolume({
   furniture,
   doors = [],
   windows = [],
+  openingOverrides = {},
+  uploadedAssets = [],
   editingEnabled = false,
   selectedEntity = null,
   onSelectEntity,
@@ -401,6 +422,15 @@ export default function RoomVolume({
     wallSide,
   })
 
+  const openingProps = (opening, wallSide) => opening ? {
+    openingAsset: resolveOpeningAsset(openingOverrides[openingKey(opening.type, opening.id)], uploadedAssets),
+    onSelectOpening: editingEnabled ? (event, dimensions) => onSelectEntity?.({
+      type: opening.type, id: String(opening.id), roomId: room.id, wallSide,
+      opening: { ...dimensions, type: opening.type, door_type: opening.door_type, id: String(opening.id) },
+      object: event.eventObject, hitPoint: event.point,
+    }) : null,
+  } : {}
+
   const roomDoors = useMemo(() => {
     const list = Array.isArray(doors) && doors.length > 0 ? doors.filter((d) => (d.roomId || d.room_id) === room.id) : []
     return list.length > 0 ? list : (Array.isArray(room.doors) ? room.doors : [])
@@ -414,7 +444,7 @@ export default function RoomVolume({
   // Resolve openings per wall side
   const backOpening = useMemo(() => {
     const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/back|north/))
-    if (d) return { ...d, type: 'door' }
+    if (d) return { ...d, door_type: doorType(d), type: 'door' }
     const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/back|north/))
     if (w) return { ...w, type: 'window' }
     return null
@@ -422,7 +452,7 @@ export default function RoomVolume({
 
   const frontOpening = useMemo(() => {
     const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/front|south/))
-    if (d) return { ...d, type: 'door' }
+    if (d) return { ...d, door_type: doorType(d), type: 'door' }
     const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/front|south/))
     if (w) return { ...w, type: 'window' }
     return null
@@ -430,7 +460,7 @@ export default function RoomVolume({
 
   const leftOpening = useMemo(() => {
     const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/left|west/))
-    if (d) return { ...d, type: 'door' }
+    if (d) return { ...d, door_type: doorType(d), type: 'door' }
     const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/left|west/))
     if (w) return { ...w, type: 'window' }
     return null
@@ -438,7 +468,7 @@ export default function RoomVolume({
 
   const rightOpening = useMemo(() => {
     const d = roomDoors.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/right|east/))
-    if (d) return { ...d, type: 'door' }
+    if (d) return { ...d, door_type: doorType(d), type: 'door' }
     const w = roomWindows.find((item) => String(item.wall_side || item.wall || '').toLowerCase().match(/right|east/))
     if (w) return { ...w, type: 'window' }
     return null
@@ -499,6 +529,7 @@ export default function RoomVolume({
         thickness={wallThickness}
         position={[0, wallHeight / 2, -length / 2 + wallThickness / 2]}
         opening={backOpening}
+        {...openingProps(backOpening, 'back')}
         isAccent={accentSide === 'back'}
         accentMat={accentWallMat}
         defaultMat={defaultWallMat}
@@ -509,7 +540,7 @@ export default function RoomVolume({
       />
 
       {/* Front Wall */}
-      {isLiving || isMasterSuite ? (
+      {(isLiving || isMasterSuite) && !frontOpening ? (
         <FloorToCeilingGlass
           width={width}
           height={wallHeight}
@@ -524,6 +555,7 @@ export default function RoomVolume({
           thickness={wallThickness}
           position={[0, wallHeight / 2, length / 2 - wallThickness / 2]}
           opening={frontOpening}
+          {...openingProps(frontOpening, 'front')}
           isAccent={accentSide === 'front'}
           accentMat={accentWallMat}
           defaultMat={defaultWallMat}
@@ -542,6 +574,7 @@ export default function RoomVolume({
         position={[-width / 2 + wallThickness / 2, wallHeight / 2, 0]}
         rotation={[0, Math.PI / 2, 0]}
         opening={leftOpening}
+        {...openingProps(leftOpening, 'left')}
         isAccent={accentSide === 'left'}
         accentMat={accentWallMat}
         defaultMat={defaultWallMat}
@@ -559,6 +592,7 @@ export default function RoomVolume({
         position={[width / 2 - wallThickness / 2, wallHeight / 2, 0]}
         rotation={[0, Math.PI / 2, 0]}
         opening={rightOpening}
+        {...openingProps(rightOpening, 'right')}
         isAccent={accentSide === 'right'}
         accentMat={accentWallMat}
         defaultMat={defaultWallMat}

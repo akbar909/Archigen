@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { toast } from 'react-hot-toast'
+import { layoutConflictSummary } from '../utils/layoutDiagnostics.js'
 import {
   approveFloorPlan as apiApproveFloorPlan,
   createVersionBranch as apiCreateVersionBranch,
@@ -60,6 +61,7 @@ export const useProjectStore = create((set, get) => ({
   isApprovingLayout: false,
   isSavingVersion: false,
   isDirty: false,
+  layoutValidation: null,
   sidebarLoading: false,
   projectAction: { type: null, projectId: null },
   sidebarOpen: false,
@@ -84,7 +86,7 @@ export const useProjectStore = create((set, get) => ({
     const resolved = typeof nextDesign === 'function'
       ? nextDesign(cloneJson(state.design))
       : nextDesign
-    return { design: resolved, isDirty: true }
+    return { design: resolved, layoutValidation: null, isDirty: JSON.stringify(resolved) !== JSON.stringify(state.persistedDesign) }
   }),
   discardDraftChanges: () => set((state) => ({
     design: cloneJson(state.persistedDesign),
@@ -515,7 +517,7 @@ export const useProjectStore = create((set, get) => ({
     try {
       const data = await apiApproveFloorPlan(pId, vId)
       if (data.success) {
-        toast.success('Floor plan approved! 3D architectural synthesis started... 🏡🚀')
+        toast.success('3D build started.')
         set((state) => {
           const nextDesign = data.version?.design
             ? { ...data.version.design, glb_url: data.version.glb_url || data.version.design.glb_url }
@@ -534,7 +536,11 @@ export const useProjectStore = create((set, get) => ({
         toast.error(data.error || 'Failed to approve floor plan')
       }
     } catch (err) {
-      toast.error(getApiErrorMessage(err, 'Failed to approve layout'))
+      const report = err?.response?.data?.validation
+      if (report?.critical_errors?.length) {
+        set({ layoutValidation: { versionId: vId, report } })
+        toast.error(layoutConflictSummary(report.critical_errors.length), { id: 'layout-conflicts', duration: 4500 })
+      } else toast.error('Could not approve this layout. Please try again.')
     } finally {
       set({ isApprovingLayout: false })
     }
@@ -579,7 +585,7 @@ export const useProjectStore = create((set, get) => ({
 
     set({ isSavingVersion: true })
     try {
-      const rebuild3D = needsBlenderRebuild(persistedDesign, design)
+      const structuralChanges = needsBlenderRebuild(persistedDesign, design)
       const trimmedNote = String(note || '').trim()
       const data = mode === 'new_version'
         ? await apiCreateVersionBranch(projectId, {
@@ -595,6 +601,9 @@ export const useProjectStore = create((set, get) => ({
       if (!data?.success || !savedDesign) {
         throw new Error('The server did not return the saved design')
       }
+      const report = data.validation
+      const hasConflicts = Boolean(report?.critical_errors?.length)
+      const rebuild3D = structuralChanges && Boolean(design.layout_approved) && !hasConflicts
 
       const previewGlbUrl = version?.glb_url || savedDesign.glb_url || design.glb_url || design.model_url
       let resolvedDesign = previewGlbUrl
@@ -608,6 +617,7 @@ export const useProjectStore = create((set, get) => ({
         activeVersionId: mode === 'new_version' ? versionId : nextVersionId,
         isDirty: false,
         isGenerating3D: rebuild3D,
+        layoutValidation: hasConflicts ? { versionId: nextVersionId, report } : null,
       })
 
       if (rebuild3D) {

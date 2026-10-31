@@ -3,6 +3,7 @@ import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react
 import { Bounds, Center, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { cleanOpeningScene } from '../../utils/openingGeometry'
 import { assetYawOffset } from '../../utils/wallMount'
 
 // Render at most two previews at once, then retain images. A canvas per card
@@ -34,11 +35,11 @@ function ThumbnailAsset({ entry, onCapture }) {
   const yaw = assetYawOffset(entry)
   const pitch = Number(entry.canonical_pitch_offset_deg) || 0
   const model = useMemo(() => {
-    const clone = cloneSkeleton(scene)
+    const clone = cloneSkeleton(cleanOpeningScene(scene, entry))
     clone.rotation.y += yaw * Math.PI / 180
     clone.rotation.x += pitch * Math.PI / 180
     return clone
-  }, [scene, yaw, pitch])
+  }, [scene, yaw, pitch, entry])
   useFrame(() => {
     if (++frames.current !== 12) return
     gl.render(renderScene, camera)

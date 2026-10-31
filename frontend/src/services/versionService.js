@@ -54,3 +54,8 @@ export async function fetchLayoutValidation(projectId, versionId) {
   const { data } = await apiClient.get(`/projects/${projectId}/versions/${versionId}/validation`)
   return data
 }
+
+export async function refineLayoutDraft(projectId, versionId, design, prompt) {
+  const { data } = await apiClient.post(`/projects/${projectId}/versions/${versionId}/layout/refine`, { design, prompt })
+  return data
+}

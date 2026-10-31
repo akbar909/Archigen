@@ -147,6 +147,7 @@ def apply_openings(
                 door_asset.name = f"Door_L{level}_{opening_id}"
                 door_asset["archgen_opening_id"] = opening_id
                 door_asset["archgen_opening_kind"] = "door"
+                door_asset["archgen_door_type"] = door_type
                 door_asset["archgen_opening_width"] = dw
                 door_asset["archgen_opening_height"] = dh
                 door_asset["archgen_opening_vertical"] = is_vert
@@ -161,6 +162,7 @@ def apply_openings(
                 frame.name = f"DoorFrame_L{level}_{opening_id}"
                 frame["archgen_opening_id"] = opening_id
                 frame["archgen_opening_kind"] = "door"
+                frame["archgen_door_type"] = door_type
                 frame["archgen_opening_width"] = dw
                 frame["archgen_opening_height"] = dh
                 frame["archgen_opening_vertical"] = is_vert

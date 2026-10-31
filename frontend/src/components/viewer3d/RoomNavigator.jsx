@@ -37,6 +37,7 @@ export default function RoomNavigator({
       {is3DReady && rooms.length > 0 && (
         <div
           ref={drawerRef}
+          className="room-navigator"
           style={{
             position: 'absolute',
             bottom: 30,

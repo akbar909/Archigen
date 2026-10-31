@@ -19,6 +19,7 @@ import {
 import { fetchUploadedAssetCatalog } from '../../services'
 import { furnitureCategory } from '../../utils/designEditing'
 import { isAssetRecommendedForRoom } from '../../utils/roomAssetLibrary'
+import { assetSurface, compatibleOpening, tabletopSupports } from '../../utils/assetCompatibility'
 import ModelThumbnail from './ModelThumbnail'
 
 const FURNITURE_COLORS = ['#4A6FA5', '#668475', '#9b5f4b', '#8B7355', '#3f4650', '#d9d4ca']
@@ -45,6 +46,7 @@ export default function InteriorEditorDrawer({
   onRotate,
   onResize,
   onSwapModel,
+  onSwapOpening,
   onDuplicate,
   onAddModelAsNew,
   onColorChange,
@@ -59,9 +61,13 @@ export default function InteriorEditorDrawer({
   const [assets, setAssets] = useState([])
   const [catalogState, setCatalogState] = useState('loading')
   const [wallTab, setWallTab] = useState('finish')
+  const [collapsed, setCollapsed] = useState(false)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
   const [modelActionTab, setModelActionTab] = useState('swap')
   const [libraryCategory, setLibraryCategory] = useState('all')
   const [search, setSearch] = useState('')
+  const [placementSurface, setPlacementSurface] = useState('floor')
+  const [supportId, setSupportId] = useState('')
   const [libraryScope, setLibraryScope] = useState('room')
   const confirmation = useRef(null)
   const placementId = pendingPlacement?.item.id
@@ -84,10 +90,12 @@ export default function InteriorEditorDrawer({
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => setWallTab(selection?.type === 'window' ? 'curtain' : 'finish'), [selection?.id, selection?.type])
+  useEffect(() => setWallTab(['window', 'door'].includes(selection?.type) ? 'opening' : 'finish'), [selection?.id, selection?.type])
   useEffect(() => setModelActionTab('swap'), [selection?.id])
   useEffect(() => {
     setLibraryCategory('all')
+    setPlacementSurface('floor')
+    setSupportId('')
     setLibraryScope('room')
     setSearch('')
   }, [selection?.roomId])
@@ -114,8 +122,10 @@ export default function InteriorEditorDrawer({
   const ceilingAssets = assets.filter((entry) => entry.group === 'ceiling_asset')
   const roofAssets = assets.filter((entry) => entry.group === 'roof_asset')
   const library = assets.filter((entry) => ['furniture', 'floor_overlay', 'ceiling_asset'].includes(entry.group) && entry.model_path)
-  const libraryRoom = rooms.find((entry) => String(entry.id) === String(selection.roomId)) || room
-  const roomLibrary = libraryScope === 'all' ? library : library.filter((entry) => isAssetRecommendedForRoom(entry, libraryRoom))
+  const libraryRoom = String(room?.id) === String(selection.roomId) ? room : rooms.find((entry) => String(entry.id) === String(selection.roomId))
+  const supports = tabletopSupports(libraryRoom)
+  const surfaceLibrary = library.filter((entry) => assetSurface(entry) === placementSurface)
+  const roomLibrary = libraryScope === 'all' ? surfaceLibrary : surfaceLibrary.filter((entry) => isAssetRecommendedForRoom(entry, libraryRoom))
   const categories = [...new Set(roomLibrary.map((entry) => entry.category || entry.group))].sort()
   const libraryItems = roomLibrary.filter((entry) => (libraryCategory === 'all' || (entry.category || entry.group) === libraryCategory)
     && entry.name.toLowerCase().includes(search.toLowerCase()))
@@ -126,9 +136,10 @@ export default function InteriorEditorDrawer({
     : isFloor || isGround
       ? isGround ? 'Exterior ground' : `${room?.name || room?.type || 'Room'} floor`
       : selection.type === 'library' ? 'Add uploaded assets'
+      : selection.exterior ? 'Boundary wall'
       : selection.type === 'roof' ? 'Exterior roof'
       : selection.type === 'ceiling' ? 'Interior ceiling'
-        : `${room?.name || room?.type || 'Room'} ${selection.type === 'window' ? 'window' : selection.wallSide || 'wall'}`
+        : `${room?.name || room?.type || 'Room'} ${['window', 'door'].includes(selection.type) ? selection.type : selection.wallSide || 'wall'}`
 
   const catalogStatus = catalogState === 'loading'
     ? <p className="editor-empty-copy"><Loader2 size={14} className="animate-spin" /> Loading your uploaded assets…</p>
@@ -160,7 +171,11 @@ export default function InteriorEditorDrawer({
   ) : catalogStatus || <p className="editor-empty-copy">No uploaded 3D assets are available here.</p>
 
   return (
-    <aside className="interior-editor-drawer" aria-label="3D interior editor">
+    <aside className={`interior-editor-drawer ${collapsed ? 'sheet-collapsed' : ''}`} aria-label="3D interior editor">
+      <button type="button" className="editor-sheet-handle mobile-only" aria-expanded={!collapsed}
+        aria-label={collapsed ? 'Expand editor' : 'Minimize editor'} onClick={() => setCollapsed((value) => !value)}>
+        <span />{collapsed ? 'Expand editor' : 'Minimize'}
+      </button>
       <div className="interior-editor-header">
         <div>
           <span className="interior-editor-kicker">3D EDITOR</span>
@@ -171,24 +186,43 @@ export default function InteriorEditorDrawer({
       </div>
 
       <div className="interior-editor-body scroll-soft">
-        {selection.type === 'library' && <section className="interior-editor-section">
+        {selection.type === 'library' && <section className="interior-editor-section editor-library-section">
           <label className="editor-library-field">Place in room
             <select value={selection.roomId || ''} onChange={(event) => onLibraryRoomChange?.(event.target.value)}>
               {rooms.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || entry.type || entry.id}</option>)}
             </select>
           </label>
+          <button type="button" className="editor-filter-toggle mobile-only" aria-expanded={filtersExpanded}
+            onClick={() => setFiltersExpanded((value) => !value)}>{filtersExpanded ? 'Hide filters' : 'Filters & placement options'}<ChevronDown size={16} /></button>
+          <div className={`editor-library-filters ${filtersExpanded ? 'expanded' : ''}`}>
           <div className="editor-segmented-control editor-library-scope" aria-label="Asset library scope">
             <button type="button" className={libraryScope === 'room' ? 'active' : ''} aria-pressed={libraryScope === 'room'}
-              onClick={() => { setLibraryScope('room'); setLibraryCategory('all') }}>For this room</button>
+              onClick={() => { setLibraryScope('room'); setLibraryCategory('all'); onCancelPlacement?.() }}>For this room</button>
             <button type="button" className={libraryScope === 'all' ? 'active' : ''} aria-pressed={libraryScope === 'all'}
-              onClick={() => { setLibraryScope('all'); setLibraryCategory('all') }}>All uploaded assets</button>
+              onClick={() => { setLibraryScope('all'); setLibraryCategory('all'); onCancelPlacement?.() }}>All uploaded assets</button>
           </div>
+          <label className="editor-library-field">Place on
+            <select value={placementSurface} onChange={(event) => {
+              setPlacementSurface(event.target.value); setLibraryCategory('all'); setSupportId(''); onCancelPlacement?.()
+            }}>
+              <option value="floor">Floor</option><option value="ceiling">Ceiling</option><option value="tabletop">Tabletop</option>
+            </select>
+          </label>
+          {placementSurface === 'tabletop' && <label className="editor-library-field">Table or desk
+            <select value={supports.some((entry) => entry.id === supportId) ? supportId : ''}
+              onChange={(event) => { setSupportId(event.target.value); onCancelPlacement?.() }}>
+              <option value="">Choose a table</option>
+              {supports.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || entry.category}</option>)}
+            </select>
+            {!supports.length && <span>Add a table, desk or nightstand to this room first.</span>}
+          </label>}
           <label className="editor-library-field">Category
             <select value={libraryCategory} onChange={(event) => setLibraryCategory(event.target.value)}>
               <option value="all">All categories</option>
               {categories.map((entry) => <option key={entry} value={entry}>{entry.replaceAll('_', ' ')}</option>)}
             </select>
           </label>
+          </div>
           <label className="editor-library-field">Search assets
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your uploaded models" />
           </label>
@@ -197,7 +231,7 @@ export default function InteriorEditorDrawer({
             <strong>Preview: {pendingPlacement.asset.name}</strong>
             <p>{pendingPlacement.status === 'loading' ? 'Loading 3D preview…' : pendingPlacement.status === 'error'
               ? 'Preview could not load. Choose another model or cancel.' : `Place in ${libraryRoom?.name || libraryRoom?.type || 'this room'}? Nothing is saved until you confirm.`}</p>
-            {pendingPlacement.status === 'ready' && <div className="editor-inline-actions" aria-label="Adjust placement preview">
+            {pendingPlacement.status === 'ready' && !pendingPlacement.item.support_id && <div className="editor-inline-actions" aria-label="Adjust placement preview">
               <button type="button" onClick={() => onAdjustPlacement?.(-0.25, 0)}>−X</button>
               <button type="button" onClick={() => onAdjustPlacement?.(0.25, 0)}>+X</button>
               <button type="button" onClick={() => onAdjustPlacement?.(0, 0, 90)}>Rotate 90°</button>
@@ -209,7 +243,7 @@ export default function InteriorEditorDrawer({
               <button type="button" disabled={pendingPlacement.status !== 'ready'} onClick={onConfirmPlacement}>Place here</button>
             </div>
           </div>}
-          {libraryItems.length > 0 || catalogState !== 'ready' ? modelGrid(libraryItems, onAddModelAsNew)
+          {libraryItems.length > 0 || catalogState !== 'ready' ? modelGrid(libraryItems, (entry) => onAddModelAsNew(entry, supportId))
             : <p className="editor-empty-copy">No matching uploaded assets. Try another category or All uploaded assets.</p>}
         </section>}
         {isFurniture && furniture && (
@@ -391,14 +425,28 @@ export default function InteriorEditorDrawer({
           </>
         )}
 
-        {(selection.type === 'wall' || selection.type === 'window') && (
+        {['wall', 'window', 'door'].includes(selection.type) && (
           <>
             <section className="interior-editor-section">
+              {selection.type === 'window' && <div className="editor-surface-tabs" role="tablist" aria-label="Window editing options">
+                <button type="button" role="tab" aria-selected={wallTab === 'opening'} className={wallTab === 'opening' ? 'active' : ''} onClick={() => setWallTab('opening')}>Windows</button>
+                <button type="button" role="tab" aria-selected={wallTab === 'curtain'} className={wallTab === 'curtain' ? 'active' : ''} onClick={() => setWallTab('curtain')}>Curtains &amp; Blinds</button>
+              </div>}
+              {wallTab === 'opening' && <>
+                <SectionTitle icon={<Layers3 size={15} />}>{selection.type === 'door' ? 'Compatible doors and gates' : 'Window models'}</SectionTitle>
+                {selection.opening ? <>
+                  <p className="editor-helper-copy">Fits the existing {selection.opening.width.toFixed(2)} m × {selection.opening.height.toFixed(2)} m opening. Width and height stay fixed; model proportions may change.</p>
+                  {modelGrid(assets.filter((entry) => compatibleOpening(entry, selection.opening, room)), onSwapOpening)}
+                  <div className="editor-inline-actions" style={{ marginTop: 12 }}>
+                    <button type="button" onClick={() => onSwapOpening(null)}>Restore original {selection.type}</button>
+                  </div>
+                </> : <p className="editor-helper-copy">This object could not be matched to a saved wall opening. Update the Blender worker scripts, sync them into the worker, then regenerate this version.</p>}
+              </>}
               {selection.type === 'wall' && <div className="editor-surface-tabs" role="tablist" aria-label="Wall editing options">
                 <button type="button" className={wallTab === 'finish' ? 'active' : ''} onClick={() => setWallTab('finish')}>Finishes</button>
                 <button type="button" className={wallTab === 'panel' ? 'active' : ''} onClick={() => setWallTab('panel')}>Panels</button>
                 <button type="button" className={wallTab === 'decor' ? 'active' : ''} onClick={() => setWallTab('decor')}>Décor</button>
-                <button type="button" className={wallTab === 'curtain' ? 'active' : ''} onClick={() => setWallTab('curtain')}>Curtains</button>
+                {!selection.exterior && <button type="button" className={wallTab === 'curtain' ? 'active' : ''} onClick={() => setWallTab('curtain')}>Curtains</button>}
               </div>}
               {wallTab === 'curtain' && <>
               <SectionTitle icon={<Layers3 size={15} />}>Curtains and blinds</SectionTitle>

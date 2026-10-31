@@ -248,7 +248,7 @@ export default function TopBar({ onOpenWizard, onOpenSave }) {
           </button>
         )}
 
-        {onOpenWizard && (
+        {!design && onOpenWizard && (
           <button
             type="button"
             onClick={onOpenWizard}

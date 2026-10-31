@@ -179,11 +179,12 @@ ARCHITECTURAL_SCHEMA_V3: Dict[str, Any] = {
                             }
                         }
                     },
-                    "walls": {"type": "array"},
-                    "doors": {"type": "array"},
-                    "windows": {"type": "array"},
-                    "stairs": {"type": "array"},
-                    "furniture": {"type": "array"},
+                    "walls": {"type": "array", "items": {"$ref": "#/definitions/editor_wall"}},
+                    "doors": {"type": "array", "items": {"$ref": "#/definitions/editor_opening"}},
+                    "windows": {"type": "array", "items": {"$ref": "#/definitions/editor_opening"}},
+                    "stairs": {"type": "array", "items": {"$ref": "#/definitions/editor_stair"}},
+                    "stair_openings": {"type": "array", "items": {"$ref": "#/definitions/editor_stair"}},
+                    "furniture": {"type": "array", "items": {"$ref": "#/definitions/editor_furniture"}},
                     "ceiling": {"type": "object"}
                 }
             }
@@ -221,6 +222,42 @@ ARCHITECTURAL_SCHEMA_V3: Dict[str, Any] = {
         }
     }
 }
+
+
+# Optional editor semantics preserve compatibility with existing v3 documents.
+# Required root/room contracts above remain unchanged; existing metadata survives.
+ARCHITECTURAL_SCHEMA_V3["definitions"] = {
+    "editor_point": {"type": "object", "properties": {
+        "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"},
+    }},
+    "editor_wall": {"type": "object", "properties": {
+        "id": {"type": "string"},
+        "start": {"$ref": "#/definitions/editor_point"}, "end": {"$ref": "#/definitions/editor_point"},
+        "thickness": {"type": "number", "minimum": .05, "maximum": .5},
+        "room_ids": {"type": "array", "items": {"type": "string"}},
+        "locked": {"type": "boolean"}, "load_bearing": {"type": "boolean"},
+    }},
+    "editor_opening": {"type": "object", "properties": {
+        "id": {"type": "string"}, "wall_id": {"type": "string"}, "room_id": {"type": "string"},
+        "connected_room_id": {"type": ["string", "null"]},
+        "position": {"$ref": "#/definitions/editor_point"},
+        "width": {"type": "number", "exclusiveMinimum": 0}, "height": {"type": "number", "exclusiveMinimum": 0},
+        "sill_height": {"type": "number", "minimum": 0}, "wall_offset": {"type": "number", "minimum": 0},
+        "hinge_side": {"type": "string", "enum": ["left", "right"]},
+        "swing_direction": {"type": "string", "enum": ["inward", "outward"]}, "locked": {"type": "boolean"},
+    }},
+    "editor_stair": {"type": "object", "properties": {
+        "id": {"type": "string"}, "position": {"$ref": "#/definitions/editor_point"},
+        "target_floor_id": {"type": ["string", "null"]}, "landing_opening_id": {"type": ["string", "null"]},
+        "locked": {"type": "boolean"},
+    }},
+    "editor_furniture": {"type": "object", "properties": {
+        "id": {"type": "string"}, "position": {"$ref": "#/definitions/editor_point"},
+        "locked": {"type": "boolean"}, "group_id": {"type": ["string", "null"]},
+        "flip_x": {"type": "boolean"}, "flip_y": {"type": "boolean"},
+    }},
+}
+ARCHITECTURAL_SCHEMA_V3["properties"]["floors"]["items"]["properties"]["rooms"]["items"]["properties"]["locked"] = {"type": "boolean"}
 
 
 def validate_schema_v3(doc: Dict[str, Any]) -> Tuple[bool, List[str]]:

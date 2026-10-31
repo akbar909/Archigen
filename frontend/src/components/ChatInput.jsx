@@ -42,7 +42,7 @@ export default function ChatInput({ onSend, onOpenWizard, loading, disabled, sho
   }, [prompt])
 
   const handleSubmit = () => {
-    if (!prompt.trim() || loading) return
+    if (!prompt.trim() || loading || disabled) return
     onSend({ prompt: prompt.trim(), style, timeout: 120 })
     setPrompt('')
   }
@@ -76,6 +76,8 @@ export default function ChatInput({ onSend, onOpenWizard, loading, disabled, sho
       <div className="input-container">
         <textarea
           ref={textareaRef}
+          id="design-prompt-input"
+          aria-label="Describe your design or changes"
           className="input-textarea"
           rows={1}
           placeholder='Describe your dream space... e.g. "A modern 3-bedroom house with open kitchen and garden view"'

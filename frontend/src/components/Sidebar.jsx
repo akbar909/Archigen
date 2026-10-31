@@ -191,12 +191,13 @@ function ProjectRow({
             {project.updated_at ? new Date(project.updated_at).toLocaleDateString() : ''}
           </span>
 
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div className="sidebar-project-actions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
             <button
               type="button"
               onClick={handleRename}
               title="Rename project"
               aria-label="Rename project"
+              className="sidebar-project-rename"
               disabled={actionBusy}
               style={{
                 display: 'inline-flex',
@@ -220,6 +221,7 @@ function ProjectRow({
               onClick={handleDelete}
               title="Delete project"
               aria-label="Delete project"
+              className="sidebar-project-delete"
               disabled={actionBusy}
               style={{
                 display: 'inline-flex',
@@ -364,7 +366,7 @@ function ProjectRow({
             }}
           >
             <PlusIcon />
-            Refine / New Version
+            New Version
           </button>
         </div>
       )}
@@ -387,6 +389,8 @@ export default function Sidebar(props) {
   const actionProjectId = props.actionProjectId ?? store.projectAction.projectId
   const isDirty = props.isDirty ?? store.isDirty
   const user = props.user ?? authStore.user
+  const accountName = user?.name && user.name.trim().toLowerCase() !== user.email?.trim().toLowerCase()
+    ? user.name : user?.email?.split('@')[0] || 'Architect'
 
   const onNewVersion = props.onNewVersion ?? store.createNewVersion
   const onNewProject = props.onNewProject ?? (() => store.createProject())
@@ -450,6 +454,7 @@ export default function Sidebar(props) {
             Archi<span>Gen</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" className="menu-toggle mobile-only" onClick={onClose} aria-label="Close navigation">✕</button>
             <button
               onClick={onToggleCollapse}
               className="menu-toggle desktop-only"
@@ -554,18 +559,32 @@ export default function Sidebar(props) {
         </div>
 
         {/* Footer — user */}
-        <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-avatar">
+        <div className="sidebar-footer lg:pt-2 lg:pb-1">
+          <div className="sidebar-user lg:px-2 lg:py-2 lg:gap-2">
+            <div className="sidebar-avatar lg:w-7 lg:h-7 lg:text-xs">
               {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A'}
             </div>
-            <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user?.name || user?.email || 'Architect'}</div>
-              <div className="sidebar-user-role">
+            <div className="sidebar-user-info lg:min-w-0 lg:flex-1 lg:overflow-hidden">
+              <div className="sidebar-user-name lg:truncate lg:text-[13px] lg:leading-tight" title={accountName}>{accountName}</div>
+              {user?.email && (
+                <div
+                  className="sidebar-user-email lg:truncate lg:whitespace-nowrap lg:overflow-hidden lg:text-ellipsis lg:text-[11px] lg:leading-normal"
+                  title={user.email}
+                >
+                  {user.email}
+                </div>
+              )}
+              <div className="sidebar-user-role lg:text-[11px] lg:leading-tight">
                 {projects.length} project{projects.length !== 1 ? 's' : ''}
               </div>
             </div>
-            <button onClick={onLogout} className="sidebar-logout-btn" title="Sign out" type="button">
+            <button
+              onClick={onLogout}
+              className="sidebar-logout-btn lg:w-7 lg:h-7 lg:min-w-[28px] lg:min-h-[28px] lg:p-1 lg:hover:text-red-400"
+              title="Sign out"
+              aria-label="Sign out"
+              type="button"
+            >
               <LogoutIcon />
             </button>
           </div>

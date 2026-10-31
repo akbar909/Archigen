@@ -3,9 +3,11 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { editorViewportOffset } from '../../utils/sceneEditing'
+import { roofEditingView } from '../../utils/cameraLook'
 
 export default function EditorCameraFraming({
   selection,
+  ceilingRoom = null,
   enabled,
   controlsRef,
   targetPos,
@@ -19,8 +21,18 @@ export default function EditorCameraFraming({
   const savedFov = useRef(null)
   const offset = useRef({ x: 0, y: 0 })
   const desiredOffset = useRef({ x: 0, y: 0 })
+  const refocusRoof = useRef(null)
   const lastTrackedTarget = useRef(new THREE.Vector3())
   const active = enabled && Boolean(selection?.object)
+  const roofSelected = ['roof', 'ceiling'].includes(selection?.type)
+
+  useEffect(() => {
+    // A deliberate zoom takes over from automatic selection framing.
+    const stop = () => { animation.current = null }
+    const canvas = gl.domElement
+    canvas.addEventListener('viewer-lens-change', stop)
+    return () => canvas.removeEventListener('viewer-lens-change', stop)
+  }, [gl])
 
   useEffect(() => {
     if (!active) {
@@ -37,7 +49,10 @@ export default function EditorCameraFraming({
     const drawer = canvas.closest('.viewer-container')?.querySelector('.interior-editor-drawer')
       || canvas.parentElement?.parentElement?.querySelector('.interior-editor-drawer')
     const update = () => {
-      desiredOffset.current = editorViewportOffset(canvas.getBoundingClientRect(), drawer?.getBoundingClientRect())
+      const next = editorViewportOffset(canvas.getBoundingClientRect(), drawer?.getBoundingClientRect())
+      const changed = Math.abs(next.x - desiredOffset.current.x) + Math.abs(next.y - desiredOffset.current.y) > 1
+      desiredOffset.current = next
+      if (changed) refocusRoof.current?.()
     }
     update()
     const observer = new ResizeObserver(update)
@@ -49,6 +64,39 @@ export default function EditorCameraFraming({
 
   useEffect(() => {
     if (!active || !selection?.object) return
+    if (roofSelected) {
+      const focus = () => {
+        const view = roofEditingView({ type: selection.type, object: selection.object, surfaceObject: selection.surfaceObject,
+          surfaceNormal: selection.surfaceNormal, hitPoint: selection.hitPoint }, camera,
+          { width: size.width, height: size.height }, desiredOffset.current, savedFov.current ?? camera.fov, ceilingRoom)
+        if (!view) return
+        const controls = controlsRef.current
+        if (controls) {
+          // Clear accumulated orbit damping before taking ownership of this focus.
+          const damping = controls.enableDamping
+          controls.enableDamping = false
+          controls.update?.()
+          controls.enableDamping = damping
+        }
+        const startPosition = camera.position.clone()
+        const distance = Math.max(camera.near * 4, startPosition.distanceTo(view.target))
+        animation.current = {
+          start: camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(distance).add(startPosition),
+          target: view.target,
+          startPosition,
+          endPosition: view.position,
+          // Rise clear of an exterior slab before moving across its footprint.
+          abovePosition: selection.type === 'roof' ? new THREE.Vector3(startPosition.x,
+            Math.max(startPosition.y, view.position.y, view.bounds.max.y + camera.near * 4), startPosition.z) : null,
+          startFov: camera.fov, targetFov: view.fov, elapsed: 0,
+        }
+        targetPos.current.copy(view.target)
+        targetCamPos.current.copy(view.position)
+      }
+      refocusRoof.current = focus
+      focus()
+      return () => { refocusRoof.current = null }
+    }
     selection.object.updateWorldMatrix(true, true)
     const bounds = new THREE.Box3().setFromObject(selection.object)
     if (bounds.isEmpty()) return
@@ -78,6 +126,10 @@ export default function EditorCameraFraming({
     selection?.object,
     selection?.type,
     selection?.hitPoint,
+    selection?.surfaceNormal,
+    selection?.surfaceObject,
+    roofSelected,
+    ceilingRoom,
     viewMode,
     camera,
     targetPos,
@@ -104,10 +156,10 @@ export default function EditorCameraFraming({
       return
     }
 
-    // Continuously follow moving object by updating the look direction and orbit target
-    // NEVER mutate camera.position so camera can never penetrate walls or go outside the room
+    // Existing furniture/surface tracking turns in place. Roof focus owns its
+    // position and face target so tracking cannot replace them with a slab center.
     // Do not turn camera during active gizmo mouse-drag to keep mouse movement at steady 1:1 speed
-    if (selection?.object && !isTransforming) {
+    if (!roofSelected && selection?.object && !isTransforming) {
       selection.object.updateWorldMatrix(true, false)
       const currentBounds = new THREE.Box3().setFromObject(selection.object)
       if (!currentBounds.isEmpty()) {
@@ -124,13 +176,28 @@ export default function EditorCameraFraming({
 
     const current = animation.current
     if (!current) return
-    current.elapsed = Math.min(1, current.elapsed + delta / 0.35)
+    current.elapsed = Math.min(1, current.elapsed + delta / (current.endPosition ? 0.65 : 0.35))
     const t = current.elapsed * current.elapsed * (3 - 2 * current.elapsed)
+    if (current.endPosition) {
+      if (current.abovePosition) {
+        const firstLeg = current.elapsed < 0.35
+        const amount = firstLeg ? current.elapsed / 0.35 : (current.elapsed - 0.35) / 0.65
+        const smooth = amount * amount * (3 - 2 * amount)
+        camera.position.lerpVectors(firstLeg ? current.startPosition : current.abovePosition,
+          firstLeg ? current.abovePosition : current.endPosition, smooth)
+      } else {
+        camera.position.lerpVectors(current.startPosition, current.endPosition, t)
+      }
+    }
     const look = current.start.clone().lerp(current.target, t)
     camera.fov = THREE.MathUtils.lerp(current.startFov, current.targetFov, t)
     camera.updateProjectionMatrix()
     camera.lookAt(look)
     controlsRef.current?.target.copy(look)
+    if (current.endPosition) {
+      targetCamPos.current.copy(camera.position)
+      targetPos.current.copy(look)
+    }
     if (current.elapsed === 1) animation.current = null
   })
   return null

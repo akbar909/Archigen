@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Sparkles,
   Sun,
+  X,
   Loader2,
   Building,
   Building2,
@@ -95,11 +96,17 @@ export default function ViewerOverlay({
 
   const currentModeObj = viewModes.find((m) => m.id === viewMode) || viewModes[0]
   const CurrentIcon = currentModeObj.icon
+  const requestRegeneration = () => {
+    if (window.confirm('Regenerate this model from the approved layout? This can take several minutes.')) onRegenerate3D?.()
+  }
+
+  if (!is2DVectorMode && glbUrl && !is3DReady) return null
 
   return (
     <>
       {/* ── Top Left Controls: Responsive Navigation & Layer Bar ── */}
       <div
+        className="viewer-toolbar viewer-toolbar-left"
         style={{
           position: 'absolute',
           top: 12,
@@ -116,6 +123,7 @@ export default function ViewerOverlay({
           <div ref={viewMenuRef} style={{ position: 'relative' }}>
             <button
               type="button"
+              aria-label={`Current view: ${currentModeObj.label}`}
               onClick={() => setIsViewMenuOpen((prev) => !prev)}
               style={{
                 display: 'flex',
@@ -173,6 +181,7 @@ export default function ViewerOverlay({
                     <button
                       key={mode.id}
                       type="button"
+                      data-view-mode={mode.id}
                       onClick={() => {
                         onModeChange(mode.id)
                         setIsViewMenuOpen(false)
@@ -294,7 +303,13 @@ export default function ViewerOverlay({
 
         {/* Multi-floor Selector (in 3D mode when >1 floor and 3D is rendered) */}
         {!is2DVectorMode && is3DReady && floors.length > 1 && onChangeFloorLevel && (
-          <div
+          <><select className="mobile-only viewer-floor-mobile" aria-label="Visible floor"
+            value={activeFloorLevel ?? 'all'} onChange={(event) => onChangeFloorLevel(event.target.value === 'all' ? null : Number(event.target.value))}>
+            <option value="all">All floors</option>
+            {floors.map((floor, index) => <option key={floor.level ?? index} value={floor.level ?? index}>
+              {(floor.level ?? index) === 0 ? 'Ground' : `Floor ${floor.level ?? index}`}
+            </option>)}
+          </select><div className="viewer-floor-selector"
             style={{
               display: 'flex',
               gap: 2,
@@ -349,13 +364,14 @@ export default function ViewerOverlay({
                 </button>
               )
             })}
-          </div>
+          </div></>
         )}
 
       </div>
 
       {/* ── Top Right: Blender 3D Status + Day/Night + Tools ── */}
       <div
+        className={`viewer-toolbar viewer-toolbar-right ${showInfoPopover ? 'details-open' : ''}`}
         style={{
           position: 'absolute',
           top: 12,
@@ -368,7 +384,7 @@ export default function ViewerOverlay({
       >
         {/* Saved cloud model opens directly; regeneration is a separate action. */}
         {isApproved && (
-          <div
+          <div className="viewer-model-status"
             style={{
               display: 'flex',
               background: 'rgba(18, 18, 18, 0.88)',
@@ -490,11 +506,7 @@ export default function ViewerOverlay({
             {glbUrl && is3DReady && onRegenerate3D && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm('Regenerate this model from the approved layout? This can take several minutes.')) {
-                    onRegenerate3D()
-                  }
-                }}
+                onClick={requestRegeneration}
                 title="Regenerate the Blender model"
                 aria-label="Regenerate the Blender model"
                 style={{
@@ -544,11 +556,15 @@ export default function ViewerOverlay({
         )}
 
         {/* Architectural Details Info Button */}
-        <div style={{ position: 'relative' }}>
+        <div className="viewer-info-menu" style={{ position: 'relative' }}>
           <button
             type="button"
             onClick={() => setShowInfoPopover(!showInfoPopover)}
             title="View Architectural Details"
+            aria-label="View architectural details"
+            aria-expanded={showInfoPopover}
+            aria-controls="architectural-details"
+            className="viewer-details-toggle"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -572,6 +588,9 @@ export default function ViewerOverlay({
           {/* Floating Details Popover Card */}
           {showInfoPopover && (
             <div
+              id="architectural-details"
+              role="region"
+              aria-label="Architectural details"
               style={{
                 position: 'absolute',
                 top: 36,
@@ -594,12 +613,16 @@ export default function ViewerOverlay({
                 <button
                   type="button"
                   onClick={() => setShowInfoPopover(false)}
+                  aria-label="Close architectural details"
+                  className="viewer-details-close"
                   style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}
                 >
-                  ✕
+                  <X size={18} />
                 </button>
               </div>
 
+              {is3DReady && onRegenerate3D && <button type="button" className="mobile-only viewer-rebuild-model"
+                onClick={requestRegeneration}><RotateCcw size={14} />Regenerate 3D model</button>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div style={{ background: 'rgba(255,255,255,0.05)', padding: '8px 10px', borderRadius: 8 }}>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Rooms</div>
@@ -628,8 +651,8 @@ export default function ViewerOverlay({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
                   {rooms.map((r, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      <span>{r.type}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>{r.width}m × {r.length}m</span>
+                      <span>{r.name || r.type}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{r.dimensions?.width ?? r.width ?? '—'}m × {r.dimensions?.depth ?? r.length ?? r.depth ?? '—'}m</span>
                     </div>
                   ))}
                 </div>
@@ -643,6 +666,7 @@ export default function ViewerOverlay({
           <button
             type="button"
             onClick={onToggleNightMode}
+            className="viewer-light-toggle"
             title={isNightMode ? 'Switch to Day Mode' : 'Switch to Night Glow'}
             style={{
               display: 'flex',
@@ -764,6 +788,7 @@ export default function ViewerOverlay({
               <span><strong style={{ color: '#6ee7b7' }}>Mouse</strong> Look direction</span>
               <span>•</span>
               <span><strong style={{ color: '#6ee7b7' }}>WASD</strong> Walk</span>
+              <span><strong style={{ color: '#6ee7b7' }}>Scroll</strong> Zoom</span>
             </>
           ) : (
             <>

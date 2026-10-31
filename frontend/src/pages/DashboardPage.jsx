@@ -10,7 +10,8 @@ import HomeWizard from '../components/home-wizard/HomeWizard'
 import SaveVersionModal from '../components/SaveVersionModal'
 import { DEFAULT_WIZARD_STATE } from '../components/home-wizard/wizard-constants'
 import { useAuthStore, useProjectStore } from '../store'
-import { Sparkles } from 'lucide-react'
+import { MessageCircle, Sparkles, X } from 'lucide-react'
+import { toast } from 'react-hot-toast'
 
 export default function DashboardPage() {
   const { projectId, versionId } = useParams()
@@ -38,6 +39,32 @@ export default function DashboardPage() {
   // Track modal wizard when viewing an existing 3D design
   const [showWizardModal, setShowWizardModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const update = () => {
+      document.documentElement.style.setProperty('--app-height', `${viewport?.height || window.innerHeight}px`)
+      document.documentElement.style.setProperty('--viewport-top', `${viewport?.offsetTop || 0}px`)
+      if (!window.matchMedia('(max-width: 768px), (max-height: 500px) and (pointer: coarse)').matches) setChatOpen(false)
+    }
+    update()
+    viewport?.addEventListener('resize', update)
+    viewport?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    return () => {
+      viewport?.removeEventListener('resize', update)
+      viewport?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+      document.documentElement.style.removeProperty('--app-height')
+      document.documentElement.style.removeProperty('--viewport-top')
+    }
+  }, [])
+  useEffect(() => {
+    if (!chatOpen) return undefined
+    const close = (event) => { if (event.key === 'Escape') setChatOpen(false) }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [chatOpen])
   // Keep wizard entries for this page session. They reset only when the page
   // itself is refreshed, not when generation fails or the wizard is closed.
   const [wizardDraft, setWizardDraft] = useState(() =>
@@ -135,15 +162,20 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${design ? 'has-design' : ''} ${chatOpen ? 'chat-open' : ''}`}>
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar onNewVersion={async (targetProjectId) => {
+        if(targetProjectId===activeProjectId && design){setShowSaveModal(true);return}
+        if(isDirty){toast('Save current changes before switching projects.');return}
+        const result=await selectProject(targetProjectId)
+        if(result?.version?.id){navigate(`/app/projects/${targetProjectId}/versions/${result.version.id}`);setShowSaveModal(true)}
+      }} />
 
       {/* Main area */}
       <div className="main-area">
         {/* TopBar */}
         <TopBar
-          onOpenWizard={handleOpenWizard}
+          onOpenWizard={design ? undefined : handleOpenWizard}
           onOpenSave={() => setShowSaveModal(true)}
         />
 
@@ -243,7 +275,7 @@ export default function DashboardPage() {
               {/* Tab content */}
               {activeTab === 'viewer' && (
                 <div className="viewer-stage" style={{ flex: 1, minHeight: 0, height: '100%', width: '100%', position: 'relative', overflow: 'hidden' }}>
-                  <Viewer3D design={design} />
+                  <Viewer3D design={design} interactionBlocked={chatOpen || showWizardModal || showSaveModal} onRequestSave={() => setShowSaveModal(true)} />
                 </div>
               )}
 
@@ -253,7 +285,20 @@ export default function DashboardPage() {
         </div>
 
         {/* Fixed Bottom Input: Only shown when a design is loaded OR when in quick prompt mode */}
-        {(design || !wizardActive) && (
+        {!design && !wizardActive && (
+          <>
+          <button type="button" className="mobile-chat-launcher mobile-only" aria-label="Open AI chat"
+            aria-expanded={chatOpen} aria-controls="design-chat" onClick={() => setChatOpen(true)}>
+            <MessageCircle size={20} /><span>Chat</span>
+          </button>
+          <section id="design-chat" className={`design-chat ${chatOpen ? 'open' : ''}`} aria-label="AI design chat">
+          <div className="mobile-chat-header mobile-only">
+            <div><strong>ArchiGen AI</strong><p>Describe your next design or refinement</p></div>
+            <button type="button" aria-label="Minimize chat" onClick={() => setChatOpen(false)}><X size={20} /></button>
+          </div>
+          <div className="mobile-chat-context mobile-only" role="status">
+            {loading ? 'Generating your design… You can minimize this panel.' : 'Describe a change, choose a style, or open the Design Wizard.'}
+          </div>
           <ChatInput
             onSend={handleGenerate}
             onOpenWizard={handleOpenWizard}
@@ -261,6 +306,8 @@ export default function DashboardPage() {
             disabled={false}
             showQuickPrompts={!hasGeneratedAnyDesign}
           />
+          </section>
+          </>
         )}
       </div>
 

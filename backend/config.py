@@ -29,6 +29,19 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "7860"))
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
+# CORS config
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://192.168.1.5:5173",
+    "http://192.168.18.6:5173",
+    "http://127.0.0.1:5173",
+]
+_env_origins = os.getenv("ALLOWED_ORIGINS")
+if _env_origins:
+    ALLOWED_ORIGINS = [o.strip() for o in _env_origins.split(",") if o.strip()]
+else:
+    ALLOWED_ORIGINS = DEFAULT_ALLOWED_ORIGINS
+
 # MongoDB config
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://fyp:fyp@cluster0.xr6mbty.mongodb.net/?appName=Cluster0")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", os.getenv("name", "archigen"))
@@ -62,5 +75,3 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "archigen-storage")
 AWS_S3_PUBLIC_BASE_URL = os.getenv("AWS_S3_PUBLIC_BASE_URL", "")
-
-
