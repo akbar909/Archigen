@@ -4,7 +4,7 @@ export function buildSpatialGraph(floor) {
     const a = door.room_id || door.roomId;
     const wall = floor.walls?.find(w => w.id === door.wall_id);
     const ids = wall?.room_ids || wall?.connected_rooms || [];
-    const b = door.connected_room_id || ids.find(id => id !== a) || (wall?.type === 'exterior' || door.type === 'main_entrance' ? 'exterior' : null);
+    const b = ids.includes(a) ? ids.find(id => id !== a) || (ids.length === 1 ? 'exterior' : null) : null;
     if (!graph.has(a) || !graph.has(b) || a === b) continue;
     graph.get(a).add(b);
     graph.get(b).add(a);

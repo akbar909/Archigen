@@ -1,8 +1,9 @@
 import React from 'react';
 import { ArrowUp, Plus } from 'lucide-react';
+import { stairPlacementDimensions } from '../../utils/verticalCirculation.js';
 export const STAIR_PRESETS = {u_shaped:{label:'U-shaped',width:2.2,depth:3.8},straight:{label:'Straight',width:1.1,depth:5.9},l_shaped:{label:'L-shaped',width:3.8,depth:3.8}};
 export default function StairPlacementPanel({floor, upper, type, onType, onAddFloor, busy}) {
-  const preset=STAIR_PRESETS[type];
+  const preset=stairPlacementDimensions(type, floor.floor_height || 3);
   return <div className="cad-inspector-content cad-stair-setup">
     <div className="cad-eyebrow">CONNECT FLOORS</div><h3>Place a staircase</h3>
     <p>Place stairs on the lower floor. The opening on the floor above follows automatically.</p>

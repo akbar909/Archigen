@@ -24,8 +24,8 @@ export const boxesOverlap = (a, b, gap = 0) => a.x < b.right + gap - EPS && a.ri
 export function rotatedRectangle(item, padding = 0) {
   const w = Number(item.dimensions?.width) / 2 + padding,
     d = Number(item.dimensions?.depth) / 2 + padding;
-  // Blender's positive yaw maps to clockwise on the architectural XY plane.
-  const angle = -(Number(item.rotation) || 0) * Math.PI / 180,
+  // Positive yaw is counterclockwise in architectural XY, matching Blender Z-up.
+  const angle = (Number(item.rotation) || 0) * Math.PI / 180,
     c = Math.cos(angle),
     s = Math.sin(angle);
   return [[-w, -d], [w, -d], [w, d], [-w, d]].map(([x, y]) => ({

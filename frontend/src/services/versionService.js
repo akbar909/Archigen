@@ -29,6 +29,7 @@ export async function generateDesign(payload) {
 }
 
 export async function generate3D(projectId, versionId, { force = false } = {}) {
+  // New builds return 202 + pending/version status; saved model reuse returns a URL.
   const { data } = await apiClient.post(
     `/projects/${projectId}/versions/${versionId}/generate-3d`,
     { force }

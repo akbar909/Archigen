@@ -35,6 +35,7 @@ SCENARIOS = [
     ("wide_plot_variant", ["garage", "living_room", "dining_room", "kitchen", "bedroom", "bathroom"], (22, 16), 1),
     ("deterministic_repeat", ["living_room", "kitchen", "bedroom", "bathroom"], (14, 18), 1),
     ("balanced_two_storey_wizard", [], (12.19, 18.29), 2),
+    ("compact_north_25x40_two_storey", [], (7.62, 12.19), 2),
 ]
 
 
@@ -60,7 +61,14 @@ def exported_furniture_ids(glb_path):
 
 
 def make_layout(name, room_types, plot, floors):
-    if name == "balanced_two_storey_wizard":
+    if name == "compact_north_25x40_two_storey":
+        from test_prompt_floor_program import DOUBLE_STOREY_PROMPT
+        from utils.gemini_normalization import _normalize_design, _validate_home_design_schema
+        design = _normalize_design({"style": "modern", "rooms": []}, DOUBLE_STOREY_PROMPT)
+        valid, errors = _validate_home_design_schema(design)
+        if not valid:
+            raise AssertionError(f"{name}: generation failed: {errors}")
+    elif name == "balanced_two_storey_wizard":
         wizard = {
             "plot": {
                 "width": "40", "length": "60", "unit": "ft", "floors": 2,

@@ -4,8 +4,8 @@ Open **2D CAD Plan** to edit the active version. The editor uses the project's
 existing JSON draft and Save/Save as Version flow. Unsaved edits also appear in
 the JSON viewer. **Save changes** in the top bar is the single save entry point;
 it offers overwrite or save as a new version. Save the draft, then choose
-**Build 3D** in the editor. Existing approved models rebuild after valid structural
-changes. The generated design uses the entire workspace without the initial
+**Build 3D** in the editor when you want a new model. Saving never starts Blender,
+including changes to an already approved layout. The generated design uses the entire workspace without the initial
 chat panel or Design Wizard.
 
 ## Editing
@@ -88,8 +88,39 @@ supplied draft, and does not write to the database.
 Approval conflicts appear as concise, selectable rows in **Design checks**.
 The toast gives the count; raw wall and door identifiers are not appended to it.
 **Repair door links** rehosts doors on a real shared wall when one exists.
+Main entrances and garage doors connect their room to `exterior`, which is an
+outside endpoint rather than a second room. They stay on exterior walls. Select
+the entrance and ask **Edit with AI** to "fix this main gate" or "repair this door"
+to repair its host and clearance while preserving its intended connections.
+The separate **MAIN GATE** drawn at the plot boundary is a site feature; selecting
+the house entrance edits the entrance door. A failed edit shows its reason in
+both the inspector and a short toast.
 If a room move disconnected the rooms completely, undo that move or put the door
 on a suitable shared wall; the editor does not silently erase its intended link.
+
+## 3D build status
+
+Explicit approval, Build 3D and retry actions start a background job and
+return HTTP 202 immediately. Version reads expose `generation_3d` with a job ID,
+running/completed/failed status, UTC timestamps, and a short failure reason.
+Repeated requests join an active build. Completion updates match the job ID so
+an older attempt cannot replace a newer model.
+
+The editor displays the running or failed status above its footer. A retry keeps
+the previous preview until the new job completes; an old GLB URL does not count
+as completion. Polling covers the default 600-second worker limit and 630-second
+backend timeout instead of stopping after 200 seconds. If the backend restarts
+and loses a background thread, the saved job eventually reports a timeout and
+can be retried. Detailed Blender process errors remain in the worker/backend logs.
+
+Deploy the backend and frontend together for this status protocol. Blender
+geometry/asset changes separately require the script and metadata sync described
+in [worker troubleshooting](blender-worker-troubleshooting.md).
+
+Saving a draft updates its saved JSON without regenerating the model. A temporary
+asset added and then deleted before saving cancels that addition, including its
+empty helper collections and deletion marker. Existing saved asset deletions and
+other edits continue to show **Save changes**.
 
 ## Verification
 

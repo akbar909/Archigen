@@ -48,8 +48,8 @@ WALL_BACKED_CATEGORIES = {
 def wall_mount_rotation(requirement: Dict[str, Any]) -> Optional[float]:
     """Blender Z-up yaw for canonical front (-Y) toward the room normal.
 
-    Frontend semantic rotation is clockwise; Blender rotation is counterclockwise.
-    Do not reuse its sign for left/right wall mounts.
+    Canonical architectural rotation and Three.js Y yaw use the same sign.
+    The wall normal also corrects older saved wall-mount angles.
     """
     normal = requirement.get('wall_normal') or {}
     nx, nz = float(normal.get('x', 0)), float(normal.get('z', 0))
@@ -144,6 +144,8 @@ def _door_clearance_zones(
     room_id = str(room_data.get("id", ""))
     zones = []
     for door in door_openings or []:
+        if str(door.get('type', '')).lower() == 'garage_door' or str(door.get('swing', '')).lower() == 'overhead':
+            continue
         dx, dy, dz = _opening_xy(door)
         if abs(dz - rz) > 0.35:
             continue
@@ -174,10 +176,24 @@ def _door_clearance_zones(
     return zones
 
 
+def doorways_overlapping_height(doors, min_z, max_z):
+    """Use the actual model height when reserving a pedestrian door approach."""
+    result = []
+    for door in doors or []:
+        if str(door.get('type', '')).lower() == 'garage_door' or str(door.get('swing', '')).lower() == 'overhead':
+            continue
+        base = _opening_xy(door)[2]
+        height = float(door.get('height', door.get('dimensions', {}).get('height', 2.1)))
+        if min_z < base + height and max_z > base:
+            result.append(door)
+    return result
+
+
 def _find_clear_position(
     desired: List[float], width: float, depth: float, rotation_deg: float,
     bounds: Dict[str, Any], forbidden: List[Tuple[float, float, float, float]],
     occupied: List[Tuple[float, float, float, float]],
+    fixed_axis: Optional[str] = None,
 ) -> Tuple[List[float], Tuple[float, float, float, float]]:
     rx = float(bounds.get("x", 0.0))
     ry = float(bounds.get("y", 0.0))
@@ -187,21 +203,33 @@ def _find_clear_position(
     half_w, half_d = (raw[2] - raw[0]) / 2.0, (raw[3] - raw[1]) / 2.0
     min_x, max_x = rx + half_w + 0.10, rx + rw - half_w - 0.10
     min_y, max_y = ry + half_d + 0.10, ry + rd - half_d - 0.10
+    if fixed_axis == 'x':
+        min_x = max_x = float(desired[0])
+    if fixed_axis == 'y':
+        min_y = max_y = float(desired[1])
     if min_x > max_x or min_y > max_y:
-        footprint = _axis_aligned_footprint(desired[0], desired[1], width, depth, rotation_deg)
-        return desired, footprint
+        raise RuntimeError('Furniture does not fit inside its room with the required wall clearance.')
 
     desired_x = max(min_x, min(max_x, float(desired[0])))
     desired_y = max(min_y, min(max_y, float(desired[1])))
-    candidates = [(desired_x, desired_y)]
+    x_values, y_values = {desired_x, min_x, max_x}, {desired_y, min_y, max_y}
+    # Include obstruction edges so a small but usable gap is not skipped by
+    # the coarse grid in a compact room.
+    for zone in forbidden + occupied:
+        x_values.update((max(min_x, min(max_x, zone[0] - half_w - .04)),
+                         max(min_x, min(max_x, zone[2] + half_w + .04))))
+        y_values.update((max(min_y, min(max_y, zone[1] - half_d - .04)),
+                         max(min_y, min(max_y, zone[3] + half_d + .04))))
     step = 0.25
     x = min_x
     while x <= max_x + 0.001:
-        y = min_y
-        while y <= max_y + 0.001:
-            candidates.append((x, y))
-            y += step
+        x_values.add(min(x, max_x))
         x += step
+    y = min_y
+    while y <= max_y + .001:
+        y_values.add(min(y, max_y))
+        y += step
+    candidates = [(x, y) for x in sorted(x_values) for y in sorted(y_values)]
     candidates.sort(key=lambda value: (value[0] - desired_x) ** 2 + (value[1] - desired_y) ** 2)
 
     def choose(avoid_occupied: bool) -> Optional[Tuple[float, float, Tuple[float, float, float, float]]]:
@@ -221,7 +249,63 @@ def _find_clear_position(
             f"inside room bounds {bounds}."
         )
     cx, cy, footprint = selected
-    return [round(cx, 2), round(cy, 2), desired[2]], footprint
+    return [round(cx, 4), round(cy, 4), desired[2]], footprint
+
+
+def reconcile_evaluated_footprint(footprint, bounds, forbidden, occupied=(), *, user_exact=False, fixed_axis=None):
+    """Resolve actual mesh extents after import; metadata dimensions are estimates."""
+    rx, ry = float(bounds.get('x', 0)), float(bounds.get('y', 0))
+    rw, rd = float(bounds.get('width', 4)), float(bounds.get('depth', 4))
+    outside = (footprint[0] < rx - .16 or footprint[1] < ry - .16
+               or footprint[2] > rx + rw + .16 or footprint[3] > ry + rd + .16)
+    blocked = any(_rectangles_overlap(footprint, zone, .01) for zone in forbidden)
+    if not outside and not blocked:
+        return 0.0, 0.0, footprint
+    if user_exact:
+        reason = 'blocks a door approach' if blocked else 'extends outside its room'
+        raise RuntimeError(f'The exact furniture placement {reason}. Move it in the editor before building 3D.')
+    width, depth = footprint[2] - footprint[0], footprint[3] - footprint[1]
+    if width > rw + .32 or depth > rd + .32:
+        raise RuntimeError('The actual furniture model is larger than its room.')
+    center = [(footprint[0] + footprint[2]) / 2, (footprint[1] + footprint[3]) / 2, 0]
+    placed, repaired = _find_clear_position(center, width, depth, 0, bounds, list(forbidden), list(occupied), fixed_axis)
+    if (repaired[0] < rx - .16 or repaired[1] < ry - .16
+            or repaired[2] > rx + rw + .16 or repaired[3] > ry + rd + .16):
+        raise RuntimeError('The furniture wall anchor extends outside its room. Correct its wall placement in the editor.')
+    return placed[0] - center[0], placed[1] - center[1], repaired
+
+
+def _reconcile_evaluated_placement(obj, requirement, room_data, doors, occupied):
+    """Check imported/transformed geometry before the final scene validator."""
+    bpy.context.view_layer.update()
+    meshes = [part for part in [obj] + list(obj.children_recursive) if part.type == 'MESH']
+    points = [part.matrix_world @ mathutils.Vector(corner) for part in meshes for corner in part.bound_box]
+    if not points:
+        raise RuntimeError(f"Furniture '{requirement.get('id')}' has no mesh geometry.")
+    footprint = (min(point.x for point in points), min(point.y for point in points),
+                 max(point.x for point in points), max(point.y for point in points))
+    relevant = doorways_overlapping_height(doors, min(point.z for point in points), max(point.z for point in points))
+    forbidden = [] if str(room_data.get('type', '')).lower() == 'garage' else _door_clearance_zones(room_data, relevant)
+    fixed_axis = None
+    if obj.get('archgen_wall_mounted'):
+        bounds = room_data.get('bounds', {})
+        side = _nearest_wall_side((footprint[0]+footprint[2])/2, (footprint[1]+footprint[3])/2,
+                                  float(bounds.get('x',0)), float(bounds.get('y',0)),
+                                  float(bounds.get('width',4)), float(bounds.get('depth',4)))
+        fixed_axis = 'y' if side in ('north', 'south') else 'x'
+    try:
+        dx, dy, footprint = reconcile_evaluated_footprint(
+            footprint, room_data.get('bounds', {}), forbidden, occupied,
+            user_exact=str(requirement.get('placement_hint', '')).lower() in {'user_exact','wall_exact'},
+            fixed_axis=fixed_axis)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Furniture '{requirement.get('instance_id') or requirement.get('id')}' in room '{room_data.get('id')}': {exc}") from exc
+    if abs(dx) > .0001 or abs(dy) > .0001:
+        obj.location.x += dx
+        obj.location.y += dy
+        bpy.context.view_layer.update()
+        print(f"[REPAIR] Moved furniture '{requirement.get('id')}' clear of its door approach using actual mesh bounds.")
+    return footprint
 
 
 def _settle_on_finished_floor(obj: Any, floor_z: float) -> float:
@@ -584,7 +668,11 @@ def populate_room_furniture(
                 meta[key] = float(requested_dimensions[key])
         if meta:
             user_exact = str(req.get('placement_hint', '')).lower() in {'user_exact', 'wall_exact'}
-            rot = rot if user_exact else _wall_facing_rotation(
+            # Canonical layouts already resolved the rotation used by the CAD
+            # footprint. Re-inferring it from a nearby wall here makes the 3D
+            # furniture disagree with that saved draft, including rotated
+            # wardrobes. Only legacy requirements without a rotation need it.
+            rot = rot if user_exact or req.get('rotation_deg') is not None else _wall_facing_rotation(
                 str(meta.get("category") or category or ""),
                 pos,
                 bounds,
@@ -599,12 +687,17 @@ def populate_room_furniture(
             width = float(meta.get("width", 0.8))
             depth = float(meta.get("depth", 0.8))
             item_forbidden_zones = [] if str(category or "").lower() == "vehicle" else forbidden_zones
-            if user_exact:
+            if user_exact or req.get('wall_mounted') or req.get('ceiling_mounted') or float(req.get('mount_height', 0) or 0) > 0:
                 footprint = _axis_aligned_footprint(pos[0], pos[1], width, depth, rot)
             else:
-                pos, footprint = _find_clear_position(
-                    pos, width, depth, rot, bounds, item_forbidden_zones, occupied_footprints,
-                )
+                try:
+                    pos, footprint = _find_clear_position(
+                        pos, width, depth, rot, bounds, item_forbidden_zones, occupied_footprints,
+                    )
+                except RuntimeError:
+                    # An imported model may be smaller than its catalog target.
+                    # Decide from its measured footprint after import below.
+                    footprint = _axis_aligned_footprint(pos[0], pos[1], width, depth, rot)
 
             instance_id = req.get("instance_id") or req.get("id")
             try:
@@ -660,6 +753,7 @@ def populate_room_furniture(
                     plane = mathutils.Vector((float(anchor['x']), float(anchor['y']), 0.0)).dot(inward)
                     obj.location += inward * (plane + 0.012 - back)
                     bpy.context.view_layer.update()
+            footprint = _reconcile_evaluated_placement(obj, req, room_data, door_openings, occupied_footprints)
             obj["archgen_room_id"] = req.get("room_id") or room_data.get("id", "")
             obj["archgen_entity_type"] = "furniture"
             obj["archgen_model_id"] = str(preferred_id or meta.get("id") or category or "furniture")

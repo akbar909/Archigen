@@ -46,6 +46,7 @@ RUNTIME_BUNDLE = (
     ("scripts/generate_house_vertical.py", "scripts/generate_house_vertical.py"),
     ("scripts/generate_house_validation.py", "scripts/generate_house_validation.py"),
     ("scripts/import_asset.py", "scripts/import_asset.py"),
+    ("scripts/s3_asset_resolver.py", "scripts/s3_asset_resolver.py"),
     ("scripts/place_furniture.py", "scripts/place_furniture.py"),
     ("scripts/export_glb.py", "scripts/export_glb.py"),
     ("scripts/sync_s3_assets.py", "scripts/sync_s3_assets.py"),

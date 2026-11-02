@@ -1,4 +1,5 @@
 // World-space collision model shared by the walkthrough and its camera guard.
+import { navigationStairs, stairSurface, inStairFootprint } from './stairNavigation.js'
 export const WALK_SPEED = 2.6
 export const WALK_RADIUS = 0.24
 export const LOOK_SENSITIVITY = 0.0018
@@ -29,7 +30,7 @@ export function normalizeNavigationDoors({ doors = [], detected = [], rooms = []
 }
 
 export function createNavigationModel({ rooms = [], doors = [], walls = [], zSign = -1, wallThickness = 0.2,
-  exteriorAccess = () => false, radius = WALK_RADIUS }) {
+  exteriorAccess = () => false, radius = WALK_RADIUS, floors = [], stairs = [] }) {
   const lines = []
   walls.forEach((wall) => {
     const start = wall.start || wall.from, end = wall.end || wall.to
@@ -75,7 +76,59 @@ export function createNavigationModel({ rooms = [], doors = [], walls = [], zSig
     })
     if (cursor < line.max) segments.push({ ...line, min: cursor })
   })
-  return { rooms, doors, segments, passages, radius, wallThickness, exteriorAccess }
+  return { rooms, doors, segments, passages, radius, wallThickness, exteriorAccess, zSign,
+    stairs: navigationStairs(floors, rooms, stairs) }
+}
+
+export function walkableSurface(model, x, z, level, height) {
+  const surfaces = model.stairs.flatMap(stair => {
+    if (level !== stair.lowerLevel && level !== stair.upperLevel) return []
+    const surface = stairSurface(stair, x, z, model.zSign, model.radius)
+    return surface && isWalkablePoint(model, x, z, surface.level) ? [surface] : []
+  })
+  const occupied = model.stairs.some(s => (s.lowerLevel === level && inStairFootprint(s, x, z, model.zSign))
+    || (s.upperLevel === level && inStairFootprint(s, x, z, model.zSign, true)))
+  if (!occupied && isWalkablePoint(model, x, z, level)) {
+    const room = model.rooms.find(r => r.level === level && Math.abs(x - r.x) <= r.w / 2 && Math.abs(z - r.z) <= r.l / 2)
+    const y = Number(room?.y ?? model.rooms.find(r => r.level === level)?.y) || 0
+    surfaces.push({ x, z, y, level })
+  }
+  return surfaces.filter(p => Math.abs(p.y - height) <= 0.3)
+    .sort((a, b) => Math.abs(a.y - height) - Math.abs(b.y - height))[0] || null
+}
+
+export function nearestWalkablePosition(model, x, z, level, height, roomId) {
+  const y = height ?? (Number(model.rooms.find(r => r.level === level)?.y) || 0)
+  const current = walkableSurface(model, x, z, level, y)
+  if (current) return current
+  const candidates = []
+  // Search usable floor, not the centre of a room that may be a stair void.
+  for (const room of model.rooms.filter(r => r.level === level && (roomId == null || String(r.id) === String(roomId)))) {
+    const margin = model.radius + model.wallThickness / 2 + 0.02
+    const halfX = Math.max(0, room.w / 2 - margin), halfZ = Math.max(0, room.l / 2 - margin)
+    for (let ix = 0; ix <= 8; ix++) for (let iz = 0; iz <= 8; iz++) {
+      const cx = room.x - halfX + 2 * halfX * ix / 8, cz = room.z - halfZ + 2 * halfZ * iz / 8
+      const candidate = walkableSurface(model, cx, cz, level, Number(room.y) || 0)
+      if (candidate && !candidate.stairId) candidates.push(candidate)
+    }
+  }
+  candidates.sort((a, b) => (a.x - x) ** 2 + (a.z - z) ** 2 - (b.x - x) ** 2 - (b.z - z) ** 2)
+  return candidates[0] || { x, z, y, level }
+}
+
+export function moveWithElevation(model, position, dx, dz) {
+  let next = { ...position }
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.04))
+  const sx = dx / steps, sz = dz / steps
+  for (let i = 0; i < steps; i++) {
+    const both = walkableSurface(model, next.x + sx, next.z + sz, next.level, next.y)
+    if (both) next = both
+    else {
+      next = walkableSurface(model, next.x + sx, next.z, next.level, next.y) || next
+      next = walkableSurface(model, next.x, next.z + sz, next.level, next.y) || next
+    }
+  }
+  return next
 }
 
 export function isWalkablePoint(model, x, z, level) {

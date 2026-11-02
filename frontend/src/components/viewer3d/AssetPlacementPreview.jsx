@@ -36,8 +36,9 @@ function PreviewModel({ item, onStatus, onObjectReady }) {
     if (mesh.isMesh) (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((material) => material.dispose())
   }), [prepared])
   const ceilingOffset = item.ceiling_mounted ? item.dimensions.height - prepared.dimensions.height : 0
-  return <group ref={root} position={[item.position.x, item.position.z + ceilingOffset + (item.asset_group === 'floor_overlay' ? 0.008 : 0), -item.position.y]}
-    rotation={[0, -item.rotation * Math.PI / 180, 0]} scale={prepared.scale}>
+  const mountHeight=item.wall_mounted ? Number(item.mount_height)||0 : 0
+  return <group ref={root} position={[item.position.x, item.position.z + mountHeight + ceilingOffset + (item.asset_group === 'floor_overlay' ? 0.008 : 0), -item.position.y]}
+    rotation={[0, item.rotation * Math.PI / 180, 0]} scale={prepared.scale}>
     <primitive object={prepared.object} />
   </group>
 }

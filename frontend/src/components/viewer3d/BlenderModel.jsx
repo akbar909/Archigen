@@ -10,6 +10,9 @@ import { applySurfaceTexture, findEditableSurface as findSurfaceRoot, isVisibleI
 import { isSelectionClick } from '../../utils/selectionGesture'
 import { canonicalOpenings, collectOpeningRoots, openingFromObject, resolveOpeningAsset } from '../../utils/openingEditing'
 import OpeningAsset from './OpeningAsset'
+import { interiorWallMountNormal } from '../../utils/wallMount'
+import { replacementPlacement } from '../../utils/replacementPlacement'
+import { roomFloorMeshInfo } from '../../utils/roomFloorDetection'
 
 // Enable Draco decompression via local WASM decoders or Google CDN fallback
 const DRACO_DECODER_PATH = '/draco/gltf/'
@@ -122,7 +125,7 @@ function BlenderReplacementAsset({ item, visible, isSelected, onSelect, onObject
   const mountHeight = item.wall_mounted ? Math.max(0, Number(item.mount_height) || 0) : 0
   const ceilingOffset = item.ceiling_mounted
     ? (Number(item.dimensions?.height) || 0.8) - normalized.dimensions.height : 0
-  const rotation = THREE.MathUtils.degToRad(-(Number(item.rotation ?? item.rotation_y) || 0))
+  const rotation = THREE.MathUtils.degToRad(Number(item.rotation ?? item.rotation_y) || 0)
 
   useEffect(() => { onReady?.() }, [onReady])
   useEffect(() => {
@@ -402,29 +405,12 @@ export function BlenderHouseModel({
     scene.traverse((child) => {
       if (!child.isMesh) return
 
-      const rawName = child.name || ''
-      const parentName = child.parent?.name || ''
-      const effectiveName = rawName.toLowerCase().startsWith('floor')
-        ? rawName
-        : (parentName.toLowerCase().startsWith('floor') ? parentName : rawName)
-      const lowerName = effectiveName.toLowerCase()
+      const floorInfo = roomFloorMeshInfo(child)
 
       // ── Detect room floor slabs ──
-      if (lowerName.startsWith('floor')) {
+      if (floorInfo) {
+        const { effectiveName, roomId } = floorInfo
         // Exclude site elements, whole-house foundation/podium, lawns, intermediate slabs, and cutters
-        if (
-          lowerName.includes('podium') ||
-          lowerName.includes('foundation') ||
-          lowerName.includes('lawn') ||
-          lowerName.includes('garden') ||
-          lowerName.includes('ground') ||
-          lowerName.includes('intermediate') ||
-          lowerName.includes('cutter') ||
-          lowerName.includes('stair')
-        ) {
-          return
-        }
-
         const box = new THREE.Box3().setFromObject(child)
         const center = new THREE.Vector3()
         const size = new THREE.Vector3()
@@ -452,10 +438,6 @@ export function BlenderHouseModel({
             level = Math.max(0, Math.round(center.y / 3.0))
           }
         }
-
-        const roomId = child.userData?.archgen_room_id
-          || child.parent?.userData?.archgen_room_id
-          || ''
 
         const meshId = effectiveName.replace(/^floor(?:_L\d+)?_?/i, '')
 
@@ -718,21 +700,15 @@ export function BlenderHouseModel({
           || entry.s3_key?.split('/').pop() === original.userData?.archgen_source_file
         ))
         if (!asset?.model_path) return null
-        const position = original.getWorldPosition(new THREE.Vector3())
-        const rotation = new THREE.Euler().setFromQuaternion(original.getWorldQuaternion(new THREE.Quaternion()), 'YXZ')
-        return { ...item, dimensions: asset.dimensions, model_path: asset.model_path,
+        const room=rooms.find(room=>String(room.id)===String(item.room_id||item.roomId))
+        return { ...replacementPlacement(item,asset,original,room), model_path: asset.model_path,
           s3_key: asset.s3_key, model_id: asset.id, asset_id: asset.id,
           canonical_yaw_offset_deg: asset.canonical_yaw_offset_deg,
           canonical_pitch_offset_deg: asset.canonical_pitch_offset_deg,
-          mounting: asset.mounting,
-          position: item.client_edited_3d ? item.position : {
-            x: position.x, y: -position.z,
-            z: position.y - (item.wall_mounted ? Number(item.mount_height) || 0 : 0),
-          },
-          rotation: item.client_edited_3d ? item.rotation : -THREE.MathUtils.radToDeg(rotation.y) }
+          mounting: asset.mounting }
       }).filter(Boolean)
     },
-    [furnitureItems, cloneBundle, uploadedAssets],
+    [furnitureItems, cloneBundle, uploadedAssets, rooms],
   )
   const openingLayoutKey = JSON.stringify(canonicalOpenings(design))
   const openingRoots = useMemo(() => cloneBundle
@@ -831,7 +807,7 @@ export function BlenderHouseModel({
       const elevation = Number(position.z) || 0
       const mountHeight = item.wall_mounted ? Math.max(0, Number(item.mount_height) || 0) : 0
       root.position.set(Number(position.x) || 0, elevation + mountHeight, -(Number(position.y) || 0))
-      root.rotation.y = THREE.MathUtils.degToRad(-(Number(item.rotation ?? item.rotation_y) || 0))
+      root.rotation.y = THREE.MathUtils.degToRad(Number(item.rotation ?? item.rotation_y) || 0)
       root.scale.x = Math.abs(root.scale.x) * (item.flip_x ? -1 : 1)
       root.scale.z = Math.abs(root.scale.z) * (item.flip_y ? -1 : 1)
       if (item.color && canApplyAccentColor(root)) {
@@ -898,6 +874,9 @@ export function BlenderHouseModel({
           const room = cameraRoom || roomForSurface(surface, event.point, rooms, event.ray.origin)
           const wallSurface = surface.type === 'wall' || surface.type === 'window'
           const wallSide = wallSurface && !surface.exterior ? wallSideAtPoint(room, event.point) : null
+          if (wallSurface && normal?.dot(event.ray.direction) > 0) normal.negate()
+          const inward = wallSide ? interiorWallMountNormal(wallSide, normal) : null
+          const wallFace = inward && normal && normal.x * inward.x + normal.z * inward.z < -0.5 ? 'exterior' : 'interior'
           const boundaryBox = surface.exterior ? new THREE.Box3().setFromObject(surface.object) : null
           if (surface.type === 'wall' && !surface.exterior && Math.abs(normal?.y || 0) > 0.5 && room) {
             const inward = { front: [0, 0, 1], back: [0, 0, -1], left: [1, 0, 0], right: [-1, 0, 0] }
@@ -912,6 +891,7 @@ export function BlenderHouseModel({
               : surface.type === 'ground' ? 'exterior_ground' : (surface.roomId || room?.id || null),
             wallId: wallSurface ? (surface.type === 'wall' ? surface.id : null) : null,
             wallSide,
+            wallFace,
             surfaceNormal: normal ? { x: normal.x, y: normal.y, z: normal.z } : null,
             hitPoint: { x: event.point.x, y: event.point.y, z: event.point.z },
             source: 'blender',

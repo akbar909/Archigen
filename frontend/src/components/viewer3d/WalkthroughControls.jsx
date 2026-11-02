@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { nearestWalkablePoint } from '../../utils/navigation'
+import { nearestWalkablePosition, walkableSurface } from '../../utils/navigation'
 import { turnCameraInPlace } from '../../utils/cameraLook'
 
 export function WalkthroughDragLook({ enabled, isTransforming, controlsRef, targetPos, targetCamPos, onDragChange }) {
@@ -208,7 +208,9 @@ export function WalkthroughCameraGuard({ enabled, navigation, level, controlsRef
   const { camera } = useThree()
   useFrame(() => {
     if (!enabled || !navigation?.rooms.length) return
-    const safe = nearestWalkablePoint(navigation, camera.position.x, camera.position.z, level)
+    const height = camera.position.y - 1.65
+    if (walkableSurface(navigation, camera.position.x, camera.position.z, level, height)) return
+    const safe = nearestWalkablePosition(navigation, camera.position.x, camera.position.z, level, height)
     const dx = safe.x - camera.position.x, dz = safe.z - camera.position.z
     if (Math.abs(dx) + Math.abs(dz) < 0.00001) return
     camera.position.x = safe.x

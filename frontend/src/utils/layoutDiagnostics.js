@@ -1,3 +1,4 @@
+import { isExteriorOpening } from './wallOpenings.js';
 const collections = {room:'rooms',furniture:'furniture',door:'doors',window:'windows',wall:'walls',stair:'stairs'};
 export const layoutConflictSummary=count=>`Review ${count} layout ${count===1?'conflict':'conflicts'} in Design checks.`;
 export function layoutDiagnostics(design, report) {
@@ -12,9 +13,10 @@ export function layoutDiagnostics(design, report) {
       }
     }
     const destination=found?.item.connected_room_id || found?.item.connected_room_ids?.find(id=>id!==(found.item.room_id||found.item.roomId));
-    const name = found?.item.name || (found?.entity.type === 'door' ? `Door to ${found.floor.rooms.find(r => r.id === destination)?.name || 'room'}` : found?.entity.type || 'Layout');
+    const exterior=found?.entity.type === 'door' && isExteriorOpening(found.item);
+    const name = found?.item.name || (exterior ? 'Entrance' : found?.entity.type === 'door' ? `Door to ${found.floor.rooms.find(r => r.id === destination)?.name || 'room'}` : found?.entity.type || 'Layout');
     let message = raw;
-    if (/intends to connect|no canonical host wall/.test(raw)) message = `${name}: place it on a shared wall between its rooms.`;
+    if (/intends to connect|no canonical host wall/.test(raw)) message = exterior ? `${name}: place it on an exterior wall of its room.` : `${name}: place it on a shared wall between its rooms.`;
     else if (/no stair to the next storey/.test(raw)) message = 'Add a stair connecting this floor to the floor above.';
     else if (/slab opening|not aligned/.test(raw)) message = 'Align the stair with its upper-floor opening.';
     else if (/blocks the stair/.test(raw)) message = 'Move furniture out of the stair area.';

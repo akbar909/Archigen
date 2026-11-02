@@ -6,10 +6,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
+import { hostOpening } from '../src/utils/wallOpenings.js';
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'archigen-cad-browser-')),
   wait = ms => new Promise(r => setTimeout(r, ms));
 let savedDesign = null;
+let mockBuildReads = 0;
+let mockBuildRequests = 0;
 const server = await createServer({
   root: frontend,
   configFile: false,
@@ -46,6 +49,17 @@ const server = await createServer({
           req.on('data', chunk => body += chunk);
           req.on('end', () => {
             const payload=JSON.parse(body),d = payload.design;
+            if(payload.selection.type==='door') {
+              assert.deepEqual(payload.selection,{type:'door',id:'main_door',floor_id:'floor_0'});
+              if(payload.prompt==='move it 100 m right') {
+                res.statusCode=422;
+                res.end(JSON.stringify({error:'The move would exceed the wall or its jamb clearance.'}));return;
+              }
+              assert.equal(payload.prompt,'fix this main gate');
+              const floor=d.floors[0];
+              Object.assign(floor.doors[0],hostOpening(floor,floor.doors[0],floor.doors[0].position,{preserveConnections:true}));
+              res.end(JSON.stringify({success:true,design:d,report:{changes:['Main entrance repaired on its exterior wall.']}}));return;
+            }
             assert.deepEqual(payload.selection,{type:'furniture',id:'sofa',floor_id:'floor_0'});
             d.floors[0].furniture.find(i=>i.id===payload.selection.id).rotation = 90;
             res.end(JSON.stringify({
@@ -58,6 +72,15 @@ const server = await createServer({
         if(req.url.endsWith('/approve-layout')){
           res.statusCode=422;
           res.end(JSON.stringify({error:'Layout cannot be approved until critical conflicts are resolved.',validation:{critical_errors:["Door 'bed_door' intends to connect ['living', 'bedroom'] but its wall 'wall_l0_part_012' connects ['living']."]}}));return;
+        }
+        if(req.url.endsWith('/generate-3d')) {
+          mockBuildRequests++;
+          mockBuildReads=0;res.statusCode=202;
+          res.end(JSON.stringify({success:true,pending:true,version:{generation_3d:{status:'running',error:null}}}));return;
+        }
+        if(req.method==='GET' && req.url.startsWith('/api/versions/')) {
+          mockBuildReads++;
+          res.end(JSON.stringify({version:{design:savedDesign,generation_3d:mockBuildReads===1 ? {status:'running',error:null} : {status:'failed',error:'Cannot reach the Blender worker. Check that the worker service is running.'}}}));return;
         }
         if (req.url.endsWith('/projects')) {
           res.end(JSON.stringify({
@@ -74,6 +97,7 @@ const server = await createServer({
   server: {
     host: '127.0.0.1',
     port: 5193,
+    hmr: false,
     strictPort: true
   }
 });
@@ -302,6 +326,28 @@ try {
   await until('cadProject.getState().design.floors[0].furniture[0].rotation === 90');
   assert.equal(await evaluate('cadEditor.getState().past.length'), 1);
   await click('[aria-label="Undo"]');
+  // The selected main entrance accepts a repair and exposes actionable errors.
+  const entranceOriginal=await evaluate('JSON.stringify(cadProject.getState().design)');
+  await evaluate("cadProject.getState().setDraftDesign(d=>{const door=d.floors[0].doors[0];door.wall_id='stale_wall';door.position.x=1.01;return d});cadEditor.getState().select({type:'door',id:'main_door'});cadEditor.getState().setOption('strict',true)");
+  await wait(180);
+  assert.ok(await evaluate("document.querySelector('.cad-ai-target').textContent.includes('main entrance')"));
+  const historyBeforeRepair=await evaluate('cadEditor.getState().past.length');
+  await evaluate(`{const e=document.querySelector('#cad-ai-prompt');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'fix this main gate');e.dispatchEvent(new Event('input',{bubbles:true}))}`);
+  await evaluate("document.querySelector('.cad-ai').requestSubmit()");
+  await until("document.querySelector('.cad-ai-success')?.textContent.includes('repaired')");
+  assert.equal(await evaluate('cadEditor.getState().past.length'),historyBeforeRepair+1);
+  assert.deepEqual(await evaluate('cadProject.getState().design.floors[0].doors[0].connected_room_ids'),['living','exterior']);
+  assert.ok(await evaluate('cadProject.getState().design.floors[0].doors[0].offset > .57'));
+  const repairedEntrance=await evaluate('JSON.stringify(cadProject.getState().design)');
+  await evaluate(`{const e=document.querySelector('#cad-ai-prompt');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'move it 100 m right');e.dispatchEvent(new Event('input',{bubbles:true}))}`);
+  await evaluate("document.querySelector('.cad-ai').requestSubmit()");
+  await until("document.querySelector('.cad-ai-error')?.textContent.includes('jamb clearance')");
+  assert.ok(await evaluate("document.body.textContent.includes('The move would exceed the wall or its jamb clearance.')"));
+  assert.equal(await evaluate('JSON.stringify(cadProject.getState().design)'),repairedEntrance);
+  await click('[aria-label="Undo"]');
+  await click('[aria-label="Undo"]');
+  assert.equal(await evaluate('JSON.stringify(cadProject.getState().design)'),entranceOriginal);
+  await evaluate("cadEditor.getState().setOption('strict',false)");
   // Locks reject interaction and inspector edits are blocked.
   await evaluate("cadEditor.getState().setLayer('furniture',{locked:true})");
   await wait(100);
@@ -440,6 +486,38 @@ try {
   await capture('compact-approval-message');
   await click('.cad-diagnostics > button:not(.cad-repair-links)');
   assert.equal(await evaluate('cadEditor.getState().selection[0].id'),'bed_door');
+  // An async retry polls real status and exposes the failure instead of a timeout.
+  await evaluate('{window.buildRetry=cadProject.getState().regenerate3D();true}');
+  await until("cadProject.getState().isGenerating3D && document.querySelector('.cad-build-status[data-status=running]')");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Build 3D\"]').disabled"),true);
+  await until("!cadProject.getState().isGenerating3D && document.querySelector('.cad-build-status[data-status=failed]')");
+  assert.ok(await evaluate("document.querySelector('.cad-build-status').textContent.includes('Cannot reach the Blender worker')"));
+  assert.equal(await evaluate("document.body.textContent.includes('took longer than expected')"),false);
+  assert.equal(await evaluate('cadProject.getState().isDirty'),false);
+  // Adding and deleting a new asset cancels the change, including its aliases/tombstone.
+  const cancellation=await evaluate(`(async()=>{
+    const {addFurnitureToRoom,removeFurnitureById}=await import('/src/utils/designEditing.js');
+    const before=JSON.stringify(cadProject.getState().persistedDesign);
+    cadProject.getState().setDraftDesign(d=>addFurnitureToRoom(d,'living',{id:'temporary_asset',room_id:'living',category:'chair',position:{x:3,y:5,z:0},dimensions:{width:.5,depth:.5,height:.9}}));
+    const addedDirty=cadProject.getState().isDirty;
+    cadProject.getState().setDraftDesign(d=>removeFurnitureById(d,'temporary_asset'));
+    return {addedDirty,isDirty:cadProject.getState().isDirty,restored:JSON.stringify(cadProject.getState().design)===before};
+  })()`);
+  assert.deepEqual(cancellation,{addedDirty:true,isDirty:false,restored:true});
+  // Saving structural changes never starts Blender; only an explicit Build does.
+  const buildsBeforeSave=mockBuildRequests;
+  await evaluate("cadProject.getState().setDraftDesign(d=>{d.layout_approved=true;d.building.wall_thickness=.22;return d})");
+  await click('.version-save-trigger');await until("document.querySelector('.save-version-modal')");
+  await click('input[name="save-mode"][value="overwrite"]');await click('.save-version-submit');
+  await until("!document.querySelector('.save-version-modal') && !cadProject.getState().isDirty");
+  assert.equal(await evaluate('cadProject.getState().isGenerating3D'),false);
+  assert.equal(mockBuildRequests,buildsBeforeSave);
+  for(const [w,h] of [[320,568],[390,844],[1280,900]]) {
+    await metrics(w,h);await wait(100);
+    assert.equal(await evaluate('document.documentElement.scrollWidth>innerWidth'),false);
+    assert.ok((await rect('.cad-canvas')).height>100);
+  }
+  await capture('worker-failure-message');
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({
     geometryGestures: 'passed',
@@ -454,6 +532,8 @@ try {
     selectionContext:'passed',
     singleSaveFlow:'passed',
     approvalDiagnostics:'passed',
+    asynchronousBuildStatus:'passed for explicit retry and worker failure',
+    saveWithoutBuildAndCancelledAsset:'passed',
     responsiveSizes: 6,
     touchMoveAndCancel: 'passed',
     strictCollisions: 'passed',

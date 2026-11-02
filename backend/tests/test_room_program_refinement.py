@@ -55,8 +55,6 @@ class RoomProgramRefinementTests(unittest.TestCase):
 
     def test_add_bedroom_to_ground_floor_reflows_program(self):
         base = self.make_three_floor_design()
-        original_ground_count = len(base["floors"][0]["rooms"])
-
         refined, report = apply_targeted_refinement(base, "add one bedroom in ground floor")
 
         self.assertTrue(report["handled"])
@@ -64,7 +62,13 @@ class RoomProgramRefinementTests(unittest.TestCase):
         self.assertEqual("room_program_reflow", report["scope"])
         self.assertFalse(report["layout_preserved"])
         self.assertEqual(3, len(refined["floors"]))
-        self.assertEqual(original_ground_count + 1, len(refined["floors"][0]["rooms"]))
+        # Reflow may reserve another circulation strip. Count the requested
+        # program separately from system-generated access spaces.
+        requested_before = sum(room["type"] not in {"hallway", "stair_lobby"}
+                               for room in base["floors"][0]["rooms"])
+        requested_after = sum(room["type"] not in {"hallway", "stair_lobby"}
+                              for room in refined["floors"][0]["rooms"])
+        self.assertEqual(requested_before + 1, requested_after)
         self.assertEqual(
             1,
             sum(room["type"] == "bedroom" for room in refined["floors"][0]["rooms"]),

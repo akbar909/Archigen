@@ -7,6 +7,10 @@ Used during Headless Blender procedural generation when assets are not cached lo
 
 import os
 import sys
+import json
+import re
+import tempfile
+from urllib.parse import unquote, urlsplit
 from typing import Optional
 
 try:
@@ -82,45 +86,159 @@ def download_asset_if_missing(
     """
     if not rel_model_path:
         return None
-
-    norm_rel = rel_model_path.replace("\\", "/").lstrip("/")
-    base_dir = base_blender_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    local_abs_path = os.path.join(base_dir, norm_rel)
-
-    # 1. Already exists on local disk
-    if os.path.isfile(local_abs_path) and os.path.getsize(local_abs_path) > 0:
-        return local_abs_path
-
-    # 2. Attempt download from S3
-    client = get_s3_client()
-    if client is None:
-        print(f"[S3Resolver] boto3 client unavailable, cannot download {norm_rel} from S3.")
+    base_dir = os.path.realpath(base_blender_dir or os.path.join(os.path.dirname(__file__), ".."))
+    try:
+        local_path = _contained_path(base_dir, str(rel_model_path).replace("\\", "/"))
+        return ensure_model_ready(local_path, base_blender_dir=base_dir, bucket_name=bucket_name)
+    except (AssetDependencyError, OSError, ValueError) as exc:
+        print(f"[S3Resolver] {exc}", flush=True)
         return None
 
-    bucket = bucket_name or DEFAULT_BUCKET
 
-    # Try candidate S3 keys (with or without 'assets/' prefix)
-    candidate_keys = [
-        norm_rel,
-        f"assets/{norm_rel}" if not norm_rel.startswith("assets/") else norm_rel[7:],
-    ]
+class AssetDependencyError(RuntimeError):
+    """A referenced asset cannot be imported completely from the local/S3 bundle."""
 
-    os.makedirs(os.path.dirname(local_abs_path), exist_ok=True)
 
-    for s3_key in candidate_keys:
-        try:
-            print(f"[S3Resolver] Downloading s3://{bucket}/{s3_key} -> {local_abs_path}...")
-            client.download_file(bucket, s3_key, local_abs_path)
-            if os.path.isfile(local_abs_path) and os.path.getsize(local_abs_path) > 0:
-                print(f"[S3Resolver] Successfully downloaded {s3_key} ({os.path.getsize(local_abs_path)} bytes)")
-                return local_abs_path
-        except ClientError as e:
-            err_code = e.response.get("Error", {}).get("Code")
-            if err_code == "404" or err_code == "NoSuchKey":
-                continue
-            print(f"[S3Resolver] S3 ClientError downloading {s3_key}: {e}")
-        except Exception as e:
-            print(f"[S3Resolver] Unexpected error downloading {s3_key}: {e}")
+def _contained_path(root, relative):
+    if not relative or os.path.isabs(relative) or re.match(r"^[A-Za-z]:", relative):
+        raise AssetDependencyError("Asset paths must be relative to the Blender asset workspace.")
+    path = os.path.realpath(os.path.join(root, *relative.split("/")))
+    if os.path.commonpath([root, path]) != root:
+        raise AssetDependencyError("Asset dependency path leaves the Blender asset workspace.")
+    return path
 
-    print(f"[S3Resolver] Could not find {norm_rel} in S3 bucket '{bucket}'.")
+
+def _usable_file(path, minimum_size=1):
+    return os.path.isfile(path) and os.path.getsize(path) >= minimum_size
+
+
+def _workspace_for_model(path):
+    parent = os.path.dirname(os.path.realpath(path))
+    current = parent
+    while os.path.dirname(current) != current:
+        if os.path.basename(current).lower() == "assets":
+            return os.path.dirname(current)
+        current = os.path.dirname(current)
+    return parent
+
+
+def _source_glb(path):
+    """Find the same authored model, including resolution-only exported variants."""
+    directory = os.path.dirname(path)
+    if not os.path.isdir(directory):
+        return None
+    stem = os.path.splitext(os.path.basename(path))[0].casefold()
+    source_stem = re.sub(r"_(?:1k|2k|4k|8k|16k)$", "", stem)
+    for desired in dict.fromkeys([stem, source_stem]):
+        for name in sorted(os.listdir(directory)):
+            candidate_stem, extension = os.path.splitext(name)
+            candidate = os.path.join(directory, name)
+            if extension.lower() == ".glb" and candidate_stem.casefold() == desired and _usable_file(candidate):
+                return candidate
     return None
+
+
+def _download_file(path, workspace, bucket, minimum_size=1):
+    if _usable_file(path, minimum_size):
+        return True
+    client = get_s3_client()
+    if client is None:
+        return False
+    relative = os.path.relpath(path, workspace).replace("\\", "/")
+    keys = [relative, relative[7:] if relative.startswith("assets/") else f"assets/{relative}"]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    for key in dict.fromkeys(keys):
+        # Never let a failed or interrupted transfer turn into a valid cache hit.
+        temporary = None
+        try:
+            handle = tempfile.NamedTemporaryFile(prefix=".asset-", suffix=".tmp", dir=os.path.dirname(path), delete=False)
+            temporary = handle.name
+            handle.close()
+            print(f"[S3Resolver] Downloading s3://{bucket}/{key}", flush=True)
+            client.download_file(bucket, key, temporary)
+            if _usable_file(temporary, minimum_size):
+                os.replace(temporary, path)
+                return True
+        except Exception as exc:
+            response = getattr(exc, "response", {})
+            if str(response.get("Error", {}).get("Code")) not in ("404", "NoSuchKey", "NotFound"):
+                print(f"[S3Resolver] Failed to download {key}: {exc}", flush=True)
+        finally:
+            if temporary and os.path.isfile(temporary):
+                os.unlink(temporary)
+    return False
+
+
+def _gltf_dependencies(path, workspace):
+    try:
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+    except (OSError, ValueError) as exc:
+        raise AssetDependencyError(f"Invalid glTF model '{os.path.basename(path)}': {exc}") from exc
+    if not isinstance(document, dict):
+        raise AssetDependencyError(f"Invalid glTF model '{os.path.basename(path)}': expected a JSON object.")
+    dependencies = {}
+    asset_root = os.path.join(workspace, "assets")
+    boundary = asset_root if os.path.isdir(asset_root) and os.path.commonpath([asset_root, path]) == asset_root else workspace
+    for kind in ("buffers", "images"):
+        entries = document.get(kind, [])
+        if not isinstance(entries, list):
+            raise AssetDependencyError(f"Invalid glTF '{os.path.basename(path)}': {kind} must be an array.")
+        for item in entries:
+            uri = item.get("uri") if isinstance(item, dict) else None
+            if not uri:
+                continue
+            if not isinstance(uri, str):
+                raise AssetDependencyError(f"Invalid glTF {kind} URI in '{os.path.basename(path)}'.")
+            parts = urlsplit(uri)
+            if parts.scheme.lower() == "data":
+                continue
+            if parts.scheme or parts.netloc:
+                raise AssetDependencyError(f"glTF dependency '{uri}' must use an embedded or relative URI.")
+            decoded = unquote(parts.path).replace("\\", "/")
+            relative = os.path.relpath(os.path.dirname(path), boundary).replace("\\", "/") + "/" + decoded
+            if decoded.startswith("/") or re.match(r"^[A-Za-z]:", decoded):
+                raise AssetDependencyError("glTF dependencies must remain inside the asset workspace.")
+            dependency = _contained_path(boundary, relative)
+            try:
+                minimum_size = max(1, int(item.get("byteLength", 1))) if kind == "buffers" else 1
+            except (ValueError, TypeError) as exc:
+                raise AssetDependencyError(f"Invalid buffer byteLength in glTF '{os.path.basename(path)}'.") from exc
+            dependencies[dependency] = max(minimum_size, dependencies.get(dependency, 1))
+    return dependencies
+
+
+def ensure_model_ready(file_path, base_blender_dir=None, bucket_name=None):
+    """Resolve external glTF buffers/images even when its JSON file is cached."""
+    path = os.path.realpath(file_path)
+    workspace = os.path.realpath(base_blender_dir or _workspace_for_model(path))
+    if os.path.commonpath([workspace, path]) != workspace:
+        raise AssetDependencyError("The model is outside the Blender asset workspace.")
+    bucket = bucket_name or DEFAULT_BUCKET
+    gltf = os.path.splitext(path)[1].lower() == ".gltf"
+    fallback = _source_glb(path) if gltf else None
+    if fallback and not _usable_file(path):
+        return fallback
+    if not _usable_file(path) and not _download_file(path, workspace, bucket):
+        if fallback:
+            return fallback
+        raise AssetDependencyError(f"Model file is unavailable locally or in S3: {path}")
+    if not gltf:
+        return path
+    try:
+        dependencies = _gltf_dependencies(path, workspace)
+    except AssetDependencyError:
+        if fallback:
+            return fallback
+        raise
+    missing = [dependency for dependency, size in dependencies.items() if not _usable_file(dependency, size)]
+    if missing and fallback:
+        print(f"[S3Resolver] Incomplete glTF '{os.path.basename(path)}'; using its source GLB '{os.path.basename(fallback)}'.", flush=True)
+        return fallback
+    for dependency in missing:
+        _download_file(dependency, workspace, bucket, dependencies[dependency])
+    missing = [os.path.relpath(dependency, os.path.dirname(path)).replace("\\", "/")
+               for dependency, size in dependencies.items() if not _usable_file(dependency, size)]
+    if missing:
+        raise AssetDependencyError(f"Incomplete glTF '{os.path.basename(path)}': missing external dependencies {', '.join(missing)}. Sync the complete asset folder or provide its source GLB.")
+    return path

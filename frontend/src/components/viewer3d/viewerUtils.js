@@ -62,16 +62,17 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3, zSign =
   // The GLB floor mesh center is the true Three.js world position of the room.
   if (Array.isArray(detectedRooms) && detectedRooms.length > 0) {
     const sameLevel = detectedRooms.filter((c) => Number(c.level) === Number(level))
-    const candidates = sameLevel.length > 0 ? sameLevel : detectedRooms
-
     const roomId = String(room.id || '').trim().toLowerCase()
     const roomName = String(room.name || '').trim()
     const roomType = String(room.type || '').trim()
+    // Missing slabs must not redirect navigation to a different room/storey.
+    const candidates = sameLevel.filter((c) => !String(c.roomId || '').trim()
+      || normalizeKey(c.roomId) === normalizeKey(roomId))
 
     // Strategy A: Exact ID match (archgen_room_id or meshId)
     let match = candidates.find((c) => {
-      const cRoomId = String(c.roomId || '').toLowerCase()
-      const cMeshId = String(c.meshId || '').toLowerCase()
+      const cRoomId = String(c.roomId || '').trim().toLowerCase()
+      const cMeshId = String(c.meshId || '').trim().toLowerCase()
       return (cRoomId && cRoomId === roomId) || (cMeshId && cMeshId === roomId)
     })
 
@@ -93,7 +94,8 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3, zSign =
       if (rCat) {
         const catCandidates = candidates.filter((c) => {
           const cCat = getRoomCategory(c.meshId || c.name || c.roomId)
-          return cCat === rCat
+          const cNum = extractNumber(c.meshId || c.name || c.roomId)
+          return cCat === rCat && (rNum === null || cNum === null || rNum === cNum)
         })
 
         if (catCandidates.length === 1) {
@@ -122,14 +124,20 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3, zSign =
     }
 
     // Strategy D: Dimension and relative position correlation on same floor
-    if (!match && sameLevel.length > 0) {
+    if (!match && candidates.length > 0) {
       const width = Number(room.dimensions?.width ?? room.bounds?.width ?? room.width)
       const depth = Number(room.dimensions?.depth ?? room.bounds?.depth ?? room.length)
       const position = room.position || room.bounds || {}
       const expectedX = (Number(position.x) || 0) + width / 2
       const expectedZ = ((Number(position.y) || 0) + depth / 2) * zSign
-      if (Number.isFinite(width) && Number.isFinite(depth)) {
-        match = sameLevel.reduce((best, curr) => {
+      if (Number.isFinite(width) && width > 0 && Number.isFinite(depth) && depth > 0) {
+        // Unlabelled legacy slabs need positive size and position evidence.
+        const correlated = candidates.filter((c) => (
+          Math.abs(c.size.x - width) <= Math.max(.35, width * .12)
+          && Math.abs(c.size.z - depth) <= Math.max(.35, depth * .12)
+          && Math.hypot(c.center.x - expectedX, c.center.z - expectedZ) <= Math.max(.75, Math.max(width, depth) * .15)
+        ))
+        match = correlated.reduce((best, curr) => {
           const score = (candidate) => Math.abs(candidate.size.x - width) + Math.abs(candidate.size.z - depth)
             + Math.hypot(candidate.center.x - expectedX, candidate.center.z - expectedZ) * 0.35
           const diffCurr = score(curr)
@@ -140,13 +148,19 @@ export function roomPlacement(room, detectedRooms = [], floorHeight = 3, zSign =
     }
 
     if (match) {
+      const p = room.position || room.bounds || {}, d = room.dimensions || room.bounds || {}
+      // Boolean stair cutouts may split a slab into several mesh pieces.
+      // Those pieces supply the floor height, not a new room footprint.
+      const canonical = String(match.roomId || '').trim()
+        && normalizeKey(match.roomId) === normalizeKey(room.id)
+        && [p.x, p.y, d.width, d.depth].every(v => Number.isFinite(Number(v)))
       return {
         id: room.id,
-        x: match.center.x,
+        x: canonical ? Number(p.x) + Number(d.width) / 2 : match.center.x,
         y: Number.isFinite(match.center.y) ? match.center.y + (Number(match.size.y) || 0) / 2 : level * floorHeight,
-        z: match.center.z,
-        w: match.size.x,
-        l: match.size.z,
+        z: canonical ? (Number(p.y) + Number(d.depth) / 2) * zSign : match.center.z,
+        w: canonical ? Number(d.width) : match.size.x,
+        l: canonical ? Number(d.depth) : match.size.z,
         level: Number.isFinite(match.level) ? match.level : level,
       }
     }

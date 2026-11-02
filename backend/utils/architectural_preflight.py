@@ -13,6 +13,9 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Tuple
 
 from utils.architectural_vertical import repair_exterior_access, validate_vertical_circulation
+from utils.opening_connections import opening_room_ids, is_exterior_opening
+from utils.furniture_mounting import mount_wall_fixture
+from utils.stair_geometry import stair_approach_box
 
 
 EPS = 1e-6
@@ -96,13 +99,15 @@ def _wall_geometry(room: Dict[str, Any], side: str) -> Tuple[str, float, float, 
 
 def _resolve_wall_id(
     walls: Iterable[Dict[str, Any]], room: Dict[str, Any], side: str, coordinate: float,
-    intended_ids: Iterable[str] = (), preferred_id: str = "",
+    intended_ids: Iterable[str] = (), preferred_id: str = "", exterior: bool = False,
 ) -> str:
     axis, fixed, start, end = _wall_geometry(room, side)
     rid = room.get("id")
     best: Tuple[float, str] | None = None
     for wall in walls:
         connected = wall.get("connected_rooms") or wall.get("room_ids") or []
+        if exterior and (len(connected) != 1 or rid not in connected):
+            continue
         if connected and rid not in connected:
             continue
         p1 = wall.get("start") or wall.get("from") or {}
@@ -235,12 +240,13 @@ def _repair_openings(
             side = _infer_side(room, opening)
             opening["wall_side"] = side
             center = _opening_coordinate(opening, room, side)
-            intended = opening.get("connected_room_ids") or [value for value in (rid, opening.get("connected_room_id")) if value]
-            wall_id = _resolve_wall_id(walls, room, side, center, intended, str(opening.get("wall_id") or ""))
+            intended = opening_room_ids(opening)
+            exterior = kind == "doors" and is_exterior_opening(opening)
+            wall_id = _resolve_wall_id(walls, room, side, center, intended, str(opening.get("wall_id") or ""), exterior)
             # Preserve useful diagnostics if no wall can fulfil an interior
             # connection; never turn a disconnected door into an exterior exit.
             if wall_id not in walls_by_id:
-                wall_id = _resolve_wall_id(walls, room, side, center)
+                wall_id = _resolve_wall_id(walls, room, side, center, exterior=exterior)
             opening["wall_id"] = wall_id
             width = max(0.45, _number(opening.get("width"), 0.9 if kind == "doors" else 1.2))
             _, _, start, end = _wall_geometry(room, side)
@@ -249,18 +255,17 @@ def _repair_openings(
                 report["critical_errors"].append(
                     f"Opening '{oid}' has no canonical host wall for room '{room['id']}' on its {side} side."
                 )
-            elif kind == "doors" and str(opening.get("type", "")).lower() not in ("main_entrance", "garage_door"):
-                intended = [str(value) for value in opening.get("connected_room_ids", [])]
+            elif kind == "doors":
                 hosted = [str(value) for value in (host_wall.get("connected_rooms") or host_wall.get("room_ids") or [])]
-                if len(intended) >= 2 and not set(intended[:2]).issubset(set(hosted)):
+                if not set(intended).issubset(set(hosted)):
                     report["critical_errors"].append(
                         f"Door '{oid}' intends to connect {intended[:2]} but its wall '{wall_id}' connects {hosted}."
                     )
             if host_wall:
                 hosted = list(host_wall.get("connected_rooms") or host_wall.get("room_ids") or [])
                 if len(intended) <= 1 or set(intended).issubset(set(hosted)):
-                    opening["connected_room_ids"] = hosted
-                    opening["connected_rooms"] = hosted
+                    opening["connected_room_ids"] = hosted + (["exterior"] if exterior else [])
+                    opening["connected_rooms"] = list(opening["connected_room_ids"])
                     opening["connected_room_id"] = next((value for value in hosted if value != room["id"]), None)
                 wall_start, wall_end = host_wall.get("start", {}), host_wall.get("end", {})
                 if side in ("south", "north"):
@@ -275,7 +280,7 @@ def _repair_openings(
             opening["height"] = max(0.5, _number(opening.get("height"), 2.1 if kind == "doors" else 1.2))
             if kind == "windows":
                 opening["sill_height"] = max(0.0, _number(opening.get("sill_height"), 0.9))
-            if kind == "doors" and not opening.get("client_edited_2d") and str(opening.get("type", "")).lower() not in ("main_entrance", "garage_door"):
+            if kind == "doors" and not opening.get("client_edited_2d") and not opening.get("stair_clearance_positioned") and str(opening.get("type", "")).lower() not in ("main_entrance", "garage_door"):
                 # Interior doors are placed near a wall end, preserving the
                 # larger uninterrupted wall area for circulation/furniture.
                 corner_center = start + WALL_MARGIN + width / 2.0 + 0.10
@@ -327,6 +332,14 @@ def _repair_openings(
             old = _opening_coordinate(opening, room, side)
             _set_opening_position(opening, room, side, center)
             opening["offset"] = center - start
+            if host_wall:
+                a, b = host_wall.get("start") or {}, host_wall.get("end") or {}
+                length = math.hypot(_number(b.get("x")) - _number(a.get("x")), _number(b.get("y")) - _number(a.get("y")))
+                if length > EPS:
+                    position = opening["position"]
+                    offset = ((position["x"] - a["x"]) * (b["x"] - a["x"]) + (position["y"] - a["y"]) * (b["y"] - a["y"])) / length
+                    opening["offset"] = opening["wall_offset"] = round(offset, 4)
+                    opening["t"] = round(offset / length, 6)
             if abs(old - center) > 0.01:
                 report["repairs"].append(f"Moved opening '{opening['id']}' to prevent overlap.")
 
@@ -397,7 +410,7 @@ def _wall_candidate_centers(
 
 
 def _door_clearance_boxes(
-    floor: Dict[str, Any], rid: str, rooms: Dict[str, Dict[str, Any]]
+    floor: Dict[str, Any], rid: str, rooms: Dict[str, Dict[str, Any]], height_range=None,
 ) -> List[Tuple[float, float, float, float]]:
     result = []
     room = rooms.get(str(rid))
@@ -410,6 +423,9 @@ def _door_clearance_boxes(
             # garage opening; treating it as a pedestrian swing is incorrect.
             continue
         pos, width = _position(door), _number(door.get("width"), 0.9)
+        if height_range and (height_range[0] >= pos['z'] + _number(door.get('height'), 2.1)
+                             or height_range[1] <= pos['z']):
+            continue
         connected = {
             str(value) for value in (door.get("connected_room_ids") or door.get("connected_rooms") or [])
         }
@@ -474,23 +490,27 @@ def _stair_clearance_boxes(
 ) -> List[Tuple[float, float, float, float]]:
     """Return the stair/landing footprint clipped to the furniture's room."""
     room = rooms.get(str(rid))
-    core = floor.get("stair_core")
-    if not room or not isinstance(core, dict):
+    if not room:
         return []
     rx0, ry0, rx1, ry1 = _room_box(room)
-    position, dimensions = _position(core), _dimensions(core)
-    margin = 0.12
-    core_box = (
-        position["x"] - margin,
-        position["y"] - margin,
-        position["x"] + dimensions["width"] + margin,
-        position["y"] + dimensions["depth"] + margin,
-    )
-    clipped = (
-        max(rx0, core_box[0]), max(ry0, core_box[1]),
-        min(rx1, core_box[2]), min(ry1, core_box[3]),
-    )
-    return [clipped] if clipped[0] < clipped[2] and clipped[1] < clipped[3] else []
+    # Editable stairs and incoming openings are canonical. Cached stair_core
+    # metadata may be absent or stale after an editor move.
+    cores = list(floor.get("stairs") or []) + list(floor.get("stair_openings") or [])
+    if not cores and isinstance(floor.get("stair_core"), dict):
+        cores.append(floor["stair_core"])
+    result = []
+    for core in cores:
+        position, dimensions = _position(core), _dimensions(core)
+        margin = .12
+        boxes = [(position["x"]-margin, position["y"]-margin,
+                  position["x"]+dimensions["width"]+margin, position["y"]+dimensions["depth"]+margin)]
+        if core.get("access_depth"):
+            boxes.append(stair_approach_box(core, upper=bool(core.get("serves_stair_id"))))
+        for box in boxes:
+            clipped = max(rx0,box[0]), max(ry0,box[1]), min(rx1,box[2]), min(ry1,box[3])
+            if clipped[0] < clipped[2] and clipped[1] < clipped[3]:
+                result.append(clipped)
+    return result
 
 
 def _is_optional_furniture(item: Dict[str, Any]) -> bool:
@@ -573,6 +593,7 @@ def _repair_furniture(
             continue
         item["room_id"] = rid
         item["roomId"] = rid
+        item.update(mount_wall_fixture(item,room))
         item["rotation"] = _number(item.get("rotation")) % 360.0
         item["dimensions"] = _dimensions(item)
         pos = _position(item)
@@ -588,7 +609,8 @@ def _repair_furniture(
             pos["z"] = _position(room)["z"] + _dimensions(room)["height"] - item["dimensions"]["height"] - clearance
         else:
             pos["z"] = _position(room)["z"]
-        door_clearances = _door_clearance_boxes(floor, rid, rooms)
+        bottom_z = pos['z'] + (0 if ceiling_mounted else max(0, _number(item.get('mount_height'))))
+        door_clearances = _door_clearance_boxes(floor, rid, rooms, (bottom_z, bottom_z + item['dimensions']['height']))
         window_clearances = _window_clearance_boxes(floor, rid, rooms)
         stair_clearances = _stair_clearance_boxes(floor, rid, rooms)
         chosen = None
@@ -604,7 +626,7 @@ def _repair_furniture(
         # so made a moved car/bed jump back to an older candidate on save.
         # Keep collision reporting, but make the user's in-room position the
         # authoritative candidate for this item.
-        client_edited = item.get("client_edited_3d") is True or ceiling_mounted
+        client_edited = item.get("client_edited_3d") is True or ceiling_mounted or item.get('wall_mounted') is True
         if client_edited:
             fw, fd = _rotated_footprint(item)
             room_x0, room_y0, room_x1, room_y1 = _room_box(room)
@@ -622,6 +644,11 @@ def _repair_furniture(
                 if wall_mounted else
                 (cx - fw / 2, cy - fd / 2, cx + fw / 2, cy + fd / 2)
             )
+            door_box = (cx - fw / 2, cy - fd / 2, cx + fw / 2, cy + fd / 2)
+            if any(_boxes_overlap(door_box, zone, .01) for zone in door_clearances):
+                report['critical_errors'].append(
+                    f"Furniture '{fid}' blocks a door approach in room '{rid}'. Move it clear of the doorway before building 3D."
+                )
             if not ceiling_mounted and any(
                 _boxes_overlap(box, other_box, FURNITURE_GAP)
                 and not _allows_integrated_overlap(item, other_item)
@@ -898,6 +925,14 @@ def validate_and_repair_design(design: Dict[str, Any], repair: bool = True) -> T
             rooms[rid] = room
         floor["rooms"] = list(rooms.values())
         floor.setdefault("walls", [])
+        nonzero_walls = []
+        for wall in floor['walls']:
+            a, b = wall.get('start') or wall.get('from') or {}, wall.get('end') or wall.get('to') or {}
+            if all(key in point for point in (a, b) for key in ('x', 'y')) and math.hypot(a['x']-b['x'], a['y']-b['y']) < .0001:
+                report['repairs'].append(f"Removed zero-length wall '{wall.get('id')}'.")
+            else:
+                nonzero_walls.append(wall)
+        floor['walls'] = nonzero_walls
         floor.setdefault("doors", [])
         floor.setdefault("windows", [])
         floor.setdefault("furniture", [])

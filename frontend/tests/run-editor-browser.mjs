@@ -43,6 +43,12 @@ const server = await createServer({ root: frontend, configFile: false, plugins: 
           { id: 'cabinet_01', name: 'Uploaded Cabinet', kind: 'model', group: 'furniture', category: 'kitchen_cabinet', s3_key: 'assets/cabinet.glb', model_path: '/asset-test/cabinet.glb' },
           { id: 'single_bed_01', name: 'Uploaded Bed', kind: 'model', group: 'furniture', category: 'bed', s3_key: 'assets/furniture/bedroom/beds/single_bed_01.glb',
             model_path: 'http://127.0.0.1:5189/asset-test/furniture/bedroom/beds/single_bed_01.glb', dimensions: { width: 1, depth: 2, height: 1 } },
+          {id:'shower_set_02',name:'Shower Set 02',kind:'model',group:'furniture',category:'shower',s3_key:'assets/furniture/bathroom/showers/shower_set_02.glb',
+            model_path:'/asset-test/furniture/bathroom/showers/shower_set_02.glb',dimensions:{width:.527,depth:.827,height:1.35},mounting:{surface:'wall',default_height:.95,orientation_verified:true,orientation_version:1,front_axis:'+z',up_axis:'+y'}},
+          {id:'curtains_04',name:'Curtains 04',kind:'model',group:'curtain',category:'curtain',s3_key:'assets/decorations/curtains_blinds/curtains_04.glb',
+            model_path:'/asset-test/decorations/curtains_blinds/curtains_04.glb',dimensions:{width:1.8,depth:.071,height:1.333},mounting:{surface:'wall',orientation_verified:true,orientation_version:1,front_axis:'+z',up_axis:'+y'}},
+          {id:'wardrobe_modern_01',name:'Wardrobe Modern 01',kind:'model',group:'furniture',category:'wardrobe',s3_key:'assets/furniture/bedroom/wardrobes/wardrobe_modern_01.glb',
+            model_path:'/asset-test/furniture/bedroom/wardrobes/wardrobe_modern_01.glb',dimensions:{width:1.56,depth:.65,height:2.06},canonical_yaw_offset_deg:90,mounting:{surface:'floor',orientation_verified:true,orientation_version:1,front_axis:'-x',up_axis:'+y'}},
         ] }))
         return
       }
@@ -53,7 +59,7 @@ const server = await createServer({ root: frontend, configFile: false, plugins: 
       fs.createReadStream(file).pipe(response)
     })
   },
-}], server: { host: '127.0.0.1', port: 5189, strictPort: true } })
+}], server: { host: '127.0.0.1', port: 5189, strictPort: true, hmr:false } })
 let browser
 let socket
 try {
@@ -81,13 +87,23 @@ try {
   }
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const id = ++sequence
-    pending.set(id, { resolve, reject })
+    pending.set(id, { resolve, reject: error=>reject(new Error(`${method}: ${error.message}; ${String(params.expression || '').slice(0,180)}`)) })
     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }))
   })
   const { targetId } = await send('Target.createTarget', { url: 'about:blank' })
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true })
-  const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sessionId)).result.value
+  const evaluate = async (expression) => {
+    const result=await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sessionId)
+    if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text)
+    return result.result.value
+  }
   await send('Runtime.enable', {}, sessionId)
+  const until = async (expression) => {
+    for (let i = 0; i < 150; i++) { if (await evaluate(`Boolean(${expression})`)) return; await wait(200) }
+    throw new Error(`Timed out: ${expression}; camera=${JSON.stringify(await evaluate('window.placementCamera?.()'))}`)
+  }
+  let previousReport={}
+  if(!process.argv.includes('--interior-only')) {
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false }, sessionId)
   await send('Page.navigate', { url: 'http://127.0.0.1:5189/tests/editor-regression.html' }, sessionId)
   let report
@@ -217,10 +233,6 @@ try {
   fs.writeFileSync(path.join(temp, 'editor-mobile.png'), Buffer.from(mobileScreenshot.data, 'base64'))
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false }, sessionId)
   await send('Page.navigate', { url: 'http://127.0.0.1:5189/tests/placement-regression.html' }, sessionId)
-  const until = async (expression) => {
-    for (let i = 0; i < 150; i++) { if (await evaluate(expression)) return; await wait(200) }
-    throw new Error(`Timed out: ${expression}; camera=${JSON.stringify(await evaluate('window.placementCamera?.()'))}`)
-  }
   await until("!!document.querySelector('.viewer-edit-toggle') && !!window.placementCamera && !!window.setTestViewMode")
   await evaluate("window.setTestViewMode('walkthrough')")
   let walkthroughCamera
@@ -447,13 +459,84 @@ try {
       assert.deepEqual(zoomed.target, focused.target, 'ceiling edit zoom preserves the selected target')
     }
   }
+  previousReport={...report,heightButtons:'passed',surfaceMenus:'passed',
+    windowAndCoveringTabs:'passed',openingFitReplacementRestoreAndFloorVisibility:'passed',
+    legacyOpeningsWithoutGlbMetadata:'passed',roofAndCeilingCamera:'7 real-selection cases passed, including shared living-room/bedroom ceilings',
+    dragAngleDegrees:dragAngle*180/Math.PI,dragPosition:cameraAfter.position,
+    gizmoDragDoesNotTurnCamera:true,mobileSelectionVisible:mobile.selectionVisible,
+    placementRoomCameraPreviewCancelConfirmAndUpperFloor:'passed',screenshotPath}
+  }
+  await send('Emulation.setDeviceMetricsOverride',{width:1200,height:800,deviceScaleFactor:1,mobile:false},sessionId)
+  await send('Page.navigate',{url:'http://127.0.0.1:5189/tests/interior-assets-regression.html'},sessionId)
+  await until("!!document.querySelector('.viewer-edit-toggle') && !!window.fixtureBounds?.('compact_bed') && !!window.fixtureBounds?.('shower')")
+  const bedBounds=await evaluate("window.fixtureBounds('compact_bed')")
+  assert.ok(bedBounds.min[0]>0 && bedBounds.max[0]<4,JSON.stringify(bedBounds))
+  assert.ok(bedBounds.max[0]-bedBounds.min[0]<=.901, 'bed retains its saved compact width')
+  await until("window.fixtureBounds('wardrobe')")
+  const wardrobeBounds=await evaluate("window.fixtureBounds('wardrobe')")
+  assert.ok(Math.abs(wardrobeBounds.max[0]-wardrobeBounds.min[0]-.65)<.015,JSON.stringify(wardrobeBounds))
+  assert.ok(Math.abs(wardrobeBounds.max[2]-wardrobeBounds.min[2]-1.56)<.015)
+  const wardrobeFront=await evaluate('window.fixtureWardrobeFront()')
+  assert.ok(wardrobeFront.handleMin>wardrobeFront.bodyMax-.01,JSON.stringify(wardrobeFront))
+  const showerBounds=await evaluate("window.fixtureBounds('shower')")
+  assert.ok(showerBounds.min[1]>.94 && showerBounds.max[1]>2.2,JSON.stringify(showerBounds))
+  await evaluate("document.querySelector('.viewer-edit-toggle').click()")
+  await until("window.fixtureSelect('shower')")
+  await until("document.querySelector('[aria-label=\"Height controls\"]')")
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Up 0.1m')).click()")
+  await until("window.fixtureDesign().furniture.find(item=>item.id==='shower').mount_height>1")
+  assert.ok(Math.abs((await evaluate("window.fixtureDesign().furniture.find(item=>item.id==='shower').mount_height"))-1.05)<.01)
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Down 0.1m')).click()")
+  await until("window.fixtureDesign().furniture.find(item=>item.id==='shower').mount_height<1")
+  const chooseShowerWall = async side => {
+    await evaluate(`{const select=document.querySelector('[aria-label="Shower mounting wall"]');select.value=${JSON.stringify(side)};select.dispatchEvent(new Event('change',{bubbles:true}))}`)
+    await until(`window.fixtureDesign().furniture.find(item=>item.id==='shower').wall_side===${JSON.stringify(side)}`)
+    await wait(100)
+  }
+  await chooseShowerWall('left')
+  assert.ok((await evaluate("window.fixtureBounds('shower')")).max[0]<5)
+  await chooseShowerWall('right')
+  assert.ok((await evaluate("window.fixtureBounds('shower')")).min[0]>6)
+  await evaluate('window.fixtureCheckpoint()')
+  const beforeAddedShower=await evaluate('JSON.stringify(window.fixtureDesign())')
+  await evaluate("window.fixtureBathroomWall('right')")
+  await until("document.querySelector('button[title=\"Shower Set 02\"]')")
+  await evaluate("document.querySelector('button[title=\"Shower Set 02\"]').click()")
+  await until("window.fixtureDesign().furniture.filter(item=>item.asset_id==='shower_set_02').length===2")
+  const newShowerId=await evaluate("window.fixtureDesign().furniture.find(item=>item.asset_id==='shower_set_02'&&item.id!=='shower').id")
+  assert.equal(await evaluate(`window.fixtureDesign().furniture.find(item=>item.id===${JSON.stringify(newShowerId)}).wall_side`),'right')
+  await until(`window.fixtureBounds(${JSON.stringify(newShowerId)})`)
+  assert.ok((await evaluate(`window.fixtureBounds(${JSON.stringify(newShowerId)})`)).min[0]>6)
+  assert.equal(await evaluate('window.fixtureDirty()'),true)
+  await evaluate(`window.fixtureSelect(${JSON.stringify(newShowerId)})`)
+  await until("Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Delete furniture'))")
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Delete furniture')).click()")
+  await until('!window.fixtureDirty()')
+  assert.equal(await evaluate('JSON.stringify(window.fixtureDesign())'),beforeAddedShower)
+  await evaluate('window.fixtureWindow()')
+  await until("Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Curtains & Blinds'))")
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Curtains & Blinds')).click()")
+  await until("document.querySelector('button[title=\"Curtains 04\"]')")
+  await evaluate("document.querySelector('button[title=\"Curtains 04\"]').click()")
+  await until("window.fixtureDesign().furniture.some(item=>item.asset_id==='curtains_04')")
+  const curtainId=await evaluate("window.fixtureDesign().furniture.find(item=>item.asset_id==='curtains_04').id")
+  await until(`window.fixtureBounds(${JSON.stringify(curtainId)})`)
+  const curtainBounds=await evaluate(`window.fixtureBounds(${JSON.stringify(curtainId)})`)
+  assert.ok(curtainBounds.min[0]>.075,JSON.stringify(curtainBounds))
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false},sessionId)
+  await evaluate("window.fixtureSelect('shower')")
+  await wait(200)
+  assert.ok(await evaluate("!!document.querySelector('[aria-label=\"Height controls\"]')"))
+  await evaluate("document.querySelector('[aria-label=\"Height controls\"]').scrollIntoView({block:'center'});true")
+  const mobileHeightControls=await evaluate("(()=>{const r=document.querySelector('[aria-label=\"Height controls\"]').getBoundingClientRect();return {top:r.top,bottom:r.bottom}})()")
+  assert.ok(mobileHeightControls.top>0 && mobileHeightControls.bottom<=844)
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Up 0.1m')).click()")
+  await until("window.fixtureDesign().furniture.find(item=>item.id==='shower').mount_height>1")
+  assert.equal(await evaluate('document.documentElement.scrollWidth>innerWidth'),false)
+  const interiorScreenshot=await send('Page.captureScreenshot',{format:'png'},sessionId)
+  fs.writeFileSync(path.join(temp,'shower-height-mobile.png'),Buffer.from(interiorScreenshot.data,'base64'))
   assert.equal(errors.length, 0, JSON.stringify(errors))
-  console.log(JSON.stringify({ ...report, heightButtons: 'passed', surfaceMenus: 'passed',
-    windowAndCoveringTabs: 'passed', openingFitReplacementRestoreAndFloorVisibility: 'passed',
-    legacyOpeningsWithoutGlbMetadata: 'passed', roofAndCeilingCamera: '7 real-selection cases passed, including shared living-room/bedroom ceilings',
-    dragAngleDegrees: dragAngle * 180 / Math.PI, dragPosition: cameraAfter.position,
-    gizmoDragDoesNotTurnCamera: true, mobileSelectionVisible: mobile.selectionVisible,
-    placementRoomCameraPreviewCancelConfirmAndUpperFloor: 'passed', screenshotPath }, null, 2))
+  console.log(JSON.stringify({...previousReport,interiorCurtainBedAndShower:'passed with real assets',wardrobeCadFacing:'passed',showerSelectedWallAndChangeWall:'passed',unsavedAssetCancellation:'passed',artifacts:temp},null,2))
 } finally {
   socket?.close()
   browser?.kill()

@@ -162,6 +162,7 @@ class RefinementMixin:
             "connection_preferences": constraints.get("connections", []),
             "strict_room_program": strict_room_program,
             "strict_floor_program": bool(constraints.get("floor_room_counts")),
+            "compact_layout": bool(constraints.get("compact_layout")) and not constraints.get("attached_baths") and constraints.get("source") not in {"home_wizard", "structured_prompt"},
             "roof_type": constraints.get("roof_type"),
             "setbacks": copy.deepcopy(constraints.get("setbacks") or {}),
             "max_coverage": constraints.get("max_coverage"),

@@ -44,13 +44,7 @@ def furniture_mount_error(root, room, min_z: float, max_z: float) -> Optional[st
 
 def doorways_overlapping_height(doors, min_z, max_z):
     """Filter each doorway by its actual elevation and height before 2D checks."""
-    result = []
-    for door in doors:
-        base = place_furniture._opening_xy(door)[2]
-        height = float(door.get("height", door.get("dimensions", {}).get("height", 2.1)))
-        if min_z < base + height and max_z > base:
-            result.append(door)
-    return result
+    return place_furniture.doorways_overlapping_height(doors, min_z, max_z)
 
 
 def validate_generated_scene(

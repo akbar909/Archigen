@@ -48,6 +48,18 @@ def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upp
     """Build the selected flight geometry inside its reserved vertical core."""
     if bpy is None or not stair_def:
         return []
+    if stair_def.get("run_axis") == "x":
+        # Build in the existing flight coordinate system, then rotate every
+        # component together into its canonical world-space bounding box.
+        position, dimensions = stair_def["position"], stair_def["dimensions"]
+        local = {**stair_def, "run_axis": "y", "position": {"x": 0, "y": 0},
+                 "dimensions": {**dimensions, "width": dimensions["depth"], "depth": dimensions["width"]}}
+        objects = build_staircase(local, lower_elevation, upper_elevation)
+        for obj in objects:
+            x, y, z = obj.location
+            obj.location = (position["x"] + dimensions["width"] - y, position["y"] + x, z)
+            obj.rotation_euler[2] += math.pi / 2
+        return objects
     pos = stair_def.get("position", {})
     dim = stair_def.get("dimensions", {})
     sx = float(pos.get("x", 0.0))
@@ -55,16 +67,22 @@ def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upp
     sw = float(dim.get("width", 2.2))
     sd = float(dim.get("depth", 3.4))
     sh = upper_elevation - lower_elevation
-    steps_count = max(16, int(stair_def.get("steps", 18)))
+    default_steps = max(16, math.ceil(sh / .175 / 2 - 1e-9) * 2)
+    steps_count = max(16, int(stair_def.get("steps", stair_def.get("risers", default_steps))))
     if steps_count % 2:
         steps_count += 1
     steps_per_flight = steps_count // 2
     riser_h = sh / steps_count
-    landing_d = min(max(float(stair_def.get("landing_depth", 0.9)), 0.85), sd * 0.35)
-    run_d = sd - landing_d
-    tread_d = run_d / steps_per_flight
+    stair_type = str(stair_def.get("type") or stair_def.get("configuration") or "u_shaped")
     central_gap = 0.16
     flight_w = (sw - central_gap) / 2.0
+    default_clear = flight_w if stair_type == "u_shaped" else min(sw, 1.1)
+    clear_w = float(stair_def.get("clear_width", default_clear))
+    # Keep the declared landing depth. Silently clamping it changed the tread
+    # run after preflight and made the 3D stair disagree with the CAD plan.
+    landing_d = float(stair_def.get("landing_depth", max(.9, clear_w)))
+    run_d = sd - landing_d
+    tread_d = run_d / steps_per_flight
     lower_level = int(stair_def.get("floor_level", round(lower_elevation / max(sh, 0.1))))
     upper_level = lower_level + 1
     name_prefix = f"Stair_L{lower_level}_L{upper_level}"
@@ -89,9 +107,7 @@ def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upp
             obj.data.materials.append(wood_mat)
         created.append(obj)
 
-    stair_type = str(stair_def.get("type", "u_shaped"))
     if stair_type in ("straight", "l_shaped"):
-        clear_w = min(float(stair_def.get("clear_width", 1.1)), sw)
 
         def rail_between(name, start, end):
             a, b = mathutils.Vector(start), mathutils.Vector(end)
@@ -106,7 +122,7 @@ def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upp
             created.append(rail)
 
         if stair_type == "straight":
-            straight_landing = min(.9, sd * .2)
+            straight_landing = landing_d
             straight_run = sd - straight_landing
             tread = straight_run / steps_count
             for index in range(steps_count):
@@ -120,21 +136,21 @@ def build_staircase(stair_def: Dict[str, Any], lower_elevation: float = 0.0, upp
                              (x, sy + straight_run, upper_elevation + .9))
         else:
             # Northbound lower flight, square landing, eastbound upper flight.
-            run_y, run_x = max(.1, sd - clear_w), max(.1, sw - clear_w)
+            run_y, run_x = sd - landing_d, sw - landing_d
             tread_y, tread_x = run_y / steps_per_flight, run_x / steps_per_flight
             for index in range(steps_per_flight):
                 add_tread(f"{name_prefix}_L_Lower_{index + 1:02d}", sx + clear_w / 2,
                           sy + (index + .5) * tread_y, lower_elevation + (index + 1) * riser_h,
                           clear_w, tread_y + .025)
-                add_tread(f"{name_prefix}_L_Upper_{index + 1:02d}", sx + clear_w + (index + .5) * tread_x,
+                add_tread(f"{name_prefix}_L_Upper_{index + 1:02d}", sx + landing_d + (index + .5) * tread_x,
                           sy + sd - clear_w / 2, lower_elevation + (steps_per_flight + index + 1) * riser_h,
                           tread_x + .025, clear_w)
-            add_tread(f"{name_prefix}_L_Landing", sx + clear_w / 2, sy + sd - clear_w / 2,
-                      lower_elevation + sh / 2, clear_w, clear_w, component="landing")
+            add_tread(f"{name_prefix}_L_Landing", sx + landing_d / 2, sy + sd - landing_d / 2,
+                      lower_elevation + sh / 2, landing_d, landing_d, component="landing")
             for offset in (.04, clear_w - .04):
                 rail_between(f"{name_prefix}_L_LowerRail", (sx + offset, sy, lower_elevation + .9),
                              (sx + offset, sy + run_y, lower_elevation + sh / 2 + .9))
-                rail_between(f"{name_prefix}_L_UpperRail", (sx + clear_w, sy + sd - offset, lower_elevation + sh / 2 + .9),
+                rail_between(f"{name_prefix}_L_UpperRail", (sx + landing_d, sy + sd - offset, lower_elevation + sh / 2 + .9),
                              (sx + sw, sy + sd - offset, upper_elevation + .9))
         return created
 
@@ -390,29 +406,38 @@ def build_exterior_features(
     bw_h = float(boundary.get("height", 1.8))
     bw_t = float(boundary.get("thickness", 0.15))
     plot_cx, plot_cy = pw / 2.0, pd / 2.0
-    drive_w = float(drive_cfg.get("width", 3.8))
+    drive_w = min(pw, max(0.0, float(drive_cfg.get("width", 3.8))))
     drive_d = min(pd, max(0.0, float(drive_cfg.get("depth", sb_f))))
     drive_pos = drive_cfg.get("position", {})
     drive_x0 = max(0.0, min(pw - drive_w, float(drive_pos.get("x", plot_cx - drive_w / 2.0))))
-    gate_w = min(float(gate_cfg.get("width", drive_w)), drive_w)
+    drive_y0 = max(0.0, min(pd - drive_d, float(drive_pos.get("y", 0.0))))
+    gate_side = gate_cfg.get("side", site_data.get("road", {}).get("side", "south"))
+    vertical_gate = gate_cfg.get("axis") == "y" or gate_side in {"east", "west"}
+    gate_w = min(float(gate_cfg.get("width", drive_d if vertical_gate else drive_w)), pd if vertical_gate else pw)
     gate_h = float(gate_cfg.get("height", bw_h))
-    gate_x = drive_x0 + drive_w / 2.0
+    gate_pos = gate_cfg.get("position", {})
+    gate_x = float(gate_pos.get("x", pw if gate_side == "east" else 0.0 if vertical_gate else drive_x0)) + (0 if vertical_gate else gate_w / 2)
+    gate_y = float(gate_pos.get("y", pd if gate_side == "north" else drive_y0 if vertical_gate else 0.0)) + (gate_w / 2 if vertical_gate else 0)
+    gate_enabled = bool(gate_cfg) and gate_cfg.get("enabled") is not False
 
     if boundary.get("enabled", False):
         # The canonical plot origin is south-west (0, 0); boundary geometry must
         # never be centred around the building or it can cross the entire scene.
-        b_segments = [
-            (0.0, plot_cy, bw_t, pd),
-            (pw, plot_cy, bw_t, pd),
-            (plot_cx, pd, pw, bw_t),
-        ]
-        left_width = max(0.0, gate_x - gate_w / 2.0)
-        right_start = gate_x + gate_w / 2.0
-        right_width = max(0.0, pw - right_start)
-        if left_width > 0.05:
-            b_segments.append((left_width / 2.0, 0.0, left_width, bw_t))
-        if right_width > 0.05:
-            b_segments.append((right_start + right_width / 2.0, 0.0, right_width, bw_t))
+        b_segments = []
+        for side in ("south", "north", "west", "east"):
+            vertical = side in {"west", "east"}
+            span = pd if vertical else pw
+            boundary_axis = (pw if side == "east" else 0.0) if vertical else (pd if side == "north" else 0.0)
+            intervals = [(0.0, span)]
+            if gate_enabled and side == gate_side:
+                gate_center = gate_y if vertical else gate_x
+                intervals = [(0.0, max(0.0, gate_center - gate_w / 2)),
+                             (min(span, gate_center + gate_w / 2), span)]
+            for start, end in intervals:
+                if end - start > 0.05:
+                    center = (start + end) / 2
+                    b_segments.append((boundary_axis, center, bw_t, end - start) if vertical
+                                      else (center, boundary_axis, end - start, bw_t))
         for idx, (bx, by, b_w, b_d) in enumerate(b_segments):
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, by, bw_h / 2.0))
             bw_obj = bpy.context.active_object
@@ -425,20 +450,21 @@ def build_exterior_features(
             apply_box_uv_mapping(bw_obj, tile_meters=1.8)
             created.append(bw_obj)
 
-    if gate_cfg:
-        gate_obj = _try_import_gate_model(gate_x, 0.0, 0.0, gate_w, gate_h)
+    if gate_enabled:
+        gate_obj = _try_import_gate_model(gate_x, gate_y, 0.0, gate_w, gate_h)
         if gate_obj is None:
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(gate_x, 0.0, gate_h / 2.0))
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(gate_x, gate_y, gate_h / 2.0))
             gate_obj = bpy.context.active_object
             gate_obj.name = "Exterior_Entrance_Gate"
             gate_obj.scale = (gate_w, 0.06, gate_h)
             if gate_mat:
                 gate_obj.data.materials.append(gate_mat)
             apply_box_uv_mapping(gate_obj, tile_meters=1.2)
+        gate_obj.rotation_euler.z = math.radians(90 if vertical_gate else 180 if gate_side == "north" else 0)
         created.append(gate_obj)
 
     if drive_cfg and drive_d > 0.05:
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(gate_x, drive_d / 2.0, -0.01))
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(drive_x0 + drive_w / 2, drive_y0 + drive_d / 2.0, -0.01))
         drive_obj = bpy.context.active_object
         drive_obj.name = "Exterior_Driveway_Paving"
         drive_obj.scale = (drive_w, drive_d, 0.02)
@@ -451,11 +477,11 @@ def build_exterior_features(
         start = entrance_path_cfg.get("start", {})
         end = entrance_path_cfg.get("end", {})
         start_x = float(start.get("x", gate_x))
-        start_y = float(start.get("y", 0.0))
+        start_y = float(start.get("y", gate_y))
         end_x = float(end.get("x", start_x))
         end_y = float(end.get("y", sb_f))
         clipped_start = clip_path_start_after_driveway(
-            start_x, start_y, end_x, end_y, drive_x0, 0.0, drive_w, drive_d,
+            start_x, start_y, end_x, end_y, drive_x0, drive_y0, drive_w, drive_d,
         ) if drive_cfg and drive_d > 0.05 else (start_x, start_y)
         if clipped_start is None:
             return created

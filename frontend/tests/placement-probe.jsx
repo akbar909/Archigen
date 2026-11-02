@@ -10,6 +10,44 @@ export default function PlacementProbe({ onSelect, onModeChange }) {
     window.setTestViewMode = onModeChange
   }, [camera, onModeChange])
   useEffect(() => {
+    window.fixtureSelect = (id) => {
+      let object=null
+      scene.traverse(node=>{if((node.userData?.entityId===id || node.userData?.archgen_instance_id===id)&&node.visible)object=node})
+      if(!object || !onSelect)return false
+      const item=window.fixtureDesign?.().furniture?.find(item=>item.id===id)
+      onSelect({type:'furniture',id,roomId:item?.room_id || (id==='shower'?'bathroom':'bedroom'),object,source:'blender'})
+      return true
+    }
+    window.fixtureBounds = (id) => {
+      let object=null
+      scene.traverse(node=>{if(node.userData?.entityId===id && node.visible)object=node})
+      if(!object)return null
+      const box=new THREE.Box3().setFromObject(object,true)
+      return {min:box.min.toArray(),max:box.max.toArray()}
+    }
+    window.fixtureWindow = () => {
+      onSelect({type:'window',id:'window',roomId:'bedroom',wallSide:'left',hitPoint:{x:.075,y:1.8,z:-2},
+        surfaceNormal:{x:-1,y:0,z:0},opening:{id:'window',type:'window',position:[0,1.4,-2],width:1.4,height:1.2},source:'blender'})
+      return true
+    }
+    window.fixtureBathroomWall = side => {
+      onSelect({type:'wall',id:`bathroom_${side}`,wallId:`bathroom_${side}`,roomId:'bathroom',wallSide:side,
+        hitPoint:{x:side==='right'?6.925:4.075,y:1.8,z:-2},surfaceNormal:{x:side==='right'?-1:1,y:0,z:0},source:'blender'})
+      return true
+    }
+    window.fixtureWardrobeFront = () => {
+      let root=null
+      scene.traverse(node=>{if(node.userData?.entityId==='wardrobe'&&node.visible)root=node})
+      if(!root)return null
+      const handles=[],body=[]
+      root.traverse(mesh=>{
+        if(!mesh.isMesh)return
+        const target=mesh.material?.name?.startsWith('Material.007')?handles:body
+        const attr=mesh.geometry.attributes.position
+        for(let index=0;index<attr.count;index++)target.push(new THREE.Vector3().fromBufferAttribute(attr,index).applyMatrix4(mesh.matrixWorld).x)
+      })
+      return {handleMin:Math.min(...handles),bodyMax:Math.max(...body)}
+    }
     window.selectExteriorTestSurface = (name) => {
       const object = scene.getObjectByName(name)
       if (!object || !onSelect) return false

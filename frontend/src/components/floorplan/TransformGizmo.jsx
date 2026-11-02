@@ -18,7 +18,7 @@ export default function TransformGizmo({
     h = b.depth * scale;
   const cx = x + w / 2,
     cy = y + h / 2,
-    rotation = centered ? entity.rotation || 0 : 0;
+    rotation = centered ? -(entity.rotation || 0) : 0;
   return <g className="cad-gizmo" transform={`rotate(${rotation} ${cx} ${cy})`}>
     <rect x={x} y={y} width={w} height={h} fill="none" stroke="#60a5fa" strokeWidth="1.5" vectorEffect="non-scaling-stroke" pointerEvents="none" />
     {!entity.locked && <>

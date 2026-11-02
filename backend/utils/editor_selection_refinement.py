@@ -4,6 +4,7 @@ import math
 import re
 
 from utils.architectural_schema_v3 import MIN_ROOM_DIMENSIONS
+from utils.stair_geometry import stair_metrics
 
 COLLECTIONS = {'room': 'rooms', 'furniture': 'furniture', 'door': 'doors', 'window': 'windows', 'wall': 'walls', 'stair': 'stairs'}
 
@@ -69,7 +70,7 @@ def apply_selection_refinement(base_design, prompt, selection):
         return None, report
     floor, entity = resolved
     kind = selection['type']
-    name = entity.get('name') or kind.title()
+    name = entity.get('name') or (entity.get('type', '').replace('_', ' ').title() if kind in ('door', 'window') else kind.title()) or kind.title()
     if entity.get('locked'):
         report['errors'] = [f'Unlock {name} before editing it.']
         return None, report
@@ -141,7 +142,15 @@ def apply_selection_refinement(base_design, prompt, selection):
             report['errors'] = [f'For {name}, try “rotate it 45 degrees”, “move it left”, or “make it smaller”.']; return None, report
         entity['client_edited_3d'] = True; entity['placement_hint'] = 'user_exact'
     elif kind in ('door','window'):
-        if increase or decrease or re.search(r'\b(width|height|sill)\b.*\bto\b',text):
+        if re.search(r'\b(fix|repair|resolve|rehost)\b', text):
+            from utils.editor_opening_repair import repair_selected_opening
+            error = repair_selected_opening(floor, entity)
+            if error:
+                report['errors'] = [error]
+                return None, report
+            report['changes'] = [f'{name} repaired on its {"exterior" if "exterior" in entity["connected_room_ids"] else "shared"} wall.']
+            return _finalize_refinement(design, report)
+        elif increase or decrease or re.search(r'\b(width|height|sill)\b.*\bto\b',text):
             key = 'sill_height' if 'sill' in text and kind == 'window' else dimension
             if key == 'depth': key = 'width'
             value = length_amount(text, .1,design)
@@ -179,17 +188,17 @@ def apply_selection_refinement(base_design, prompt, selection):
             elif re.search(r'\b(down|south|front)\b',text):entity['position']['y']-=amount
             else:report['errors']=['Choose a direction, for example “move it left 25 cm”.'];return None,report
         floor_index=design['floors'].index(floor)
-        entity['clear_width']=(entity['dimensions']['width']-.16)/2 if entity.get('type')=='u_shaped' else min(entity['dimensions']['width'],1.1)
-        steps=entity.get('steps',entity.get('risers',18))
-        tread=(entity['dimensions']['depth']-.9)/steps if entity.get('type')=='straight' else min(entity['dimensions']['width']-entity['clear_width'],entity['dimensions']['depth']-entity['clear_width'])/(steps/2) if entity.get('type')=='l_shaped' else (entity['dimensions']['depth']-.9)/(steps/2)
-        if entity['clear_width']<.9 or tread<.25:
-            report['errors']=['The stair needs 90 cm clear width and at least 25 cm per tread. Increase its footprint.'];return None,report
+        metrics = stair_metrics(entity, floor.get('floor_height', 3))
+        if metrics['errors']:
+            report['errors'] = [f"The stair {error}" for error in metrics['errors']];return None,report
         if floor_index+1<len(design['floors']):
             upper=design['floors'][floor_index+1]
             opening=next((o for o in upper.get('stair_openings',[]) if o.get('serves_stair_id')==entity['id']),None)
             if opening:
                 opening['position']={**entity['position'],'z':upper.get('elevation',0)}
                 opening['dimensions']={**entity['dimensions'],'height':upper.get('slab_thickness',.2)}
+                for axis in ('width', 'depth'):
+                    opening['dimensions'][axis] += float(entity.get('opening_clearance', 0))
         for storey in (floor,design['floors'][floor_index+1] if floor_index+1<len(design['floors']) else {}):
             if storey.get('stair_core'):
                 storey['stair_core']['position']={**entity['position'],'z':storey.get('elevation',0)}
