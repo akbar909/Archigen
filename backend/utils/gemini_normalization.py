@@ -278,6 +278,12 @@ def _validate_home_design_schema(design: dict[str, Any], user_prompt: str = "") 
         location = f" at '{path}'" if path else ""
         errors.append(f"Design schema validation failed{location}: {exc.message}")
 
+    # A structurally valid JSON document can still contain an unsafe stair or
+    # blocked opening. Do not publish it as a successful generated layout.
+    for message in (design.get("generation_validation") or {}).get("critical_errors", []):
+        if message not in errors:
+            errors.append(message)
+
     # Validate and normalize furniture asset names (never crash on slight naming variations)
     furniture = design.get("furniture", [])
     valid_assets_set = set(VALID_FURNITURE_ASSETS) | {"staircase", "shower"}

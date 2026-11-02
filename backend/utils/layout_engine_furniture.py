@@ -166,8 +166,8 @@ class FurnitureMixin:
                         "position": {"x": cx, "y": round(cy - 0.5, 2), "z": floor_elev},
                         "rotation": 0.0,
                         "dimensions": {
-                            "width": 1.80 if compact_living else 2.20,
-                            "depth": 0.85 if compact_living else 0.95,
+                            "width": 1.70 if r.get("layout_profile") == "compact_residential" else 1.80 if compact_living else 2.20,
+                            "depth": 0.80 if r.get("layout_profile") == "compact_residential" else 0.85 if compact_living else 0.95,
                             "height": 0.82,
                         },
                     },
@@ -232,7 +232,7 @@ class FurnitureMixin:
                         "anchor_wall": "north",
                         "placement_hint": "wall_backed",
                         "dimensions": {
-                            "width": 2.10 if is_master_bedroom else 1.40,
+                            "width": 1.0 if r.get("bed_size") == "single" else 2.10 if is_master_bedroom else 1.40,
                             "depth": 2.15 if is_master_bedroom else 2.00,
                             "height": 1.10,
                         },
@@ -278,6 +278,8 @@ class FurnitureMixin:
                 # preserving door circulation. Keep the essential sleep zone.
                 if rw * rd < 14.0:
                     bedroom_items = bedroom_items[:3]
+                if r.get("layout_profile") == "compact_residential":
+                    bedroom_items = bedroom_items[:1]
                 for item in bedroom_items:
                     _add(item)
             elif rtype == "kitchen":
@@ -424,6 +426,7 @@ class FurnitureMixin:
                         "dimensions": {"width": 0.45, "depth": 0.45, "height": 0.85},
                     })
                 for item in dining_items:
+                    item["seating_group_id"] = f"dining_set_{rid}"
                     _add(item)
             elif rtype == "home_office":
                 for item in [

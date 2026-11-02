@@ -39,6 +39,8 @@ export default function InteriorEditorDrawer({
   onCancelPlacement,
   onConfirmPlacement,
   onAdjustPlacement,
+  onPlacementWallChange,
+  onMountWallChange,
   transformMode,
   onTransformModeChange,
   onClose,
@@ -105,7 +107,7 @@ export default function InteriorEditorDrawer({
   const isFloor = selection.type === 'floor'
   const isGround = selection.type === 'ground'
   const category = isFurniture ? furnitureCategory(furniture) : ''
-  const variants = furniture?.wall_mounted
+  const variants = furniture?.wall_mounted && category !== 'shower'
     ? assets.filter((entry) => furniture.asset_group ? entry.group === furniture.asset_group : entry.group === 'wall_decor' || entry.group === 'wall_panel')
     : furniture?.ceiling_mounted
       ? assets.filter((entry) => entry.group === 'ceiling_asset')
@@ -231,10 +233,15 @@ export default function InteriorEditorDrawer({
             <strong>Preview: {pendingPlacement.asset.name}</strong>
             <p>{pendingPlacement.status === 'loading' ? 'Loading 3D preview…' : pendingPlacement.status === 'error'
               ? 'Preview could not load. Choose another model or cancel.' : `Place in ${libraryRoom?.name || libraryRoom?.type || 'this room'}? Nothing is saved until you confirm.`}</p>
+            {pendingPlacement.item.wall_mounted && <label className="editor-library-field">Mount on wall
+              <select aria-label="Preview mounting wall" value={pendingPlacement.item.wall_side} onChange={event=>onPlacementWallChange?.(event.target.value)}>
+                <option value="right">Right wall</option><option value="left">Left wall</option><option value="front">North wall</option><option value="back">South wall</option>
+              </select>
+            </label>}
             {pendingPlacement.status === 'ready' && !pendingPlacement.item.support_id && <div className="editor-inline-actions" aria-label="Adjust placement preview">
               <button type="button" onClick={() => onAdjustPlacement?.(-0.25, 0)}>−X</button>
               <button type="button" onClick={() => onAdjustPlacement?.(0.25, 0)}>+X</button>
-              <button type="button" onClick={() => onAdjustPlacement?.(0, 0, 90)}>Rotate 90°</button>
+              {!pendingPlacement.item.wall_mounted && <button type="button" onClick={() => onAdjustPlacement?.(0, 0, 90)}>Rotate 90°</button>}
               <button type="button" onClick={() => onAdjustPlacement?.(0, -0.25)}>−Z</button>
               <button type="button" onClick={() => onAdjustPlacement?.(0, 0.25)}>+Z</button>
             </div>}
@@ -288,7 +295,12 @@ export default function InteriorEditorDrawer({
 
               {furniture.wall_mounted && (
                 <>
-                  <p className="editor-helper-copy">Automatically faces into the room on this wall. Move along the wall or adjust the height below.</p>
+                  {category==='shower' && <label className="editor-library-field">Mount on wall
+                    <select aria-label="Shower mounting wall" value={furniture.wall_side || 'right'} onChange={event=>onMountWallChange?.(event.target.value)}>
+                      <option value="right">Right wall</option><option value="left">Left wall</option><option value="front">North wall</option><option value="back">South wall</option>
+                    </select>
+                  </label>}
+                  <p className="editor-helper-copy">Faces away from the selected wall surface. Move along the wall or adjust the height below.</p>
                   <p className="editor-helper-copy">Height above floor: {Number(furniture.mount_height || 0).toFixed(2)}m</p>
                   <div className="editor-inline-actions" aria-label="Height controls">
                     <button type="button" onClick={() => onNudge(0, 0, 0.1)}><ChevronUp size={16} /> Up 0.1m</button>
@@ -477,6 +489,11 @@ export default function InteriorEditorDrawer({
           </>
         )}
 
+        {selection.type==='wall' && !selection.exterior && /bath/.test(`${room?.type} ${room?.name}`.toLowerCase()) && <section className="interior-editor-section">
+          <SectionTitle icon={<Box size={15}/>}>Shower fixtures</SectionTitle>
+          <p className="editor-helper-copy">Places the fixture on this selected wall.</p>
+          {modelGrid(assets.filter(entry=>entry.category==='shower' && entry.mounting?.surface==='wall'),onAddModelAsNew)}
+        </section>}
         {(selection.type === 'roof' || selection.type === 'ceiling') && (
           <section className="interior-editor-section">
             <SectionTitle icon={<Layers3 size={15} />}>{selection.type === 'roof' ? 'Exterior roof assets' : 'Ceiling fixtures'}</SectionTitle>

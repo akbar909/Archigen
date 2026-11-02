@@ -5,8 +5,10 @@ Model axes in `mounting` refer to the original GLB (glTF coordinates, Y up).
 clock dial, or light fixture. `up_axis` points toward its top.
 
 The editor normalizes this front to +Z and then points it along the selected
-wall's inward normal. Blender normalizes it to -Y (Z up). Frontend semantic
-rotation is clockwise; Blender wall rotation must use the opposite sign.
+wall's inward normal. Blender normalizes it to -Y (Z up). Stored rotation is
+counterclockwise in architectural XY: Three.js Y yaw and Blender Z yaw use the
+same positive angle. SVG plan symbols use the negative angle because screen Y
+points down. Wall mounting uses the inward normal to correct legacy angles.
 
 Each reviewed record has `orientation_verified: true` and an
 `orientation_version`. Width and depth alone must never decide which side is

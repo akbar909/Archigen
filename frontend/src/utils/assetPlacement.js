@@ -1,4 +1,5 @@
 import { clampFurniturePosition, ceilingMountedPosition } from './designEditing.js'
+import { mountWallFixture } from './fixtureMounting.js'
 
 export function placementRoom(room, detectedRooms = []) {
   const position = room.position || room.bounds || {}
@@ -10,7 +11,7 @@ export function placementRoom(room, detectedRooms = []) {
   } }
 }
 
-export function createAssetPlacement(asset, room, id) {
+export function createAssetPlacement(asset, room, id, placement = {}) {
   if (!asset?.model_path || !room?.id || !['furniture', 'floor_overlay', 'ceiling_asset'].includes(asset.group)) return null
   const p = room.position || {}, d = room.dimensions || {}
   const item = {
@@ -28,7 +29,7 @@ export function createAssetPlacement(asset, room, id) {
   }
   item.position = clampFurniturePosition(item, room, item.position)
   if (item.ceiling_mounted) item.position = ceilingMountedPosition(item, room)
-  return item
+  return mountWallFixture(item,room,asset,placement)
 }
 
 export function placementCameraView(room) {

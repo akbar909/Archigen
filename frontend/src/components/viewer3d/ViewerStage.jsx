@@ -62,6 +62,7 @@ export default function ViewerStage({ state }) {
     dismissedSynthesisPrompt,
     setDismissedSynthesisPrompt,
     isGenerating3D,
+    generation3D,
     regenerate3D,
     charPos,
     charRot,
@@ -123,7 +124,7 @@ export default function ViewerStage({ state }) {
     isDirty,
     navigationModel,
     pendingPlacement, cancelPlacement, confirmPlacement, onPlacementStatus,
-    roomTransition, onRoomTransitionComplete, openAssetLibrary, adjustPlacement,
+    roomTransition, onRoomTransitionComplete, openAssetLibrary, adjustPlacement, setPlacementWall, setSelectedFixtureWall,
   } = state
 
   const is3DReady = Boolean(glbUrl && isModelRendered && !isGenerating3D)
@@ -382,14 +383,14 @@ export default function ViewerStage({ state }) {
                   <>
                     <div style={{ fontSize: '2.2rem', marginBottom: 10 }}>🏛️</div>
                     <div style={{ fontSize: '1.02rem', fontWeight: 700, marginBottom: 6 }}>
-                      {design?.layout_approved || design?.approved_at
+                      {generation3D?.error ? '3D Build Failed' : design?.layout_approved || design?.approved_at
                         ? '3D Model Pending Synthesis'
                         : 'Floor Plan Ready for 3D Synthesis'}
                     </div>
                     <div style={{ fontSize: '0.80rem', color: 'rgba(255,255,255,0.72)', lineHeight: 1.45, marginBottom: 16 }}>
-                      {design?.layout_approved || design?.approved_at
+                      {generation3D?.error || (design?.layout_approved || design?.approved_at
                         ? 'Layout is approved. Click below to trigger or re-run the 3D model builder in Blender.'
-                        : 'Review the 2D floor plan or synthesize the complete multi-floor 3D model in Blender.'}
+                        : 'Review the 2D floor plan or synthesize the complete multi-floor 3D model in Blender.')}
                     </div>
                     <button
                       type="button"
@@ -519,6 +520,8 @@ export default function ViewerStage({ state }) {
           onCancelPlacement={cancelPlacement}
           onConfirmPlacement={confirmPlacement}
           onAdjustPlacement={adjustPlacement}
+          onPlacementWallChange={setPlacementWall}
+          onMountWallChange={setSelectedFixtureWall}
           canAccentColor={canApplyAccentColor(selectedEntity?.object)}
           transformMode={transformMode}
           onTransformModeChange={setTransformMode}

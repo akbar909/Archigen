@@ -41,6 +41,12 @@ def load_model(file_path: str, name_prefix: Optional[str] = None) -> Any:
     """
     ensure_bpy()
 
+    # A cached .gltf is only its scene description. Resolve its binary buffers
+    # and textures (or the matching source GLB) before Blender touches the scene.
+    if os.path.splitext(file_path)[1].lower() == ".gltf":
+        from s3_asset_resolver import ensure_model_ready
+        file_path = ensure_model_ready(file_path)
+
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"Model file not found: {file_path}")
 

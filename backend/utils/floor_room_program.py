@@ -34,9 +34,11 @@ ROOM_ALIASES = {
     "wash room": "bathroom",
     "toilet": "bathroom",
     "living room": "living_room",
+    "family lounge": "living_room",
     "lounge": "living_room",
     "kitchen": "kitchen",
     "dining room": "dining_room",
+    "dining area": "dining_room",
     "home office": "home_office",
     "office": "home_office",
     "study": "home_office",
@@ -45,6 +47,8 @@ ROOM_ALIASES = {
     "corridor": "corridor",
     "hallway": "corridor",
     "laundry": "laundry",
+    "balcony": "balcony",
+    "terrace": "terrace",
 }
 
 COUNT_TOKEN = r"(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)"
@@ -86,13 +90,51 @@ def _room_type(value: str) -> Optional[str]:
     return ROOM_ALIASES.get(clean)
 
 
+def _section_room_counts(text: str) -> Dict[int, Dict[str, int]]:
+    """Read enumerated room lists under explicit floor headings.
+
+    Headings establish the floor for every comma-separated room, including
+    singular rooms without a numeral and adjectives such as ``shared``. Stop
+    at the end of the list's sentence so subsequent design instructions do not
+    accidentally become additional room requirements.
+    """
+    headings = list(re.finditer(
+        rf"\b(?P<floor>{FLOOR_TOKEN})\s*[:\u2014\u2013]\s*",
+        text,
+        re.IGNORECASE,
+    ))
+    result: Dict[int, Dict[str, int]] = {}
+    room_pattern = re.compile(
+        rf"^\s*(?:(?P<count>{COUNT_TOKEN})\s+)?"
+        rf"(?:(?:small|compact|shared|family|front|rear|large|main|common|guest)\s+)*"
+        rf"(?P<room>{ROOM_TOKEN})\b",
+        re.IGNORECASE,
+    )
+    for index, heading in enumerate(headings):
+        level = floor_level(heading.group("floor"))
+        if level is None:
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        body = re.split(r"(?<!\d)\.(?:\s|$)|[\r\n]", text[heading.end():end], maxsplit=1)[0]
+        counts: Dict[str, int] = {}
+        for clause in re.split(r"\s*(?:,|;|\band\b|&)\s*", body):
+            match = room_pattern.match(clause.strip())
+            room_type = _room_type(match.group("room")) if match else None
+            if room_type:
+                counts[room_type] = counts.get(room_type, 0) + _count(match.group("count") or "one")
+        if counts:
+            result.setdefault(level, {}).update(counts)
+    return result
+
+
 def parse_floor_room_counts(prompt: str) -> Dict[int, Dict[str, int]]:
     """Return exact per-floor room counts from independent prompt clauses.
 
     A later clause may omit the room name (``and 2 on first floor``); in that
     case it inherits the most recently stated room type.
     """
-    text = re.sub(r"\s+", " ", str(prompt or "").lower()).strip()
+    raw_text = str(prompt or "").lower()
+    text = re.sub(r"\s+", " ", raw_text).strip()
     if not text:
         return {}
 
@@ -130,6 +172,9 @@ def parse_floor_room_counts(prompt: str) -> Dict[int, Dict[str, int]]:
         if level is None:
             continue
         result.setdefault(level, {})[room_type] = _count(match.group("count"))
+
+    for level, counts in _section_room_counts(raw_text).items():
+        result.setdefault(level, {}).update(counts)
 
     return result
 

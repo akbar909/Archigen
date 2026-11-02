@@ -214,14 +214,22 @@ def _try_import_door_model(
                 bpy.context.view_layer.update()
 
                 fixed_tokens = ("frame", "jamb", "trim", "casing", "doorway", "threshold")
+                source_names = [str(mesh.get('archgen_source_object_name') or mesh.data.name or mesh.name).lower() for mesh in meshes]
+                has_casing = any('casing' in name for name in source_names)
                 fixed_meshes = []
                 leaf_meshes = []
                 for mesh in meshes:
                     source_name = str(mesh.get("archgen_source_object_name") or mesh.data.name or mesh.name).lower()
-                    if any(token in source_name for token in fixed_tokens):
+                    # The uploaded interior door calls its solid moving panel
+                    # "door_frame"; its separate "door_casing" is the fixed trim.
+                    # Keeping both fixed swings only the handles into the air.
+                    panel_named_frame = has_casing and source_name.replace(' ', '_').split('.')[0] == 'door_frame'
+                    if any(token in source_name for token in fixed_tokens) and not panel_named_frame:
                         fixed_meshes.append(mesh)
+                        mesh['archgen_door_part_role'] = 'frame'
                     else:
                         leaf_meshes.append(mesh)
+                        mesh['archgen_door_part_role'] = 'leaf'
                 if not leaf_meshes:
                     leaf_meshes = list(meshes)
                     fixed_meshes = []
@@ -279,8 +287,23 @@ def _try_import_door_model(
     return None
 
 
+def _select_window_model_path(candidates, preferred_asset=None, window_type=None):
+    candidates=sorted(candidates,key=lambda path:(os.path.splitext(path)[1].lower()!='.glb',path.lower()))
+    requested=os.path.splitext(os.path.basename(str(preferred_asset or '').replace('\\','/')))[0].lower()
+    if requested:
+        explicit=next((path for path in candidates if os.path.splitext(os.path.basename(path))[0].lower()==requested),None)
+        if explicit:return explicit
+    if 'arch' in str(window_type or '').lower():
+        return next((path for path in candidates if 'arch' in os.path.basename(path).lower()),None)
+    for stem in ('window_standard_02','standard_window_02','window_standard_01'):
+        match=next((path for path in candidates if os.path.splitext(os.path.basename(path))[0].lower()==stem),None)
+        if match:return match
+    return next((path for path in candidates if 'arch' not in os.path.basename(path).lower()),candidates[0] if candidates else None)
+
+
 def _try_import_window_model(
-    wx: float, wy: float, wz: float, ww: float, wh: float, idx: int, is_vertical: bool = False
+    wx: float, wy: float, wz: float, ww: float, wh: float, idx: int, is_vertical: bool = False,
+    preferred_asset: Optional[str] = None, window_type: Optional[str] = None,
 ) -> Optional[Any]:
     """Attempts to import a real 3D window GLB model into the opening cutout, rotated and scaled to match wall."""
     win_dirs = [
@@ -295,10 +318,25 @@ def _try_import_window_model(
                     if f.lower().endswith((".glb", ".gltf")):
                         win_candidates.append(os.path.join(root, f))
 
-    for p in win_candidates:
+    selected=_select_window_model_path(win_candidates,preferred_asset,window_type)
+    for p in ([selected] if selected else []):
         if os.path.isfile(p):
             try:
-                win_obj = import_asset.load_model(p, name_prefix=f"win_asset_{idx}")
+                imported = import_asset.load_model(p, name_prefix=f"win_asset_{idx}")
+                metadata_path=os.path.join(BLENDER_ROOT,'metadata',os.path.splitext(os.path.basename(p))[0]+'.json')
+                metadata={}
+                if os.path.isfile(metadata_path):
+                    with open(metadata_path,encoding='utf-8') as handle:metadata=json.load(handle)
+                imported.rotation_euler.z=math.radians(float(metadata.get('canonical_yaw_offset_deg',0)))
+                imported.rotation_euler.x=math.radians(float(metadata.get('canonical_pitch_offset_deg',0)))
+                win_obj=bpy.data.objects.new(f'WindowPlacement_{idx}',None)
+                bpy.context.scene.collection.objects.link(win_obj)
+                imported.parent=win_obj
+                bpy.context.view_layer.update()
+                points=[mesh.matrix_world @ mathutils.Vector(corner) for mesh in imported.children_recursive if mesh.type=='MESH' for corner in mesh.bound_box]
+                imported.location-=mathutils.Vector(((min(p.x for p in points)+max(p.x for p in points))/2,(min(p.y for p in points)+max(p.y for p in points))/2,min(p.z for p in points)))
+                bpy.context.view_layer.update()
+                win_obj['archgen_source_file']=os.path.basename(p)
                 cur_w, cur_d, cur_h = import_asset.get_bounding_dimensions(win_obj)
                 cur_w = max(cur_w, 0.5)
                 cur_d = max(cur_d, 0.05)

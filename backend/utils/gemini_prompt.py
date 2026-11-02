@@ -43,7 +43,46 @@ def infer_layout_constraints(prompt: str) -> dict[str, Any]:
             constraints["preferred_style"] = style_aliases[style]
             break
 
+    # Plot dimensions and the entrance direction are hard constraints even in
+    # ordinary prose. Gemini's response may omit them or supply its defaults.
+    dimension_pattern = re.compile(
+        r"(?P<width>\d+(?:\.\d+)?)\s*(?P<first_unit>ft|feet|foot|m|meters?|metres?)?\s*"
+        r"[x\u00d7]\s*(?P<depth>\d+(?:\.\d+)?)\s*"
+        r"(?P<unit>ft|feet|foot|meters?|metres?|m)\b",
+        re.IGNORECASE,
+    )
+    for plot_match in dimension_pattern.finditer(prompt_lower):
+        prefix = prompt_lower[max(0, plot_match.start() - 50):plot_match.start()]
+        suffix = prompt_lower[plot_match.end():plot_match.end() + 50]
+        plot_before = re.search(
+            r"\b(?:plot|site)(?:\s+(?:size|dimensions))?\s*(?:(?:is|of|measures)\s*|[:=]\s*)?$",
+            prefix,
+        )
+        plot_after = re.match(r"\s*(?:(?:north|south|east|west)[ -]facing\s+)?(?:plot|site)\b", suffix)
+        if not (plot_before or plot_after):
+            continue
+        factor = 0.3048 if plot_match.group("unit") in {"ft", "feet", "foot"} else 1.0
+        first_unit = plot_match.group("first_unit")
+        first_factor = (0.3048 if first_unit in {"ft", "feet", "foot"} else 1.0) if first_unit else factor
+        width = float(plot_match.group("width")) * first_factor
+        depth = float(plot_match.group("depth")) * factor
+        if width > 0 and depth > 0:
+            constraints["plot"] = {"width": round(width, 3), "depth": round(depth, 3)}
+            break
+
+    orientation_patterns = (
+        r"\b(?:entrance|entry|front|plot|home|house)\s+(?:(?:is|must\s+be|should\s+be)\s+)?(?:faces?|facing)\s+(north|south|east|west)\b",
+        r"\b(north|south|east|west)[ -]facing\s+(?:entrance|entry|front|plot|home|house)\b",
+        r"\b(?:entrance|entry)\s+(?:on|at|to)\s+(?:the\s+)?(north|south|east|west)\b",
+    )
+    for pattern in orientation_patterns:
+        orientation_match = re.search(pattern, prompt_lower)
+        if orientation_match:
+            constraints["orientation"] = orientation_match.group(1)
+            break
+
     # Extract bedrooms / general rooms
+    constraints["compact_layout"] = bool(re.search(r"\bcompact\b", prompt_lower))
     bed_match = re.search(
         r"\b(one|two|three|four|five|six|\d+)\s*[- ]?(?:(master|guest)\s+)?(bedroom|bedrom|bed|br|room)s?\b",
         prompt_lower,

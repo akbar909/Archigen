@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { toast } from 'react-hot-toast'
 import { layoutConflictSummary } from '../utils/layoutDiagnostics.js'
+import { waitForModel } from '../utils/modelGeneration.js'
+import { reconcileDraftDesign } from '../utils/draftReconciliation.js'
 import {
   approveFloorPlan as apiApproveFloorPlan,
   createVersionBranch as apiCreateVersionBranch,
@@ -26,24 +28,7 @@ const cloneJson = (value) => {
   return JSON.parse(JSON.stringify(value))
 }
 
-const NON_STRUCTURAL_KEYS = new Set([
-  'furniture', 'assets', 'materials', 'pbr_material', 'material_override', 'material_overrides', 'wall_face_overrides', 'ground_finish', 'surface_overrides', 'deleted_furniture_ids',
-  'glb_url', 'model_url', 'approved_at', 'layout_approved', 'client_edited_3d',
-  'color', 'texture_url', 's3_key',
-])
-
-const structuralSnapshot = (value) => {
-  if (Array.isArray(value)) return value.map(structuralSnapshot)
-  if (!value || typeof value !== 'object') return value
-  return Object.keys(value).sort().reduce((result, key) => {
-    if (!NON_STRUCTURAL_KEYS.has(key)) result[key] = structuralSnapshot(value[key])
-    return result
-  }, {})
-}
-
-const needsBlenderRebuild = (previous, next) => (
-  JSON.stringify(structuralSnapshot(previous)) !== JSON.stringify(structuralSnapshot(next))
-)
+let modelPollToken = 0
 
 export const useProjectStore = create((set, get) => ({
   // Data State
@@ -57,6 +42,7 @@ export const useProjectStore = create((set, get) => ({
   loading: false,
   isVersionLoading: false,
   isGenerating3D: false,
+  generation3D: null,
   isReloading3D: false,
   isApprovingLayout: false,
   isSavingVersion: false,
@@ -86,7 +72,7 @@ export const useProjectStore = create((set, get) => ({
     const resolved = typeof nextDesign === 'function'
       ? nextDesign(cloneJson(state.design))
       : nextDesign
-    return { design: resolved, layoutValidation: null, isDirty: JSON.stringify(resolved) !== JSON.stringify(state.persistedDesign) }
+    return { ...reconcileDraftDesign(state.design, resolved, state.persistedDesign), layoutValidation: null }
   }),
   discardDraftChanges: () => set((state) => ({
     design: cloneJson(state.persistedDesign),
@@ -133,6 +119,7 @@ export const useProjectStore = create((set, get) => ({
       return currentDesign
     }
 
+    ++modelPollToken
     set({
       activeProjectId: projectId,
       activeVersionId: versionId,
@@ -140,6 +127,8 @@ export const useProjectStore = create((set, get) => ({
       persistedDesign: null,
       isDirty: false,
       isVersionLoading: true,
+      isGenerating3D: false,
+      generation3D: null,
       activeTab: 'viewer',
     })
     try {
@@ -153,11 +142,13 @@ export const useProjectStore = create((set, get) => ({
         persistedDesign: cloneJson(designData),
         isDirty: false,
         isVersionLoading: false,
+        generation3D: ver?.generation_3d || null,
+        isGenerating3D: false,
       })
 
       // If version is approved but has no 3D glb model yet, poll in case it is finishing in background
-      if (designData && !designData.glb_url && designData.layout_approved) {
-        get().pollForGlbModel(versionId, 40, 3000)
+      if (designData && (ver?.generation_3d?.status === 'running' || (!ver?.generation_3d && !designData.glb_url && designData.layout_approved))) {
+        get().pollForGlbModel(versionId)
       }
       return data.version
     } catch (err) {
@@ -390,44 +381,28 @@ export const useProjectStore = create((set, get) => ({
     }
   },
 
-  pollForGlbModel: async (versionId, maxAttempts = 80, intervalMs = 2500) => {
+  pollForGlbModel: async (versionId, maxAttempts = 300, intervalMs = 2500) => {
     if (!versionId) return null
+    const token = ++modelPollToken
     set({ isGenerating3D: true })
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, intervalMs))
-
-      // If user switched away from this version while polling, stop
-      if (get().activeVersionId !== versionId) {
-        set({ isGenerating3D: false })
-        return null
-      }
-
-      try {
-        const data = await apiFetchVersion(versionId)
-        const glbUrl = data?.version?.glb_url || data?.version?.design?.glb_url
-        if (glbUrl) {
-          set((state) => {
-            const nextDesign = state.design
-              ? { ...state.design, glb_url: glbUrl }
-              : (data.version.design ? { ...data.version.design, glb_url: glbUrl } : null)
-            return {
-              design: nextDesign,
-              persistedDesign: state.isDirty ? state.persistedDesign : cloneJson(nextDesign),
-              isGenerating3D: false,
-            }
-          })
-          toast.success('Cloud Blender 3D Model ready! 🏡✨')
-          await get().loadProjectsList({ showLoader: false })
-          return glbUrl
-        }
-      } catch {
-        // Silently continue polling
-      }
-    }
-
+    const isCurrent = () => token === modelPollToken && get().activeVersionId === versionId
+    const result = await waitForModel({
+      fetchVersion: () => apiFetchVersion(versionId), isCurrent, maxAttempts, intervalMs,
+      onStatus: generation3D => set({ generation3D }),
+    })
+    if (!isCurrent()) return null
     set({ isGenerating3D: false })
-    toast.error('Blender 3D synthesis took longer than expected. Click "Synthesize 3D Model" to retry.', { duration: 6000 })
+    if (result.status === 'completed') {
+      set(state => {
+        const nextDesign = { ...(state.design || result.version.design), glb_url: result.url }
+        return { design: nextDesign, persistedDesign: state.isDirty ? state.persistedDesign : cloneJson(nextDesign) }
+      })
+      toast.success('3D model ready.', { id: 'model-generation' })
+      await get().loadProjectsList({ showLoader: false })
+      return result.url
+    }
+    if (result.status === 'waiting') toast(result.error, { id: 'model-generation', duration: 7000 })
+    else if (result.status !== 'cancelled') toast.error(result.error, { id: 'model-generation', duration: 7000 })
     return null
   },
 
@@ -446,7 +421,12 @@ export const useProjectStore = create((set, get) => ({
     set({ isGenerating3D: true })
     try {
       const data = await apiGenerate3D(pId, vId, { force: true })
-      if (data.success && data.glb_url) {
+      if (get().activeVersionId !== vId) return null
+      if (data.success && data.pending) {
+        set({ generation3D: data.version?.generation_3d || null })
+        toast(data.already_running ? 'This 3D build is already running.' : '3D build started.', { id: 'model-generation' })
+        return await get().pollForGlbModel(vId)
+      } else if (data.success && data.glb_url) {
         set((state) => {
           const nextDesign = state.design ? { ...state.design, glb_url: data.glb_url } : state.design
           return { design: nextDesign, persistedDesign: cloneJson(nextDesign) }
@@ -460,7 +440,7 @@ export const useProjectStore = create((set, get) => ({
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to generate Blender 3D model'))
     } finally {
-      set({ isGenerating3D: false })
+      if (get().activeVersionId === vId) set({ isGenerating3D: false })
     }
     return null
   },
@@ -516,8 +496,9 @@ export const useProjectStore = create((set, get) => ({
     set({ isApprovingLayout: true })
     try {
       const data = await apiApproveFloorPlan(pId, vId)
+      if (get().activeVersionId !== vId) return null
       if (data.success) {
-        toast.success('3D build started.')
+        toast.success('3D build started.', { id: 'model-generation' })
         set((state) => {
           const nextDesign = data.version?.design
             ? { ...data.version.design, glb_url: data.version.glb_url || data.version.design.glb_url }
@@ -525,6 +506,7 @@ export const useProjectStore = create((set, get) => ({
           return {
           isApprovingLayout: false,
           isGenerating3D: true,
+          generation3D: data.version?.generation_3d || null,
           design: nextDesign,
           persistedDesign: cloneJson(nextDesign),
           }
@@ -569,7 +551,6 @@ export const useProjectStore = create((set, get) => ({
       activeProjectId: projectId,
       activeVersionId: versionId,
       design,
-      persistedDesign,
       isSavingVersion,
       loadProjectsList,
     } = get()
@@ -585,7 +566,6 @@ export const useProjectStore = create((set, get) => ({
 
     set({ isSavingVersion: true })
     try {
-      const structuralChanges = needsBlenderRebuild(persistedDesign, design)
       const trimmedNote = String(note || '').trim()
       const data = mode === 'new_version'
         ? await apiCreateVersionBranch(projectId, {
@@ -603,10 +583,9 @@ export const useProjectStore = create((set, get) => ({
       }
       const report = data.validation
       const hasConflicts = Boolean(report?.critical_errors?.length)
-      const rebuild3D = structuralChanges && Boolean(design.layout_approved) && !hasConflicts
 
       const previewGlbUrl = version?.glb_url || savedDesign.glb_url || design.glb_url || design.model_url
-      let resolvedDesign = previewGlbUrl
+      const resolvedDesign = previewGlbUrl
         ? { ...savedDesign, glb_url: previewGlbUrl }
         : savedDesign
       set({
@@ -616,41 +595,15 @@ export const useProjectStore = create((set, get) => ({
         // the current route/store IDs aligned until that navigation occurs.
         activeVersionId: mode === 'new_version' ? versionId : nextVersionId,
         isDirty: false,
-        isGenerating3D: rebuild3D,
         layoutValidation: hasConflicts ? { versionId: nextVersionId, report } : null,
       })
-
-      if (rebuild3D) {
-        try {
-          const generated = await apiGenerate3D(projectId, nextVersionId, { force: true })
-          if (generated?.success && generated.glb_url) {
-            resolvedDesign = {
-              ...(generated.version?.design || resolvedDesign),
-              glb_url: generated.glb_url,
-            }
-            set({
-              design: resolvedDesign,
-              persistedDesign: cloneJson(resolvedDesign),
-            })
-          } else {
-            toast.error('Changes were saved, but the updated Blender model could not be rebuilt yet.')
-          }
-        } catch (generationError) {
-          toast.error(getApiErrorMessage(
-            generationError,
-            'Changes were saved, but the updated Blender model could not be rebuilt yet.',
-          ))
-        } finally {
-          set({ isGenerating3D: false })
-        }
-      }
       await loadProjectsList({ showLoader: false })
       toast.success(
         mode === 'new_version'
           ? `Saved as Version ${version?.version_num}`
           : `Version ${version?.version_num || ''} saved`.trim(),
       )
-      return { ...data, design: resolvedDesign, mode, versionId: nextVersionId, rebuilt3D: rebuild3D }
+      return { ...data, design: resolvedDesign, mode, versionId: nextVersionId, rebuilt3D: false }
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to save design changes'))
       return null
@@ -673,6 +626,7 @@ export const useProjectStore = create((set, get) => ({
   },
 
   reset: () => {
+    ++modelPollToken
     set({
       projects: [],
       design: null,
@@ -681,6 +635,7 @@ export const useProjectStore = create((set, get) => ({
       activeVersionId: null,
       loading: false,
       isGenerating3D: false,
+      generation3D: null,
       isApprovingLayout: false,
       isSavingVersion: false,
       isDirty: false,

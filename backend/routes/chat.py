@@ -3,6 +3,8 @@ import mimetypes
 import json
 import logging
 import threading
+import uuid
+import copy
 from pathlib import Path
 
 # pyrefly: ignore [missing-import]
@@ -12,8 +14,8 @@ from routes.chat_project_routes import register_project_routes
 from flask import Blueprint, Response, jsonify, request, send_from_directory, url_for
 
 from utils.db import designs_collection, projects_collection, versions_collection
-from utils.blender_service import generate_3d_house_model
-from config import AWS_S3_BUCKET
+from utils.blender_service import generate_3d_house_model, BlenderGenerationError
+from config import AWS_S3_BUCKET, BLENDER_TIMEOUT_SECONDS
 from utils.s3_storage import get_s3_client, resolve_s3_url_to_presigned
 from utils.gemini import (
     GeminiSchemaValidationError,
@@ -71,9 +73,65 @@ def _serialize_version(doc, resolve_glb: bool = True):
         "design":      design,
         "glb_url":     resolved_glb,
         "has_glb":     bool(raw_glb),
+        "generation_3d": _generation_status(doc),
         "created_at":  doc["created_at"].isoformat() if doc.get("created_at") else None,
         "updated_at":  doc["updated_at"].isoformat() if doc.get("updated_at") else None,
     }
+
+
+def _generation_status(version):
+    job = dict(version.get('generation_3d') or {})
+    if job.get('status') == 'running':
+        try:
+            started = dt.datetime.fromisoformat(job['started_at'])
+            now = dt.datetime.now(started.tzinfo) if started.tzinfo else dt.datetime.utcnow()
+            if (now - started).total_seconds() > job.get('timeout_seconds', BLENDER_TIMEOUT_SECONDS + 60):
+                job.update(status='timed_out', error='The 3D worker did not return a model within the expected time. Check its logs and retry Build 3D.')
+        except (ValueError, TypeError, KeyError):
+            job.update(status='timed_out', error='This 3D build has no valid start time. Retry Build 3D.')
+    return job or None
+
+
+def _start_3d_generation(version, design, project_id):
+    """Atomically claim one build; both approval and retries return immediately."""
+    if (_generation_status(version) or {}).get('status') == 'running':
+        return False
+    collection = versions_collection()
+    job = {'job_id': uuid.uuid4().hex, 'status': 'running',
+           'started_at': dt.datetime.utcnow().isoformat(), 'completed_at': None,
+           'timeout_seconds': BLENDER_TIMEOUT_SECONDS + 60, 'error': None}
+    previous_id = (version.get('generation_3d') or {}).get('job_id')
+    claim = collection.update_one(
+        {'_id': version['_id'], 'generation_3d.job_id': previous_id},
+        {'$set': {'design': design, 'layout_approved': bool(design.get('layout_approved')), 'generation_3d': job}})
+    if claim.matched_count == 0:
+        return False
+    version['design'], version['generation_3d'] = design, job
+
+    def build():
+        query = {'_id': version['_id'], 'generation_3d.job_id': job['job_id']}
+        try:
+            url = generate_3d_house_model(copy.deepcopy(design), project_id=project_id,
+                                          version_num=version.get('version_num', 1), raise_on_error=True)
+            if not url:
+                raise BlenderGenerationError('The Blender worker returned no model. Check its logs before retrying.')
+            collection.update_one(query, {'$set': {
+                'glb_url': url, 'design.glb_url': url, 'generation_3d.status': 'completed',
+                'generation_3d.completed_at': dt.datetime.utcnow().isoformat(), 'generation_3d.error': None}})
+        except Exception as exc:
+            logging.exception('[BLENDER] Generation failed for version %s', version['_id'])
+            reason = str(exc) if isinstance(exc, BlenderGenerationError) else 'The 3D build failed unexpectedly. Check the backend logs.'
+            collection.update_one(query, {'$set': {
+                'generation_3d.status': 'failed', 'generation_3d.error': reason,
+                'generation_3d.completed_at': dt.datetime.utcnow().isoformat()}})
+
+    try:
+        threading.Thread(target=build, daemon=True).start()
+    except Exception:
+        collection.update_one({'_id':version['_id'], 'generation_3d.job_id':job['job_id']},
+                              {'$set':{'generation_3d.status':'failed', 'generation_3d.error':'Could not start the 3D build. Retry Build 3D.'}})
+        raise
+    return True
 
 
 
@@ -540,6 +598,10 @@ def generate_3d_for_version(project_id: str, version_id: str):
     force_value = data.get("force", request.args.get("force", False))
     force = force_value is True or str(force_value).strip().lower() in {"1", "true", "yes", "on"}
 
+    if (_generation_status(ver) or {}).get('status') == 'running':
+        return jsonify({'success':True, 'pending':True, 'already_running':True,
+                        'version':_serialize_version(ver)}), 202
+
     # Opening an existing version must not start Blender again. Return a fresh
     # signed URL for the saved object unless regeneration was explicit.
     existing_glb = ver.get("glb_url") or (ver.get("design") or {}).get("glb_url")
@@ -560,29 +622,11 @@ def generate_3d_for_version(project_id: str, version_id: str):
             "validation": preflight,
         }), 422
 
-    glb_url = generate_3d_house_model(
-        design,
-        project_id=project_id,
-        version_num=ver.get("version_num", 1)
-    )
-
-    if not glb_url:
-        return jsonify({"success": False, "error": "Blender 3D generation failed or timed out"}), 502
-
-    design["glb_url"] = glb_url
-    versions_collection().update_one(
-        {"_id": ver_obj_id},
-        {"$set": {"glb_url": glb_url, "design": design}}
-    )
-    ver["glb_url"] = glb_url
-    ver["design"] = design
-
-    return jsonify({
-        "success": True,
-        "reused": False,
-        "glb_url": glb_url,
-        "version": _serialize_version(ver),
-    })
+    started = _start_3d_generation(ver, design, project_id)
+    if not started:
+        ver = versions_collection().find_one({'_id':ver_obj_id}) or ver
+    return jsonify({'success':True, 'pending':True, 'reused':False,
+                    'already_running':not started, 'version':_serialize_version(ver)}), 202
 
 
 @chat_bp.post("/projects/<project_id>/versions/<version_id>/approve-layout")
@@ -603,6 +647,10 @@ def approve_layout_for_version(project_id: str, version_id: str):
     if not ver or not ver.get("design"):
         return jsonify({"error": "Version or architectural design not found"}), 404
 
+    if (_generation_status(ver) or {}).get('status') == 'running':
+        return jsonify({'success':True, 'pending':True, 'already_running':True,
+                        'version':_serialize_version(ver)}), 202
+
     # Repair safe transform issues before approval and refuse to represent an
     # invalid scene as complete.  Required objects are never silently deleted.
     design, preflight = validate_and_repair_design(ver["design"], repair=True)
@@ -617,35 +665,16 @@ def approve_layout_for_version(project_id: str, version_id: str):
     design["layout_approved"] = True
     design["approved_at"] = dt.datetime.utcnow().isoformat()
 
-    versions_collection().update_one(
-        {"_id": ver_obj_id},
-        {"$set": {"design": design, "layout_approved": True}}
-    )
-
-    # Launch Blender 3D procedural generation in background thread
-    def _bg_generate_approved(d_copy, p_id_str, v_obj_id, v_num):
-        try:
-            g_url = generate_3d_house_model(d_copy, project_id=p_id_str, version_num=v_num)
-            if g_url:
-                versions_collection().update_one(
-                    {"_id": v_obj_id},
-                    {"$set": {"glb_url": g_url, "design.glb_url": g_url}}
-                )
-        except Exception as e:
-            logging.error(f"[BLENDER] Approved generation error: {e}")
-
-    threading.Thread(
-        target=_bg_generate_approved,
-        args=(design, project_id, ver_obj_id, ver.get("version_num", 1)),
-        daemon=True,
-    ).start()
-
-    ver["design"] = design
+    started = _start_3d_generation(ver, design, project_id)
+    if not started:
+        ver = versions_collection().find_one({'_id':ver_obj_id}) or ver
     return jsonify({
         "success": True,
+        "pending": True,
+        "already_running": not started,
         "message": "Floor plan approved! 3D house synthesis initiated.",
         "version": _serialize_version(ver),
-    })
+    }), 202
 
 
 @chat_bp.post("/projects/<project_id>/versions/<version_id>/layout/refine")

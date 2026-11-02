@@ -522,6 +522,20 @@
   scrollbar-width: thin;
 }
 
+.cad-build-status {
+  flex-shrink: 0;
+  max-height: 64px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 7px 12px;
+  border-top: 1px solid var(--cad-border);
+  background: var(--bg-secondary, #171717);
+  color: var(--accent, #10a37f);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.cad-build-status[data-status="failed"] { color: #fda4af; }
+
 .cad-statusbar button {
   font-size: 10px;
   min-height: 30px;

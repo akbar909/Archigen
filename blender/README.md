@@ -143,6 +143,9 @@ AWS configuration is read from the current environment and then from `backend/ge
 
 After downloading an updated `worker_server.py`, the `/sync-assets` response sets `restart_required` to `true`. Restart the worker container to activate that file. When enabling worker-server sync on an existing worker for the first time, call `/sync-assets` twice: the first call installs the updated sync script, and the second places `worker_server.py` in `/app/blender/worker_server.py`.
 
+For timeout checks, captured Blender errors, missing glTF dependencies, and EC2
+update commands, see [worker troubleshooting](../docs/blender-worker-troubleshooting.md).
+
 ---
 
 ## 6. Headless Docker Execution

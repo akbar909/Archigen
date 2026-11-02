@@ -63,28 +63,34 @@ class SavedModelReuseTests(unittest.TestCase):
         generate_mock.assert_not_called()
         collection.update_one.assert_not_called()
 
+    @patch("routes.chat.threading.Thread")
     @patch("routes.chat.resolve_s3_url_to_presigned", side_effect=lambda value: value)
     @patch("routes.chat.validate_and_repair_design")
     @patch("routes.chat.generate_3d_house_model", return_value="https://example-bucket.s3.amazonaws.com/outputs/new.glb")
     @patch("routes.chat.versions_collection")
-    def test_force_true_regenerates_and_replaces_saved_model(
+    def test_force_true_queues_rebuild_without_waiting_for_blender(
         self,
         versions_collection_mock,
         generate_mock,
         preflight_mock,
         _resolve_mock,
+        thread_mock,
     ):
         collection = Mock()
         collection.find_one.return_value = dict(self.version)
         versions_collection_mock.return_value = collection
         preflight_mock.return_value = (dict(self.design), {"critical_errors": []})
 
-        response = self.call_view({"force": True})
+        response, status = self.call_view({"force": True})
         payload = response.get_json()
 
         self.assertTrue(payload["success"])
         self.assertFalse(payload["reused"])
-        generate_mock.assert_called_once()
+        self.assertEqual(202, status)
+        self.assertTrue(payload['pending'])
+        self.assertEqual('running', payload['version']['generation_3d']['status'])
+        generate_mock.assert_not_called()
+        thread_mock.return_value.start.assert_called_once()
         collection.update_one.assert_called_once()
 
 

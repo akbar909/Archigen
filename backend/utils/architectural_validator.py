@@ -11,6 +11,8 @@ import math
 from typing import Any, Dict, List, Tuple
 
 from utils.architectural_schema_v3 import MIN_ROOM_DIMENSIONS
+from utils.compact_home_layout import COMPACT_ROOM_DIMENSIONS
+from utils.architectural_vertical import validate_vertical_circulation
 
 
 class ArchitecturalValidator:
@@ -162,7 +164,7 @@ class ArchitecturalValidator:
                     continue
 
                 if rtype in MIN_ROOM_DIMENSIONS:
-                    min_w, min_d = MIN_ROOM_DIMENSIONS[rtype]
+                    min_w, min_d = (COMPACT_ROOM_DIMENSIONS if r.get("layout_profile") == "compact_residential" else MIN_ROOM_DIMENSIONS).get(rtype, MIN_ROOM_DIMENSIONS[rtype])
                     # Check in either orientation (width or depth)
                     actual_min = min(w, d)
                     actual_max = max(w, d)
@@ -210,44 +212,12 @@ class ArchitecturalValidator:
                     )
 
     def _check_staircase_alignment(self):
-        floors = self.doc.get("floors", [])
-        if len(floors) <= 1:
-            return
-
-        ground_stairs = floors[0].get("stairs", [])
-        if not ground_stairs:
-            self.errors.append("[Stairs] Multi-floor building is missing a staircase on ground floor.")
-            return
-
-        g_stair = ground_stairs[0]
-        g_id = g_stair.get("id", "stair_01")
-        gx = float(g_stair.get("position", {}).get("x", 0))
-        gy = float(g_stair.get("position", {}).get("y", 0))
-        gw = float(g_stair.get("dimensions", {}).get("width", 1.0))
-        gd = float(g_stair.get("dimensions", {}).get("depth", 2.5))
-
-        for f in floors[1:]:
-            f_stairs = f.get("stairs", [])
-            if not f_stairs:
-                self.errors.append(f"[Stairs] Floor {f.get('id')} has no aligned staircase connecting to below.")
-                continue
-
-            f_stair = next((s for s in f_stairs if s.get("id") == g_id), f_stairs[0])
-            fx = float(f_stair.get("position", {}).get("x", 0))
-            fy = float(f_stair.get("position", {}).get("y", 0))
-            fw = float(f_stair.get("dimensions", {}).get("width", 1.0))
-            fd = float(f_stair.get("dimensions", {}).get("depth", 2.5))
-
-            dist = math.hypot(gx - fx, gy - fy)
-            if dist > 0.20:
-                self.errors.append(
-                    f"[Stairs] Staircase '{g_id}' misaligned between ground and {f.get('id')}: "
-                    f"offset is {round(dist, 2)}m (must be strictly <= 0.2m)"
-                )
-            if abs(gw - fw) > 0.15 or abs(gd - fd) > 0.15:
-                self.warnings.append(
-                    f"[Stairs] Staircase dimensions differ between floors: {gw}x{gd} vs {fw}x{fd}"
-                )
+        # A top storey has a slab opening, not another upward staircase. Use
+        # the same adjacent-floor and physical geometry checks as build gating.
+        report = {"critical_errors": [], "warnings": []}
+        validate_vertical_circulation(self.doc.get("floors", []), self.doc, report)
+        self.errors.extend(f"[Stairs] {message}" for message in report["critical_errors"])
+        self.warnings.extend(f"[Stairs] {message}" for message in report["warnings"])
 
     def _check_door_accessibility(self):
         floors = self.doc.get("floors", [])

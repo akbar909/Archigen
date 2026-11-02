@@ -32,8 +32,13 @@ class RoomPlacementMixin:
         floors so no wizard-selected room can disappear.
         """
         elevation = floor_idx * 3.0
+        suite_heavy = sum(bool(room.get("raw", {}).get("ensuite_id")) for room in room_types) >= 2
 
         def minimums(room: Dict[str, Any]) -> Tuple[float, float]:
+            if room["type"] == "stair_lobby":
+                # Flights and turn landing plus a clear approach at both
+                # storeys; the slab opening must stay inside this room.
+                return (3.4 if suite_heavy else 2.7, 4.7)
             return MIN_ROOM_DIMENSIONS.get(room["type"], (1.5, 1.8))
 
         # Treat a bedroom and its explicitly attached bathroom as one planning
@@ -92,18 +97,27 @@ class RoomPlacementMixin:
                 unit["members"][0][0],
             ),
         )
-        # On bedroom levels, reserve the width beside the stair lobby for one
-        # neutral-location suite before smaller front amenities consume it.
-        # Back-requested suites remain in the private rear zone.
+        # A public room beside the stair lobby provides a lateral route to the
+        # hall when the stair flights occupy its rear doorway approach. Putting
+        # a suite here makes its bedroom the only bridge to the other rooms.
         if ordered and ordered[0]["members"][0][1]["type"] == "stair_lobby":
-            first_suite = next((
+            public_types = {"foyer", "living_room", "drawing_room", "dining_room",
+                            "home_office", "prayer_room", "kitchen", "corridor", "hallway"}
+            first_public = next((
                 index for index, unit in enumerate(ordered[1:], 1)
-                if unit["suite"]
-                and str(unit["members"][0][1].get("raw", {}).get("preferred_location", "no_preference"))
-                in {"", "no_preference", "center"}
+                if not unit["suite"] and unit["members"][0][1]["type"] in public_types
             ), None)
-            if first_suite is not None:
-                ordered.insert(1, ordered.pop(first_suite))
+            if first_public is not None:
+                ordered.insert(1, ordered.pop(first_public))
+            if suite_heavy:
+                # Three bedroom suites require three separate bands on a
+                # narrow plot. Keep one beside the wider stair lobby and pack
+                # the remaining suites before small amenities fragment those
+                # bands. The lobby's extra width provides a passage beside the
+                # flights, so its rear door no longer opens into the stair.
+                ordered = ([ordered[0]] + [unit for unit in ordered[1:] if unit["suite"]]
+                           + sorted((unit for unit in ordered[1:] if not unit["suite"]),
+                                    key=lambda unit: -unit_minimum(unit)[0]))
         rows: List[List[Dict[str, Any]]] = []
         row_widths: List[float] = []
         for unit in ordered:
@@ -126,7 +140,11 @@ class RoomPlacementMixin:
         # kitchen on the public-side edge and the suite at the quieter exterior
         # edge. This gives the kitchen a direct vertical link to dining/drawing
         # spaces and prevents the bedroom from becoming the route to storage.
-        for row in rows:
+        for row_index, row in enumerate(rows):
+            if suite_heavy and row_index > 0:
+                # Keep public rooms below the lobby, with private suites at
+                # the other edge. This connects the lobby to the shared hall.
+                row.sort(key=lambda unit: (unit["suite"], unit["members"][0][0]))
             if any(unit["members"][0][1]["type"] == "kitchen" for unit in row) and any(
                 unit["suite"] for unit in row
             ):
@@ -148,12 +166,19 @@ class RoomPlacementMixin:
         # Dense three-band plans need a real shared circulation strip between
         # the middle and rear zones. Without it, a spanning-tree door graph has
         # no choice but to route through a bedroom or utility room.
-        hall_depth = 1.50 if len(rows) >= 3 else 0.0
+        has_stair_lobby = any(room["type"] == "stair_lobby" for room in room_types)
+        has_private_rooms = any("bed" in room["type"] or "bath" in room["type"] for room in room_types)
+        has_public_bypass = any(room["type"] in {"living_room", "drawing_room", "dining_room", "home_office", "prayer_room", "foyer"}
+                                for room in room_types)
+        hall_depth = 1.50 if (len(rows) >= 3 or
+                            (len(rows) == 2 and has_stair_lobby and has_private_rooms and has_public_bypass)) else 0.0
         required_depth = sum(minimum_depths) + hall_depth
         if required_depth > bldg_d + 1e-6:
             raise ValueError(
-                f"The {len(room_types)} requested rooms need at least {required_depth:.2f} m "
-                f"of building depth, but only {bldg_d:.2f} m is available. "
+                f"The current room packer needs {required_depth:.2f} m of building depth "
+                f"for this floor program ({len(room_types)} spaces including circulation), but "
+                f"only {bldg_d:.2f} m is available under the selected setbacks; "
+                "it could not fit the program safely. "
                 "Increase the plot, reduce rooms on this floor, or add another floor."
             )
 

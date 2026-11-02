@@ -110,6 +110,11 @@ class OpeningsMixin:
                 "height": 3.0,
                 "connected_rooms": item["connected"],
             })
+        open_balconies = {room["id"] for room in rooms if room.get("open_air") and room.get("type") == "balcony"}
+        for wall in walls:
+            if wall["type"] == "exterior" and set(wall["connected_rooms"]).issubset(open_balconies):
+                wall["height"] = wall["dimensions"]["height"] = 1.10
+                wall["role"] = "balcony_guard"
         return walls
 
     # ─── Wall-Hosted Openings (Doors & Windows) ───────────────────────────────
@@ -120,6 +125,8 @@ class OpeningsMixin:
         walls: List[Dict[str, Any]],
         is_ground: bool,
         connection_preferences: Optional[List[List[str]]] = None,
+        stair_zones: Optional[List[Dict[str, Any]]] = None,
+        entrance_side: str = "south",
     ) -> List[Dict[str, Any]]:
         """Create openings only on real shared wall segments.
 
@@ -176,7 +183,7 @@ class OpeningsMixin:
             return min(((abs(wy - y0), "south"), (abs(wy - y1), "north"),
                         (abs(wx - x0), "west"), (abs(wx - x1), "east")), key=lambda value: value[0])[1]
 
-        def opening_on_wall(wall: Dict[str, Any], room: Dict[str, Any], width: float) -> Tuple[str, Dict[str, float]]:
+        def opening_on_wall(wall: Dict[str, Any], room: Dict[str, Any], width: float, near_corner: bool = True) -> Tuple[str, Dict[str, float]]:
             start, end = wall.get("start", {}), wall.get("end", {})
             x1, y1 = float(start.get("x", 0)), float(start.get("y", 0))
             x2, y2 = float(end.get("x", 0)), float(end.get("y", 0))
@@ -190,19 +197,88 @@ class OpeningsMixin:
                 lo, hi = sorted((y1, y2))
                 center = min(max(lo + margin + width / 2.0, (lo + hi) / 2.0), hi - margin - width / 2.0)
                 position = {"x": round((x1 + x2) / 2.0, 2), "y": round(center, 2), "z": round(float(room["position"].get("z", 0)), 2)}
+            # A doorway beside a stair must open into clear floor area. Try
+            # actual offsets before furniture placement; moving the stair later
+            # would break the aligned upper-floor opening.
+            horizontal = abs(x2 - x1) >= abs(y2 - y1)
+            lo, hi = sorted((x1, x2) if horizontal else (y1, y2))
+            lower, upper = lo + .12 + width / 2, hi - .12 - width / 2
+            if near_corner:
+                center = min(upper, lower + .10)
+                if horizontal and room.get("layout_profile") == "compact_residential" and type_group(room) == "bedroom":
+                    center = max(lower, upper - .10)
+                elif room.get("layout_profile") == "compact_residential" and type_group(room) == "bedroom":
+                    center = lower
+            choices = [center, lower, upper]
+            choices.extend(lower + i * .1 for i in range(max(0, int((upper - lower) / .1) + 1)))
+            for candidate in sorted(choices, key=lambda value: abs(value - center)):
+                px, py = (candidate, position["y"]) if horizontal else (position["x"], candidate)
+                box = (px-width/2, py-1.15, px+width/2, py+1.15) if horizontal else (px-1.15, py-width/2, px+1.15, py+width/2)
+                blocked = False
+                for core in stair_zones or []:
+                    cp, cd = core["position"], core["dimensions"]
+                    if not (box[2] <= cp["x"] or box[0] >= cp["x"]+cd["width"] or box[3] <= cp["y"] or box[1] >= cp["y"]+cd["depth"]):
+                        blocked = True
+                        break
+                if not blocked:
+                    position["x"], position["y"] = round(px, 2), round(py, 2)
+                    break
             return side, position
 
-        # Main entrance belongs to a real exterior segment of the living/foyer.
+        def clears_stairs(wall: Dict[str, Any], position: Dict[str, float], width: float) -> bool:
+            horizontal = abs(float(wall["end"]["x"])-float(wall["start"]["x"])) >= abs(float(wall["end"]["y"])-float(wall["start"]["y"]))
+            x, y = position["x"], position["y"]
+            box = (x-width/2, y-1.15, x+width/2, y+1.15) if horizontal else (x-1.15,y-width/2,x+1.15,y+width/2)
+            for core in stair_zones or []:
+                cp, cd = core["position"], core["dimensions"]
+                if not (box[2] <= cp["x"] or box[0] >= cp["x"]+cd["width"] or box[3] <= cp["y"] or box[1] >= cp["y"]+cd["depth"]):
+                    return False
+            return True
+
+        # Build the circulation tree from usable doorways. A long shared wall
+        # at the back of a compact stair lobby is not a usable connection when
+        # the stair landing occupies the whole approach to it.
+        if stair_zones:
+            for pair, pair_walls in list(shared.items()):
+                room = room_map[pair[0]]
+                width = .85 if any(type_group(room_map[rid]) == "bathroom" for rid in pair) else .90
+                usable = [wall for wall in pair_walls if clears_stairs(wall, opening_on_wall(wall, room, width)[1], width)]
+                if usable:
+                    shared[pair] = usable
+                else:
+                    del shared[pair]
+
+        # The requested frontage determines both the entry room and its wall.
+        # Choosing a living room first used to silently put north-facing homes'
+        # entrances on the south side when the living room was at the rear.
         entry = next((room for room in rooms if type_group(room) == "foyer"), None)
         entry = entry or next((room for room in rooms if type_group(room) == "living_room"), None)
         entry = entry or next((room for room in rooms if type_group(room) == "kitchen"), None)
         entry = entry or next((room for room in rooms if type_group(room) != "garage"), rooms[0])
-        if is_ground and exterior.get(str(entry["id"])):
-            candidates = exterior[str(entry["id"])]
-            south = [wall for wall in candidates if side_for(entry, wall) == "south"]
-            host = max(south or candidates, key=wall_length)
-            width = min(1.10, max(0.75, wall_length(host) - 0.40))
-            side, position = opening_on_wall(host, entry, width)
+        if is_ground:
+            entry_priority = {
+                "foyer": 0, "living_room": 1, "drawing_room": 2,
+                "corridor": 3, "hallway": 3, "stair_lobby": 3,
+                "dining_room": 4, "kitchen": 5,
+            }
+            has_public_entry_room = any(type_group(room) in entry_priority for room in rooms)
+            candidates = [
+                (entry_priority.get(type_group(room), 10), -wall_length(wall), str(room["id"]), room, wall)
+                for room in rooms
+                if (type_group(room) in entry_priority or len(rooms) == 1
+                    or (not has_public_entry_room and type_group(room) in {"bedroom", "home_office"}))
+                for wall in exterior.get(str(room["id"]), [])
+                if side_for(room, wall) == entrance_side and wall_length(wall) >= 1.20
+            ]
+            if not candidates:
+                raise ValueError(
+                    f"The packed ground floor has no usable {entrance_side}-facing entrance into "
+                    "a living room, foyer, or circulation space. Move a public room to that "
+                    "frontage or revise the room layout."
+                )
+            _, _, _, entry, host = min(candidates, key=lambda value: value[:3])
+            width = min(1.10, wall_length(host) - 0.40)
+            side, position = opening_on_wall(host, entry, width, near_corner=False)
             doors.append({
                 "id": "door_main_entrance", "roomId": entry["id"], "room_id": entry["id"],
                 "connected_room_ids": [entry["id"], "exterior"], "wall_id": host["id"],
@@ -219,7 +295,7 @@ class OpeningsMixin:
                 south = [wall for wall in candidates if side_for(garage, wall) == "south"]
                 host = max(south or candidates, key=wall_length)
                 width = min(2.80, max(1.80, wall_length(host) - 0.40))
-                side, position = opening_on_wall(host, garage, width)
+                side, position = opening_on_wall(host, garage, width, near_corner=False)
                 doors.append({
                     "id": f"door_garage_roll_{garage['id']}", "roomId": garage["id"], "room_id": garage["id"],
                     "connected_room_ids": [garage["id"], "exterior"], "wall_id": host["id"],
@@ -315,6 +391,8 @@ class OpeningsMixin:
                 functional_penalty = 1.5
             elif "garage" in groups:
                 functional_penalty = 6.0
+            elif "balcony" in groups and any(room.get("layout_profile") == "compact_residential" for room in rooms):
+                functional_penalty = 8.0
             elif "bedroom" in groups:
                 functional_penalty = 4.0
             else:
@@ -333,13 +411,17 @@ class OpeningsMixin:
             # Bathrooms are destination rooms, never circulation between one
             # another. This is a hard architectural rule for generated plans.
             return not (
-                type_group(room_map[first]) == "bathroom"
-                and type_group(room_map[second]) == "bathroom"
+                type_group(room_map[first]) == type_group(room_map[second])
+                and (type_group(room_map[first]) == "bathroom"
+                     or (type_group(room_map[first]) == "bedroom"
+                         and any(type_group(value) == "corridor" or value.get("layout_profile") == "compact_residential" for value in rooms)))
             )
 
         # Powder rooms and stores are destinations, never corridors. Their one
         # public door is enough; private ensuite links are handled separately.
         terminal_types = {"bathroom", "storage_room"}
+        if any(room.get("layout_profile") == "compact_residential" for room in rooms):
+            terminal_types.add("balcony")
         public_degree = {rid: 0 for rid in room_map}
         for first, second in selected:
             if private_ensuite_owner(first) == second or private_ensuite_owner(second) == first:
@@ -373,15 +455,24 @@ class OpeningsMixin:
         for index, (first, second) in enumerate(selected, 1):
             host = max(shared[(first, second)], key=wall_length)
             room = room_map[first]
+            if room.get("layout_profile") == "compact_residential":
+                room = next((candidate for candidate in (room_map[first], room_map[second])
+                             if type_group(candidate) in {"bedroom", "bathroom"}), room)
+            if type_group(room) == "stair_lobby":
+                # Open away from the stair landing regardless of how the LLM
+                # named its rooms. Alphabetic IDs must not decide door swing.
+                room = room_map[second]
+            primary = str(room["id"])
             width = min(0.85 if type_group(room) == "bathroom" or type_group(room_map[second]) == "bathroom" else 0.90,
                         max(0.65, wall_length(host) - 0.40))
             side, position = opening_on_wall(host, room, width)
             doors.append({
-                "id": f"door_{first}_{second}", "roomId": first, "room_id": first,
+                "id": f"door_{first}_{second}", "roomId": primary, "room_id": primary,
                 "connected_room_ids": [first, second], "wall_id": host["id"],
                 "wall": {"south": "front", "north": "back", "west": "left", "east": "right"}[side],
                 "wall_side": side, "type": "interior_door", "position": position,
                 "width": width, "height": 2.10, "swing": "inward_right",
+                "stair_clearance_positioned": bool(stair_zones),
             })
 
         return doors
@@ -407,6 +498,19 @@ class OpeningsMixin:
             rd = r["dimensions"]["depth"]
             rtype = r["type"]
             is_bath = "bath" in rtype
+            if r.get("open_air"):
+                continue
+            if r.get("layout_profile") == "compact_residential" and rtype == "bedroom" and abs(rx - sb_left) < .01:
+                # Put glazing at the foot end, leaving a solid backing wall
+                # for a full-length bed. Two centred windows consume both
+                # usable headboard walls of these compact rooms.
+                windows.append({
+                    "id": f"win_{rid}_west", "room_id": rid, "roomId": rid,
+                    "wall": "left", "wall_side": "west",
+                    "position": {"x": rx, "y": round(ry+.60, 2), "z": rz+.9},
+                    "width": .80, "height": 1.30, "sill_height": .90,
+                })
+                continue
 
             # South exterior window (front facing road)
             if abs(ry - sb_front) < 0.25 and rtype != "garage":

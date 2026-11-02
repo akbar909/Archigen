@@ -13,6 +13,8 @@ from utils.architectural_schema_v3 import (
     ft_to_m,
     m_to_ft,
 )
+from utils.stair_geometry import minimum_stair_dimensions
+from utils.compact_home_layout import plan_compact_home
 
 class LayoutGenerationMixin:
     def generate_layout(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,8 +88,19 @@ class LayoutGenerationMixin:
         # circulation, openings, and furniture all use the same floor list so a
         # three/four-storey request cannot silently collapse to two storeys.
         room_groups = self._split_rooms_across_floors(norm_room_types, floors_count)
-        rooms_by_level: List[List[Dict[str, Any]]] = []
-        for level, room_group in enumerate(room_groups):
+        if floors_count > 1:
+            # Reserve circulation before packing the occupied rooms. Searching
+            # afterwards used to put the upper-floor void inside a bedroom.
+            for level, group in enumerate(room_groups):
+                if not any(room["type"] == "stair_lobby" for room in group):
+                    group.insert(0, {
+                        "type": "stair_lobby", "name": "Stair Lobby",
+                        "raw": {"id": f"stair_lobby_l{level}", "floor": level,
+                                "notes": "Reserved vertical circulation"},
+                    })
+        compact_plan = plan_compact_home(self, room_groups, bldg_w, bldg_d, sb_left, sb_front, floor_h, orientation) if requirements.get("compact_layout") else None
+        rooms_by_level: List[List[Dict[str, Any]]] = compact_plan[0] if compact_plan else []
+        for level, room_group in enumerate([] if compact_plan else room_groups):
             level_rooms, _ = self._layout_floor_rooms(
                 room_types=room_group,
                 bldg_w=bldg_w,
@@ -102,7 +115,7 @@ class LayoutGenerationMixin:
             self._namespace_floor_room_ids(level_rooms, level)
             rooms_by_level.append(level_rooms)
 
-        stair_core = self._find_aligned_stair_core(
+        stair_core = compact_plan[1] if compact_plan else self._find_aligned_stair_core(
             rooms_by_level, sb_left, sb_front, bldg_w, bldg_d, floor_h,
         ) if floors_count > 1 else None
         connection_preferences = requirements.get("connection_preferences", [])
@@ -117,6 +130,8 @@ class LayoutGenerationMixin:
             doors = self._generate_doors(
                 level_rooms, walls, is_ground=level == 0,
                 connection_preferences=connection_preferences,
+                stair_zones=[{**stair_core, "dimensions": stair_core["opening_dimensions"] if level > 0 else stair_core["dimensions"]}] if stair_core else None,
+                entrance_side=orientation,
             )
             windows = self._generate_windows(
                 level_rooms, walls, bldg_w, bldg_d, sb_left, sb_front,
@@ -136,6 +151,13 @@ class LayoutGenerationMixin:
                         "z": elevation,
                     },
                     "dimensions": dict(stair_core["opening_dimensions"]),
+                    "type": "stair_void",
+                    "configuration": stair_core["configuration"],
+                    "run_axis": stair_core.get("run_axis", "y"),
+                    "clear_width": stair_core["clear_width"],
+                    "landing_depth": stair_core["landing_depth"],
+                    "access_depth": stair_core["access_depth"],
+                    "steps": stair_core["steps"],
                     "serves_stair_id": f"stair_l{level - 1}_l{level}",
                 })
             furniture = self._place_furniture_for_rooms(
@@ -178,8 +200,6 @@ class LayoutGenerationMixin:
         # 6. Exterior Features
         road_side = orientation
         garage_room = next((r for r in ground_rooms if r.get("type") == "garage"), None)
-        driveway_x = garage_room["position"]["x"] if garage_room else sb_left
-        driveway_w = garage_room["dimensions"]["width"] if garage_room else 3.8
         main_door = next((d for d in ground_doors if d.get("type") == "main_entrance"), None)
         entrance_position = dict(
             (main_door or {}).get("position")
@@ -187,8 +207,31 @@ class LayoutGenerationMixin:
         )
         entrance_width = float((main_door or {}).get("width", 1.10))
         entrance_height = float((main_door or {}).get("height", 2.20))
-        gate_width = min(3.6, float(driveway_w))
-        gate_center_x = float(driveway_x) + gate_width / 2.0
+        horizontal_frontage = orientation in {"north", "south"}
+        frontage_span = plot_w if horizontal_frontage else plot_d
+        entrance_axis = float(entrance_position["x" if horizontal_frontage else "y"])
+        vehicle_door = next((door for door in ground_doors
+                             if door.get("type") == "garage_door" and door.get("wall_side") == orientation), None)
+        driveway_axis = float(vehicle_door["position"]["x" if horizontal_frontage else "y"]) if vehicle_door else entrance_axis
+        garage_axis = "width" if horizontal_frontage else "depth"
+        driveway_span = min(frontage_span, float(garage_room["dimensions"][garage_axis]) if garage_room else 3.8)
+        driveway_start = min(max(0.0, driveway_axis - driveway_span / 2), frontage_span - driveway_span)
+        gate_width = min(3.6, driveway_span)
+        gate_start = driveway_start + (driveway_span - gate_width) / 2
+        if horizontal_frontage:
+            boundary_y = plot_d if orientation == "north" else 0.0
+            gate_position = {"x": round(gate_start, 2), "y": boundary_y, "z": 0.0}
+            gate_center = {"x": round(gate_start + gate_width / 2, 2), "y": boundary_y}
+            driveway_depth = sb_back if orientation == "north" else sb_front
+            driveway_position = {"x": round(driveway_start, 2), "y": round(plot_d - driveway_depth, 2) if orientation == "north" else 0.0, "z": 0.0}
+            driveway_width = driveway_span
+        else:
+            boundary_x = plot_w if orientation == "east" else 0.0
+            gate_position = {"x": boundary_x, "y": round(gate_start, 2), "z": 0.0}
+            gate_center = {"x": boundary_x, "y": round(gate_start + gate_width / 2, 2)}
+            driveway_width = sb_right if orientation == "east" else sb_left
+            driveway_depth = driveway_span
+            driveway_position = {"x": round(plot_w - driveway_width, 2) if orientation == "east" else 0.0, "y": round(driveway_start, 2), "z": 0.0}
 
         exterior_data = {
             "facade_style": style,
@@ -199,15 +242,18 @@ class LayoutGenerationMixin:
                 "height": round(entrance_height, 2),
             },
             "gate": {
-                "position": {"x": round(driveway_x, 2), "y": 0.0, "z": 0.0},
+                "position": gate_position,
                 "width": round(gate_width, 2),
                 "height": 2.0,
+                "side": orientation,
+                "axis": "x" if horizontal_frontage else "y",
+                "rotation": 0 if horizontal_frontage else 90,
                 "asset": "architecture/doors/exterior/Gate.glb",
             },
             "entrance_path": {
-                "start": {"x": round(gate_center_x, 2), "y": 0.0},
+                "start": gate_center,
                 "end": {
-                    "x": round(float(entrance_position.get("x", gate_center_x)), 2),
+                    "x": round(float(entrance_position.get("x", gate_center["x"])), 2),
                     "y": round(float(entrance_position.get("y", sb_front)), 2),
                 },
                 "width": 1.2,
@@ -218,9 +264,9 @@ class LayoutGenerationMixin:
                 "thickness": 0.15,
             },
             "driveway": {
-                "position": {"x": round(driveway_x, 2), "y": 0.0, "z": 0.0},
-                "width": round(driveway_w, 2),
-                "depth": sb_front,
+                "position": driveway_position,
+                "width": round(driveway_width, 2),
+                "depth": round(driveway_depth, 2),
             },
             "landscape": {
                 "lawn_enabled": True,
@@ -540,17 +586,21 @@ class LayoutGenerationMixin:
         floor_height: float,
     ) -> Dict[str, Any]:
         """Find one clear vertical core contained inside a room on every floor."""
-        stair_w, stair_d, margin = 2.20, 3.40, 0.22
+        minimum = minimum_stair_dimensions("u_shaped", rise=floor_height, clear_width=1.0)
+        stair_w = max(2.20, minimum["width"])
+        stair_d = round(minimum["depth"] + .10, 2)
+        margin, access_depth = .20, minimum["clear_width"]
         candidates: List[Tuple[float, float, float]] = []
         x = sb_left + margin
         while x + stair_w + margin <= sb_left + bldg_w + 0.001:
-            y = sb_front + margin
+            y = sb_front + max(access_depth + .10, 1.15)
             while y + stair_d + margin <= sb_front + bldg_d + 0.001:
                 containing = []
                 for rooms in rooms_by_level:
                     host = next((room for room in rooms if (
-                        float(room["position"]["x"]) + margin <= x
-                        and float(room["position"]["y"]) + margin <= y
+                        room.get("type") in {"stair_lobby", "hallway", "corridor", "foyer", "living_room", "dining_room"}
+                        and float(room["position"]["x"]) + margin <= x
+                        and float(room["position"]["y"]) + max(access_depth + .10, 1.15) <= y + .001
                         and x + stair_w <= float(room["position"]["x"]) + float(room["dimensions"]["width"]) - margin
                         and y + stair_d <= float(room["position"]["y"]) + float(room["dimensions"]["depth"]) - margin
                     )), None)
@@ -565,27 +615,42 @@ class LayoutGenerationMixin:
                         "master_bedroom": 8, "kitchen": 9, "bathroom": 12, "garage": 12,
                     }
                     use_penalty = sum(penalties.get(str(room.get("type")), 5) for room in containing)
-                    center_penalty = abs((x + stair_w / 2) - (sb_left + bldg_w / 2))
-                    center_penalty += abs((y + stair_d / 2) - (sb_front + bldg_d / 2))
-                    candidates.append((use_penalty * 10 + center_penalty, round(x, 2), round(y, 2)))
+                    # Keep the U stair at the approach end of its lobby. A
+                    # building-centre preference pushed its turn landing into
+                    # the approach to a door in the lobby's rear wall.
+                    front_penalty = sum(y - float(room["position"]["y"]) for room in containing)
+                    center_penalty = abs((x + stair_w / 2) - (sb_left + bldg_w / 2)) * .05
+                    candidates.append((use_penalty * 10 + front_penalty + center_penalty, round(x, 2), round(y, 2)))
                 y += 0.20
             x += 0.20
         if not candidates:
             raise ValueError(
-                "The requested floors cannot share a safe 2.20 x 3.40 m stair core. "
+                f"The requested floors cannot share a {stair_w:.2f} x {stair_d:.2f} m stair core "
+                f"with a {access_depth:.2f} m clear approach on every level. "
                 "Increase the plot, reduce room count, or use fewer floors."
             )
         _score, stair_x, stair_y = min(candidates)
+        hosts = [next(room for room in rooms if (
+            float(room["position"]["x"]) <= stair_x
+            and float(room["position"]["y"]) <= stair_y
+            and stair_x + stair_w <= float(room["position"]["x"]) + float(room["dimensions"]["width"]) + .001
+            and stair_y + stair_d <= float(room["position"]["y"]) + float(room["dimensions"]["depth"]) + .001
+        )) for rooms in rooms_by_level]
         return {
             "position": {"x": stair_x, "y": stair_y, "z": 0.0},
             "dimensions": {"width": stair_w, "depth": stair_d, "height": floor_height},
             "opening_dimensions": {"width": stair_w + 0.16, "depth": stair_d + 0.16},
+            "opening_clearance": .16,
             "configuration": "u_shaped",
-            "steps": 18,
-            "riser": round(floor_height / 18.0, 4),
-            "tread": 0.27,
-            "clear_width": 1.0,
-            "landing_depth": 0.90,
+            "type": "u_shaped",
+            "steps": minimum["steps"],
+            "risers": minimum["steps"],
+            "riser": round(floor_height / minimum["steps"], 4),
+            "tread": round((stair_d - minimum["landing_depth"]) / (minimum["steps"] / 2), 4),
+            "clear_width": minimum["clear_width"],
+            "landing_depth": minimum["landing_depth"],
+            "access_depth": access_depth,
+            "room_ids_by_level": {str(level): host["id"] for level, host in enumerate(hosts)},
             "headroom": 2.10,
         }
 
@@ -597,6 +662,7 @@ class LayoutGenerationMixin:
         stair["id"] = f"stair_l{lower_level}_l{upper_level}"
         stair["position"]["z"] = round(lower_level * floor_height, 3)
         stair["floor_level"] = lower_level
+        stair["room_id"] = stair_core.get("room_ids_by_level", {}).get(str(lower_level))
         stair["connects"] = {
             "lower_floor": self._floor_id(lower_level),
             "upper_floor": self._floor_id(upper_level),

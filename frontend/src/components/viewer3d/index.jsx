@@ -12,10 +12,11 @@ import { applySurfaceTexture, surfaceFaceKey } from '../../utils/sceneEditing'
 import { createBoundaryDecor } from '../../utils/exteriorEditing'
 import { assetSurface, compatibleOpening, placeOnSupport, tabletopSupports } from '../../utils/assetCompatibility'
 import { adjustAssetPlacement, createAssetPlacement, placementCameraView, placementRoom } from '../../utils/assetPlacement'
-import { wallMountNormal, wallMountRotation } from '../../utils/wallMount'
+import { wallMountNormal, wallMountRotation, interiorWallMountNormal } from '../../utils/wallMount'
+import { mountWallFixture } from '../../utils/fixtureMounting'
 import { setOpeningOverride } from '../../utils/openingEditing'
 import ViewerStage from './ViewerStage'
-import { createNavigationModel, moveWithCollisions, normalizeNavigationDoors, WALK_SPEED, LOOK_SENSITIVITY } from '../../utils/navigation'
+import { createNavigationModel, moveWithElevation, nearestWalkablePosition, normalizeNavigationDoors, WALK_SPEED, LOOK_SENSITIVITY } from '../../utils/navigation'
 import {
   clampFurniturePosition,
   alignWallFurniture,
@@ -70,6 +71,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     regenerate3D,
     reloadSaved3D,
     isGenerating3D,
+    generation3D,
     activeProjectId,
     activeVersionId,
     showRoof,
@@ -306,10 +308,14 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
   }, [design?.floors, rooms])
 
   const selectedFurniture = useMemo(
-    () => selectedEntity?.type === 'furniture'
-      ? findFurnitureById(design, selectedEntity.id)
-      : null,
-    [design, selectedEntity],
+    () => {
+      if (selectedEntity?.type !== 'furniture') return null
+      const item=findFurnitureById(design, selectedEntity.id)
+      if (!item) return null
+      const asset=uploadedAssets.find(a=>a.s3_key===item.s3_key || a.id===(item.asset_id||item.model_id))
+      return mountWallFixture(item,findRoomById(design,item.room_id||item.roomId),asset)
+    },
+    [design, selectedEntity, uploadedAssets],
   )
   const [detectedRooms, setDetectedRooms] = useState([])
   const [detectedDoors, setDetectedDoors] = useState([])
@@ -415,6 +421,11 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     const assetInfo = selectedEntity?.object?.userData?.asset_info
     setDraftDesign((draft) => updateFurnitureById(draft, selectedFurniture.id, (item) => ({
       ...(assetInfo || {}),
+      ...(selectedFurniture.wall_mounted ? {wall_mounted:true,wall_side:selectedFurniture.wall_side,
+        wall_face:selectedFurniture.wall_face,
+        wall_normal:selectedFurniture.wall_normal,wall_anchor:selectedFurniture.wall_anchor,
+        mounting:selectedFurniture.mounting,mount_height:selectedFurniture.mount_height,
+        wall_orientation_version:selectedFurniture.wall_orientation_version} : {}),
       ...(typeof patchOrUpdater === 'function' ? patchOrUpdater(item) : patchOrUpdater),
     })))
   }
@@ -431,7 +442,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
       : furniture.support_id ? Number(furniture.position?.z) || 0 : Number(room.position?.z) || 0
     const wallMounted = furniture.wall_mounted === true
     const mountHeight = clampMountHeight({ ...furniture, dimensions }, room, worldPosition.y - elevation)
-    const rotation = normalizeDegrees(-THREE.MathUtils.radToDeg(worldEuler.y))
+    const rotation = normalizeDegrees(THREE.MathUtils.radToDeg(worldEuler.y))
     const facing = wallMounted ? wallMountRotation(furniture.wall_side, furniture.wall_normal, rotation) : rotation
     const position = clampFurniturePosition(
       { ...furniture, dimensions, rotation: facing, mount_height: mountHeight },
@@ -447,7 +458,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     // the wall until a later render.
     object.position.set(position.x, wallMounted ? elevation + mountHeight : elevation, -position.y)
     if (wallMounted) {
-      object.rotation.y = -THREE.MathUtils.degToRad(facing)
+      object.rotation.y = THREE.MathUtils.degToRad(facing)
     }
     return {
       position,
@@ -488,7 +499,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     if (!selectedFurniture) return
     if (selectedFurniture.wall_mounted || selectedFurniture.ceiling_mounted) return
     if (selectedEntity?.source === 'blender' && selectedEntity.object) {
-      selectedEntity.object.rotation.y -= THREE.MathUtils.degToRad(degrees)
+      selectedEntity.object.rotation.y += THREE.MathUtils.degToRad(degrees)
       const transform = blenderObjectDraftTransform(selectedEntity.object)
       if (transform) updateSelectedFurniture(transform)
       return
@@ -616,6 +627,19 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
 
   const addModelAsNewFurniture = (catalogItem, supportId) => {
     if (!selectedEditRoom || !catalogItem?.model_path) return
+    if(catalogItem.mounting?.surface==='wall' && /shower/.test(catalogItem.category || '') && selectedEntity?.type==='wall') {
+      const id=`${catalogItem.id}_${selectedEditRoom.id}_${Date.now()}`
+      const item=createAssetPlacement(catalogItem,selectedEditRoom,id,{
+        wallSide:selectedEntity.wallSide,hitPoint:selectedEntity.hitPoint,
+        surfaceNormal:selectedEntity.surfaceNormal,wallId:selectedEntity.wallId,
+      })
+      if(item) {
+        setDraftDesign(draft=>addFurnitureToRoom(draft,selectedEditRoom.id,item))
+        setSelectedEntity({type:'furniture',id,roomId:selectedEditRoom.id,object:null,source:'blender'})
+        toast.success(`Placed ${catalogItem.name} on the selected wall.`)
+      }
+      return
+    }
     if (selectedEntity?.type === 'library') {
       if (roomTransition) return
       let item = createAssetPlacement(catalogItem, selectedEditRoom, `placement_${++placementSequence.current}`)
@@ -715,6 +739,18 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     if (!selectedEditRoom || roomTransition) return
     setPendingPlacement((current) => current?.roomId === selectedEditRoom.id
       ? { ...current, item: adjustAssetPlacement(current.item, selectedEditRoom, dx, dy, rotation) } : current)
+  }
+
+  const setPlacementWall = side => {
+    if(!selectedEditRoom || roomTransition) return
+    setPendingPlacement(current=>current ? {...current,item:mountWallFixture(current.item,selectedEditRoom,current.asset,{wallSide:side})} : current)
+  }
+
+  const setSelectedFixtureWall = side => {
+    if(!selectedFurniture || !selectedEditRoom)return
+    const asset=uploadedAssets.find(entry=>entry.id===(selectedFurniture.asset_id||selectedFurniture.model_id))
+    const next=mountWallFixture(selectedFurniture,selectedEditRoom,asset,{wallSide:side})
+    updateSelectedFurniture({...next,client_edited_3d:true})
   }
 
   const resizeSelectedFurniture = (factor) => {
@@ -1039,8 +1075,8 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
       asset_group: decor.group,
       room_id: selectedEditRoom.id,
       position: { x: placement.x, y: placement.y, z: elevation },
-      rotation: wallMountRotation(side, selectedEntity.surfaceNormal, placement.rotation),
-      rotation_y: wallMountRotation(side, selectedEntity.surfaceNormal, placement.rotation),
+      rotation: wallMountRotation(side, selectedEntity.wallFace === 'exterior' ? selectedEntity.surfaceNormal : interiorWallMountNormal(side, selectedEntity.surfaceNormal), placement.rotation),
+      rotation_y: wallMountRotation(side, selectedEntity.wallFace === 'exterior' ? selectedEntity.surfaceNormal : interiorWallMountNormal(side, selectedEntity.surfaceNormal), placement.rotation),
       dimensions: { ...decor.dimensions },
       color: decor.color,
       wall_mounted: true,
@@ -1051,7 +1087,8 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
       placement_hint: 'wall_exact',
       anchor_wall: placement.anchorWall,
       wall_side: side,
-      wall_normal: wallMountNormal(side, selectedEntity.surfaceNormal),
+      wall_face: selectedEntity.wallFace || 'interior',
+      wall_normal: selectedEntity.wallFace === 'exterior' ? selectedEntity.surfaceNormal : interiorWallMountNormal(side, selectedEntity.surfaceNormal),
       wall_anchor: Number.isFinite(hitX) && Number.isFinite(hitZ) ? { x: hitX, y: -hitZ } : null,
       wall_id: selectedEntity.wallId || `${selectedEditRoom.id}:${side}`,
     }
@@ -1120,6 +1157,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
         : item
     )).map((item) => {
       const room = findRoomById(design, item.room_id || item.roomId)
+      item = mountWallFixture(item,room,uploadedAssets.find(asset=>asset.s3_key===item.s3_key || asset.id===item.asset_id || asset.id===item.model_id))
       if (item.wall_mounted) return alignWallFurniture(item, room,
         uploadedAssets.find((asset) => asset.s3_key === item.s3_key || asset.id === item.asset_id || asset.id === item.model_id))
       return item.ceiling_mounted && room ? { ...item, position: ceilingMountedPosition(item, room) } : item
@@ -1138,28 +1176,15 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     return rooms.map((room) => roomPlacement(room, detectedRooms, floorHeight, viewSource === 'blender' ? -1 : 1))
   }, [rooms, detectedRooms, design?.building?.floor_height, design?.house?.floorHeight, viewSource])
 
-  const cameraViewForRoom = useCallback((room) => {
-    const actual = getRoom3DPosition(room)
-    const sign = viewSource === 'blender' ? -1 : 1
-    const view = placementCameraView({
-    ...room,
-    position: { x: actual.x - actual.w / 2, y: actual.z * sign - actual.l / 2, z: actual.y },
-    dimensions: { ...room?.dimensions, width: actual.w, depth: actual.l },
-    furniture: editableFurniture.filter((item) => String(item.room_id || item.roomId) === String(room.id)),
-    openings: [...doors, ...windows].filter((item) => String(item.room_id || item.roomId) === String(room.id)),
-    })
-    view.position[2] *= -sign
-    view.target[2] *= -sign
-    return view
-  }, [getRoom3DPosition, viewSource, editableFurniture, doors, windows])
-
   // When real GLB 3D rooms are detected, re-sync character position to active selected room
   useEffect(() => {
     if (detectedRooms.length > 0 && selectedRoomId && selectedRoomId !== 'overview') {
       const room = rooms.find((r) => r.id === selectedRoomId)
       if (room) {
         const pos = getRoom3DPosition(room)
-        setCharPos({ x: pos.x, y: pos.y + 0.1, z: pos.z })
+        const safe = nearestWalkablePosition(navigationModel, pos.x, pos.z, pos.level, pos.y, room.id)
+        charPosRef.current = { x: safe.x, y: safe.y + 0.1, z: safe.z }
+        setCharPos({ ...charPosRef.current })
         setCharFloorLevel(pos.level)
       }
     }
@@ -1177,11 +1202,32 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
       ...wall, floor_level: wall.floor_level ?? floor.level ?? 0,
     })))
     return createNavigationModel({ rooms: navigationRooms, doors: allDoors,
+      floors: design?.floors || [], stairs: design?.stairs || [],
       walls: floorWalls.length ? floorWalls : design?.walls || [],
       zSign: viewSource === 'blender' ? -1 : 1,
       wallThickness: Number(design?.building?.wall_thickness) || 0.2,
       exteriorAccess: isExteriorAccessWalkable })
-  }, [navigationRooms, allDoors, design?.floors, design?.walls, design?.building?.wall_thickness, isExteriorAccessWalkable, viewSource])
+  }, [navigationRooms, allDoors, design?.floors, design?.stairs, design?.walls, design?.building?.wall_thickness, isExteriorAccessWalkable, viewSource])
+
+  const cameraViewForRoom = useCallback((room) => {
+    const actual = getRoom3DPosition(room)
+    const sign = viewSource === 'blender' ? -1 : 1
+    const view = placementCameraView({
+      ...room,
+      position: { x: actual.x - actual.w / 2, y: actual.z * sign - actual.l / 2, z: actual.y },
+      dimensions: { ...room?.dimensions, width: actual.w, depth: actual.l },
+      furniture: editableFurniture.filter((item) => String(item.room_id || item.roomId) === String(room.id)),
+      openings: [...doors, ...windows].filter((item) => String(item.room_id || item.roomId) === String(room.id)),
+    })
+    view.position[2] *= -sign
+    view.target[2] *= -sign
+    const safe = nearestWalkablePosition(navigationModel, view.position[0], view.position[2], actual.level, actual.y, room?.id)
+    view.position = [safe.x, safe.y + 1.65, safe.z]
+    // A stair void can move the viewpoint to the opposite side of the lobby.
+    // Keep looking into the selected room instead of shifting the target
+    // through its wall into the next room.
+    return view
+  }, [getRoom3DPosition, viewSource, editableFurniture, doors, windows, navigationModel])
 
   // House bounding box for initial & overview framing
   const houseBounds = useMemo(() => {
@@ -1324,8 +1370,9 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     if (rooms.length > 0) {
       const first = rooms[0]
       const firstPosition = getRoom3DPosition(first)
-      setCharPos({ x: firstPosition.x, y: firstPosition.y + 0.1, z: firstPosition.z })
-      charPosRef.current = { x: firstPosition.x, y: firstPosition.y + 0.1, z: firstPosition.z }
+      const safe = nearestWalkablePosition(navigationModel, firstPosition.x, firstPosition.z, firstPosition.level, firstPosition.y, first.id)
+      setCharPos({ x: safe.x, y: safe.y + 0.1, z: safe.z })
+      charPosRef.current = { x: safe.x, y: safe.y + 0.1, z: safe.z }
       setCharFloorLevel(firstPosition.level)
       setSelectedRoomId('overview')
 
@@ -1416,22 +1463,29 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
 
             const curCamX = cam.position.x
             const curCamZ = cam.position.z
-            const { x: finalX, z: finalZ } = moveWithCollisions(navigationModel, curCamX, curCamZ, move.x, move.z, charFloorLevel)
+            const next = moveWithElevation(navigationModel, { x: curCamX, z: curCamZ,
+              y: eyeHeightRef.current - 1.65, level: charFloorLevel }, move.x, move.z)
+            const { x: finalX, z: finalZ } = next
 
             if (finalX !== curCamX || finalZ !== curCamZ) {
               const dx = finalX - curCamX
               const dz = finalZ - curCamZ
+              const dy = next.y + 1.65 - cam.position.y
+              eyeHeightRef.current = next.y + 1.65
               cam.position.x = finalX
               cam.position.z = finalZ
               cam.position.y = eyeHeightRef.current
               controlsRef.current.target.x += dx
               controlsRef.current.target.z += dz
+              controlsRef.current.target.y += dy
               targetCamPos.current.copy(cam.position)
               targetPos.current.copy(controlsRef.current.target)
 
               charPosRef.current.x = finalX
               charPosRef.current.y = eyeHeightRef.current - 1.55
               charPosRef.current.z = finalZ
+              if (next.stairId) setActiveFloorLevel(null)
+              if (next.level !== charFloorLevel) setCharFloorLevel(next.level)
             }
           }
         } else {
@@ -1450,17 +1504,20 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
             const targetRot = Math.atan2(moveX, moveZ) + Math.PI
             setCharRot(targetRot)
 
-            setCharPos((prev) => {
+            {
+              const prev = charPosRef.current
               const length = Math.hypot(moveX, moveZ)
-              const { x: nextX, z: nextZ } = moveWithCollisions(navigationModel, prev.x, prev.z,
-                moveX / length * speed, moveZ / length * speed, charFloorLevel)
+              const next = moveWithElevation(navigationModel, { ...prev, y: prev.y - 0.1, level: charFloorLevel },
+                moveX / length * speed, moveZ / length * speed)
+              const { x: nextX, z: nextZ } = next
               if (nextX !== prev.x || nextZ !== prev.z) {
-                targetPos.current.set(nextX, prev.y + 1.0, nextZ)
-                charPosRef.current = { x: nextX, y: prev.y, z: nextZ }
-                return { x: nextX, y: prev.y, z: nextZ }
+                targetPos.current.set(nextX, next.y + 1.1, nextZ)
+                charPosRef.current = { x: nextX, y: next.y + 0.1, z: nextZ }
+                setCharPos({ ...charPosRef.current })
+                if (next.stairId) setActiveFloorLevel(null)
+                if (next.level !== charFloorLevel) setCharFloorLevel(next.level)
               }
-              return prev
-            })
+            }
           }
         }
       } else {
@@ -1489,7 +1546,8 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
     const rz = pos.z
     setActiveFloorLevel(pos.level)
     setCharFloorLevel(pos.level)
-    const p = { x: rx, y: ry + 0.1, z: rz }
+    const safe = nearestWalkablePosition(navigationModel, rx, rz, pos.level, ry, room.id)
+    const p = { x: safe.x, y: safe.y + 0.1, z: safe.z }
     charPosRef.current = p
     setCharPos(p)
 
@@ -1647,7 +1705,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
         handleBlenderError, handleReloadSavedModel, setDetectedRooms, setDetectedDoors,
         setIsModelRendered, showRoof, activeFloorLevel, visibleRooms, visibleDoors,
         visibleWindows, dismissedSynthesisPrompt, setDismissedSynthesisPrompt,
-        isGenerating3D, regenerate3D, charPos, charRot, isMoving, walkCycle,
+        isGenerating3D, generation3D, regenerate3D, charPos, charRot, isMoving, walkCycle,
         controlsRef, targetPos, targetCamPos, isModelRendered, handleModeChange,
         setViewSource, showCallouts, setShowCallouts, isMouseLookLocked,
         toggleMouseLook, setIsNightMode, handleResetCamera, toggleFullscreen,
@@ -1662,7 +1720,7 @@ export default function Viewer3D({ design, interactionBlocked = false, onRequest
         addModelAsNewFurniture, deleteSelectedFurniture,
         pendingPlacement, cancelPlacement, confirmPlacement, onPlacementStatus,
         roomTransition, onRoomTransitionComplete, openAssetLibrary,
-        adjustPlacement,
+        adjustPlacement, setPlacementWall, setSelectedFixtureWall,
         setSelectedFloorFinish, setSelectedWallFinish,
         setSelectedGroundFinish, uploadedAssets,
         isDirty,

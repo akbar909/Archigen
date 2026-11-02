@@ -5,12 +5,24 @@ import { clone, parseDimension, polygonsOverlap, projectToSegment, rotatedRectan
 import { useFloorPlanEditorStore } from '../store/useFloorPlanEditorStore.js';
 import { applyPatches, createCommand } from './commandHistory.js';
 import { editDesign, arrayWindows, deleteEntities } from './cadEditing.js';
-import { mergeRooms, moveWall, normalizeEditorDesign, rebuildWalls, splitRoom, transformRoom } from './roomEditing.js';
+import { mergeRooms, moveWall, normalizeEditorDesign, rebuildWalls, rehostOpenings, splitRoom, transformRoom } from './roomEditing.js';
 import { hostOpening, doorSector } from './wallOpenings.js';
 import { validateClientDesign } from './clientArchitecturalValidator.js';
 import { buildSpatialGraph, inaccessibleRooms } from './spatialGraph.js';
 import { duplicateFloor, synchronizeStairs, createStairPlacement } from './verticalCirculation.js';
 import { layoutDiagnostics } from './layoutDiagnostics.js';
+import { furnitureCollisions } from './furnitureCollision.js';
+
+test('dining chairs use seating clearance without hiding real furniture collisions', () => {
+  const table = {id:'table',category:'dining_table',room_id:'room',seating_group_id:'dining',position:{x:2,y:2,z:0},dimensions:{width:1.2,depth:.8,height:.75}};
+  const chair = {id:'chair',category:'dining_chair',room_id:'room',seating_group_id:'dining',position:{x:2,y:2.75,z:0},dimensions:{width:.45,depth:.45,height:.8}};
+  const floor = {rooms:[{id:'room',position:{x:0,y:0},dimensions:{width:5,depth:5}}],furniture:[table,chair],doors:[],stair_openings:[]};
+  assert.deepEqual(furnitureCollisions(floor), []);
+  delete chair.seating_group_id;
+  assert.ok(furnitureCollisions(floor).some(issue=>issue.code==='clearance'));
+  chair.seating_group_id='dining'; chair.position.y=2.2;
+  assert.ok(furnitureCollisions(floor).some(issue=>issue.code==='furniture-overlap'));
+});
 test('unit parsing accepts explicit metric, feet, inches, and rejects unsafe values', () => {
   assert.equal(parseDimension('12 ft'), 3.6576);
   assert.equal(parseDimension('2.5 m', 'ft'), 2.5);
@@ -31,7 +43,7 @@ test('SAT excludes rotated bounding-box false positives, includes exact rotated 
     },
     rotation
   });
-  assert.equal(polygonsOverlap(rotatedRectangle(item(0, 0)), rotatedRectangle(item(1, 1))), false);
+  assert.equal(polygonsOverlap(rotatedRectangle(item(0, 0)), rotatedRectangle(item(1, -1))), false);
   assert.equal(polygonsOverlap(rotatedRectangle(item(0, 0)), rotatedRectangle(item(0, 0, 135))), true);
   assert.equal(polygonsOverlap(rotatedRectangle(item(0, 0)), rotatedRectangle(item(10, 10))), false);
 });
@@ -329,6 +341,51 @@ test('strict diagnostics catch stale plural door connections',()=>{
   const design=normalizeEditorDesign(cadFixture()),door=design.floors[0].doors[0];
   door.connected_room_id=null;door.connected_room_ids=['living','bedroom'];
   assert.ok(validateClientDesign(design).some(i=>i.code==='connection'&&i.entity.id===door.id));
+});
+
+test('door approaches are checked on both room sides and respect mounted item height',()=>{
+  const design=cadFixture(),floor=design.floors[0],item=floor.furniture[1];
+  item.position={x:6.7,y:3,z:0};item.dimensions={width:.4,depth:.4,height:.4};
+  assert.ok(validateClientDesign(design).some(issue=>issue.code==='door-approach'&&issue.entity.id===item.id));
+  item.wall_mounted=true;item.mount_height=2.4;
+  assert.equal(validateClientDesign(design).filter(issue=>issue.code==='door-approach'&&issue.entity.id===item.id).length,0);
+  item.mount_height=1;
+  assert.ok(validateClientDesign(design).some(issue=>issue.code==='door-approach'&&issue.entity.id===item.id));
+});
+
+test('shared-wall cuts do not produce rounded zero-length segments',()=>{
+  const floor={id:'floor',walls:[],rooms:[
+    {id:'a',position:{x:0,y:0},dimensions:{width:3.93,depth:6.119999999999999}},
+    {id:'b',position:{x:0,y:6.12},dimensions:{width:4.3,depth:3}},
+  ]};
+  rebuildWalls(floor);
+  assert.ok(floor.walls.every(wall=>Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y)>.00001));
+});
+
+test('generated entrances connect to exterior without a false shared-wall conflict',()=>{
+  for (const aliases of [
+    {connected_room_ids:['living','exterior']},
+    {connected_room_ids:[],connected_rooms:['living','exterior'],connected_room_id:'exterior'},
+    {connected_room_ids:['living','living','exterior'],connected_room_id:'exterior'},
+  ]) {
+    const design=cadFixture(),floor=design.floors[0],door=floor.doors[0];
+    Object.assign(door,aliases);
+    assert.equal(validateClientDesign(design).filter(i=>i.code==='connection'&&i.entity.id===door.id).length,0);
+    rehostOpenings(floor);
+    assert.deepEqual(floor.doors[0].connected_room_ids,['living','exterior']);
+    assert.ok(buildSpatialGraph(floor).get('living').has('exterior'));
+  }
+});
+
+test('entrance rehosting stays outside and never erases a genuine room connection',()=>{
+  const floor=cadFixture().floors[0],door=floor.doors[0];
+  const hosted=hostOpening(floor,door,{x:6,y:4},{preserveConnections:true});
+  assert.equal(floor.walls.find(w=>w.id===hosted.wall_id).room_ids.length,1);
+  assert.deepEqual(hosted.connected_room_ids,['living','exterior']);
+  assert.throws(()=>hostOpening(floor,{...door,connected_room_ids:['living','bedroom','exterior']},door.position,{preserveConnections:true}));
+  Object.assign(door,{wall_id:floor.walls.find(w=>w.room_ids.length===2).id,position:{x:6,y:3}});
+  assert.ok(validateClientDesign({floors:[floor]}).some(i=>i.code==='connection'&&i.entity.id===door.id));
+  assert.equal(buildSpatialGraph(floor).get('living').has('exterior'),false);
 });
 
 test('stair placement centers the footprint inside a room and rejects insufficient space',()=>{

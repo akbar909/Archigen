@@ -10,8 +10,9 @@ export function rebuildWalls(floor, thickness = .2) {
     const horizontal = Math.abs(edge.start.y - edge.end.y) < EPS;
     const axis = horizontal ? 'x' : 'y',
       fixed = horizontal ? 'y' : 'x';
-    const cuts = [...new Set([edge.start[axis], edge.end[axis], ...edges.filter(e => Math.abs(e.start[fixed] - edge.start[fixed]) < EPS && Math.abs(e.end[fixed] - edge.start[fixed]) < EPS).flatMap(e => [e.start[axis], e.end[axis]]).filter(v => v > edge.start[axis] && v < edge.end[axis])])].sort((a, b) => a - b);
+    const cuts = [...new Set([edge.start[axis], edge.end[axis], ...edges.filter(e => Math.abs(e.start[fixed] - edge.start[fixed]) < EPS && Math.abs(e.end[fixed] - edge.start[fixed]) < EPS).flatMap(e => [e.start[axis], e.end[axis]]).filter(v => v > edge.start[axis] && v < edge.end[axis])].map(round))].sort((a, b) => a - b);
     for (let i = 0; i < cuts.length - 1; i++) {
+      if (cuts[i + 1] - cuts[i] < EPS) continue;
       const start = {
           [axis]: cuts[i],
           [fixed]: edge.start[fixed]
@@ -96,6 +97,7 @@ export function normalizeEditorDesign(input) {
     }
     floor.walls = floor.walls.map(wall => ({ ...wall, start: wall.start || wall.from, end: wall.end || wall.to, room_ids: wall.room_ids || wall.connected_rooms || [] }));
     if (floor.walls.some(wall => !wall.start || !wall.end)) floor.walls = [];
+    floor.walls = floor.walls.filter(wall => distance(wall.start, wall.end) > EPS);
     for (const item of floor.furniture) {
       item.position = { x: 0, y: 0, z: floor.elevation || 0, ...item.position };
       const dimensions = item.dimensions || {};

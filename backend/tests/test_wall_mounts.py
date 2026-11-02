@@ -12,6 +12,26 @@ from place_furniture import wall_mount_rotation
 
 
 class WallMountTests(unittest.TestCase):
+    def test_exterior_facade_panels_keep_outside_face_when_rebuilt(self):
+        room = {'id': 'room', 'position': {'x': 0, 'y': 0, 'z': 3}, 'dimensions': {'width': 5, 'depth': 4}}
+        for side, normal, anchor in [('back', {'x': 0, 'z': 1}, {'x': 2, 'y': -.1}),
+                                     ('front', {'x': 0, 'z': -1}, {'x': 2, 'y': 4.1}),
+                                     ('left', {'x': -1, 'z': 0}, {'x': -.1, 'y': 2}),
+                                     ('right', {'x': 1, 'z': 0}, {'x': 5.1, 'y': 2})]:
+            item = {'id': 'panel', 'room_id': 'room', 'wall_mounted': True, 'wall_side': side, 'wall_face': 'exterior',
+                    'wall_normal': normal, 'wall_anchor': anchor, 'position': {'x': 2, 'y': 2, 'z': 3},
+                    's3_key': 'assets/architecture/walls/designs/wall_panel_01.glb',
+                    'dimensions': {'width': .8, 'depth': .1, 'height': 1}, 'wall_orientation_version': 1}
+            exported = _canonical_blender_layout({'floors': [{'rooms': [room], 'furniture': [item]}]}, 'test', 'modern')
+            requirement = exported['rooms'][0]['furniture_requirements'][0]
+            self.assertEqual(normal, requirement['wall_normal'])
+            self.assertEqual('exterior', requirement['wall_face'])
+            x, y, _ = requirement['position']
+            self.assertGreater((x-anchor['x'])*normal['x']-(y-anchor['y'])*normal['z'], .05)
+            legacy = {**item, 'wall_normal': {key: -value for key, value in normal.items()}}
+            del legacy['wall_face']
+            self.assertEqual(normal, _aligned_wall_item(legacy, room)['wall_normal'])
+
     def test_reviewed_front_axes_replace_bounding_box_guesses(self):
         for key, yaw in [('lighting/wall_sconces/wall_lamp_02.glb', 0),
                          ('lighting/wall_sconces/stylized_gothic_wall_torch_01.glb', 0),

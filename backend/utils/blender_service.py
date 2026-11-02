@@ -19,6 +19,7 @@ from config import (
     BLENDER_TIMEOUT_SECONDS,
 )
 from utils.s3_storage import resolve_s3_url_to_presigned
+from utils.blender_failures import worker_failure_reason
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,28 @@ def _aligned_wall_item(item: Dict[str, Any], room: Dict[str, Any]) -> Dict[str, 
         return item
     result = {**item, 'canonical_yaw_offset_deg': asset['canonical_yaw_offset_deg'],
               'canonical_pitch_offset_deg': asset['canonical_pitch_offset_deg']}
+    rp = room.get('position', room.get('bounds', {}))
+    rd = room.get('dimensions', room.get('bounds', {}))
+    anchor = item.get('wall_anchor') or {}
+    face = item.get('wall_face')
+    if not face and 'x' in anchor and 'y' in anchor:
+        outside = {
+            'left': float(rp.get('x', 0)) - anchor['x'],
+            'right': anchor['x'] - float(rp.get('x', 0)) - float(rd.get('width', 4)),
+            'back': float(rp.get('y', 0)) - anchor['y'],
+            'front': anchor['y'] - float(rp.get('y', 0)) - float(rd.get('depth', 4)),
+        }.get(item.get('wall_side'), 0)
+        face = 'exterior' if outside > .03 else 'interior'
+    result['wall_face'] = face or 'interior'
+    if item.get('room_id') != 'exterior_ground':
+        side=item.get('wall_side')
+        normal=dict(item.get('wall_normal') or {})
+        expected={'front':(0,1),'back':(0,-1),'left':(1,0),'right':(-1,0)}.get(side)
+        if expected and face == 'exterior':
+            expected = (-expected[0], -expected[1])
+        if expected and normal.get('x',0)*expected[0]+normal.get('z',0)*expected[1]<0:
+            normal.update(x=-normal.get('x',0),z=-normal.get('z',0))
+            result['wall_normal']=normal
     version = int(mounting.get('orientation_version', 0))
     dimensions = dict(item.get('dimensions', {}))
     if version > int(item.get('wall_orientation_version', 0)):
@@ -75,6 +98,18 @@ def _aligned_wall_item(item: Dict[str, Any], room: Dict[str, Any]) -> Dict[str, 
         if side == 'back': pos['y'] = float(rp.get('y', 0)) + offset
         if side == 'front': pos['y'] = float(rp.get('y', 0)) + float(rd.get('depth', 4)) - offset
         result['position'] = pos
+    if 'x' in anchor and 'y' in anchor:
+        normal = result.get('wall_normal') or {}
+        nx, nz = float(normal.get('x', 0)), float(normal.get('z', 0))
+        length = (nx * nx + nz * nz) ** .5
+        if length > .01:
+            nx, nz = nx / length, nz / length
+            pos = dict(result.get('position', {}))
+            offset = float(dimensions.get('depth', .08)) / 2 + .012
+            distance = (float(pos.get('x', 0)) - anchor['x']) * nx - (float(pos.get('y', 0)) - anchor['y']) * nz
+            pos['x'] = float(pos.get('x', 0)) + nx * (offset - distance)
+            pos['y'] = float(pos.get('y', 0)) - nz * (offset - distance)
+            result['position'] = pos
     result['wall_orientation_version'] = version
     return result
 
@@ -158,10 +193,12 @@ def _canonical_blender_layout(
                     "instance_id": fid,
                     "category": category,
                     "preferred_id": item.get("asset_id") or item.get("asset") or item.get("model_id"),
-                    "placement_hint": item.get("placement_hint", "exact"),
+                    "placement_hint": ("wall_exact" if item.get('wall_mounted') else "user_exact")
+                        if item.get('client_edited_3d') else item.get("placement_hint", "exact"),
                     "anchor_wall": item.get("anchor_wall"),
                     "wall_mounted": bool(item.get("wall_mounted", False)),
                     "wall_side": item.get("wall_side"),
+                    "wall_face": item.get("wall_face"),
                     "wall_normal": item.get("wall_normal"),
                     "wall_anchor": item.get("wall_anchor"),
                     "wall_orientation_version": item.get("wall_orientation_version", 0),
@@ -228,6 +265,7 @@ def _canonical_blender_layout(
                 "anchor_wall": item.get("anchor_wall"),
                 "wall_mounted": bool(item.get("wall_mounted")),
                 "wall_side": item.get("wall_side"),
+                "wall_face": item.get("wall_face"),
                 "wall_normal": item.get("wall_normal"),
                 "wall_anchor": item.get("wall_anchor"),
                 "canonical_yaw_offset_deg": item.get("canonical_yaw_offset_deg"),
@@ -380,6 +418,7 @@ def adapt_gemini_to_blender_layout(
                 "anchor_wall": f.get("anchor_wall"),
                 "wall_mounted": bool(f.get("wall_mounted", False)),
                 "wall_side": f.get("wall_side"),
+                "wall_face": f.get("wall_face"),
                 "wall_normal": f.get("wall_normal"),
                 "wall_anchor": f.get("wall_anchor"),
                 "mount_height": max(0.0, float(f.get("mount_height", 0.0) or 0.0)),
@@ -578,10 +617,15 @@ def adapt_gemini_to_blender_layout(
     }
 
 
+class BlenderGenerationError(RuntimeError):
+    """An actionable generation failure safe to return with a job status."""
+
+
 def generate_3d_house_model(
     design_data: Dict[str, Any],
     project_id: Optional[str] = None,
     version_num: int = 1,
+    raise_on_error: bool = False,
 ) -> Optional[str]:
     """
     Sends layout to Blender worker microservice to procedurally build the 3D model.
@@ -589,6 +633,8 @@ def generate_3d_house_model(
     """
     if not BLENDER_ENABLED:
         logger.info("[BLENDER] 3D Generation is disabled in config (BLENDER_ENABLED=False).")
+        if raise_on_error:
+            raise BlenderGenerationError('3D generation is disabled in the backend configuration.')
         return None
 
     try:
@@ -606,6 +652,8 @@ def generate_3d_house_model(
         if response.status_code == 200:
             result = response.json()
             raw_glb_url = result.get("glb_url")
+            if not raw_glb_url:
+                raise BlenderGenerationError('The Blender worker completed without returning a 3D model.')
             glb_url = resolve_s3_url_to_presigned(raw_glb_url) or raw_glb_url
             logger.info(f"[BLENDER] Generation succeeded! GLB URL: {glb_url}")
             return glb_url
@@ -613,17 +661,36 @@ def generate_3d_house_model(
             logger.warning(
                 f"[BLENDER] Worker responded with HTTP {response.status_code}: {response.text[:300]}"
             )
-            return None
+            try:
+                payload = response.json()
+                reason = worker_failure_reason(payload)
+                if isinstance(payload, dict):
+                    for stream in ('details', 'stderr', 'stdout'):
+                        if payload.get(stream):
+                            logger.warning('[BLENDER] Worker %s:\n%s', stream, str(payload[stream])[-12000:])
+            except (ValueError, AttributeError):
+                reason = 'The worker returned an invalid response.'
+            raise BlenderGenerationError(f'Blender worker error ({response.status_code}): {reason}')
 
     except requests.exceptions.ConnectionError:
         logger.warning(
             f"[BLENDER] Could not connect to Blender worker at {BLENDER_SERVICE_URL}. "
             "Ensure worker_server.py is running or EC2 instance is online."
         )
+        if raise_on_error:
+            raise BlenderGenerationError('Cannot reach the Blender worker. Check that the worker service is running.') from None
         return None
     except requests.exceptions.Timeout:
         logger.warning(f"[BLENDER] Request timed out after {BLENDER_TIMEOUT_SECONDS}s.")
+        if raise_on_error:
+            raise BlenderGenerationError(f'The Blender worker did not finish within {BLENDER_TIMEOUT_SECONDS} seconds. Check its logs before retrying.') from None
+        return None
+    except BlenderGenerationError:
+        if raise_on_error:
+            raise
         return None
     except Exception as e:
         logger.error(f"[BLENDER] Unexpected error during 3D generation: {e}")
+        if raise_on_error:
+            raise BlenderGenerationError('The 3D build failed unexpectedly. Check the backend logs for details.') from None
         return None

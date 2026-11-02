@@ -231,7 +231,8 @@ def apply_openings(
             cutter.hide_render = True
 
             # Try to place 3D window model
-            win_asset = _try_import_window_model(wx, wy, actual_z, ww, wh, idx, is_vertical=is_vert)
+            win_asset = _try_import_window_model(wx, wy, actual_z, ww, wh, idx, is_vertical=is_vert,
+                preferred_asset=w_item.get('asset_id') or w_item.get('model_id'), window_type=w_item.get('type'))
             if win_asset:
                 win_asset.name = f"Window_L{level}_{opening_id}"
                 win_asset["archgen_opening_id"] = opening_id

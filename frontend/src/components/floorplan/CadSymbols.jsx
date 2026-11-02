@@ -48,7 +48,7 @@ export function CadFurnitureItem({ item, scale, mapX, mapY }) {
   const rawY = Number(item.position?.y ?? item.position?.z ?? 0)
   const fw = Math.max(0.005, Number(item.dimensions?.width ?? 1.0)) * scale
   const fd = Math.max(0.005, Number(item.dimensions?.depth ?? 1.0)) * scale
-  const rot = Number(item.rotation ?? item.rotation_y ?? 0)
+  const rot = -Number(item.rotation ?? item.rotation_y ?? 0)
 
   const cx = mapX(rawX)
   const cy = mapY(rawY)

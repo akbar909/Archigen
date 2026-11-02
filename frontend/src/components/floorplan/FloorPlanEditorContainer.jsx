@@ -22,6 +22,7 @@ import FloorManagerBar from './FloorManagerBar.jsx';
 import FurniturePaletteDrawer from './FurniturePaletteDrawer.jsx';
 import SelectionInspector from './SelectionInspector.jsx';
 import StairPlacementPanel from './StairPlacementPanel.jsx';
+import CadStairItem from './CadStairItem.jsx';
 import './floorplan-editor.css';
 const TOOLS = [['select', 'Select', MousePointer2], ['pan', 'Pan', Hand], ['room', 'Room', Square], ['wall', 'Partition', PencilRuler], ['door', 'Door', DoorOpen], ['window', 'Window', AppWindow], ['furniture', 'Furniture', Armchair], ['stair', 'Stair', ArrowUpRight], ['measure', 'Measure', Ruler]];
 const SCALE = 40,
@@ -123,9 +124,12 @@ export default function FloorPlanEditorContainer({
     blocked = interactionBlocked || saving || project.loading || project.isSavingVersion || aiBusy || isApproving;
   const draftCallback = onDesignChange || project.setDraftDesign;
   const setDraft = useCallback(next => {
-    lastOwn.current = next;
-    lastDesign.current = next;
+    const previous=useProjectStore.getState().design;
     draftCallback(next);
+    const stored=useProjectStore.getState().design;
+    const resolved=stored!==previous ? stored : next;
+    lastOwn.current = resolved;
+    lastDesign.current = resolved;
   }, [draftCallback]);
   const clearGesture = useCallback(() => {
     gesture.current = null;
@@ -203,7 +207,7 @@ export default function FloorPlanEditorContainer({
     if (strict) {
       const fingerprint = i => `${i.floorIndex}:${i.code}:${i.entity.id}:${i.relatedId || ''}`;
       const existing = new Set(validateClientDesign(normalizeEditorDesign(before)).filter(i => i.severity === 'error').map(fingerprint));
-      const collisionCodes = new Set(['furniture-overlap','door-swing','outside-room','blocked-shaft','room-overlap','aperture-overlap','site-boundary','jamb-clearance','shaft-wall','opening-height','connection','unhosted','stair-furniture','stair-boundary','stair-door','stair-width','stair-tread']);
+      const collisionCodes = new Set(['furniture-overlap','door-swing','door-approach','outside-room','blocked-shaft','room-overlap','aperture-overlap','site-boundary','jamb-clearance','shaft-wall','shaft-room','shaft-door','shaft-door-approach','opening-height','connection','unhosted','stair-furniture','stair-boundary','stair-door','stair-door-approach','stair-width','stair-tread','stair-type','stair-dimensions','stair-rotation','stair-risers','stair-rise','stair-headroom','stair-landing','stair-access','stair-access-furniture','stair-access-door']);
       const errors = validateClientDesign(next).filter(i => i.severity === 'error' && collisionCodes.has(i.code) && !existing.has(fingerprint(i)));
       if (errors.length) {
         toast.error(errors[0].message);
@@ -454,13 +458,13 @@ export default function FloorPlanEditorContainer({
       if (!next) throw new Error(response.data.error || 'The edit could not be applied.');
       if (useProjectStore.getState().design !== design) throw new Error('The design changed while this edit was being prepared. Apply it again to the current draft.');
       if(!commit(next,'AI: '+prompt.slice(0,100))) {setAiFeedback({error:true,message:'The edit conflicts with the plan. Check the highlighted issues.'});return false;}
-      const message=`${entity.name || primary.type[0].toUpperCase()+primary.type.slice(1)} updated.`;
+      const message=response.data.report?.changes?.[0] || `${entity.name || entity.type?.replaceAll('_',' ') || primary.type} updated.`;
       setAiFeedback({message});toast.success(message,{id:'cad-ai-result'});return true;
     } catch (error) {
       const raw=error.response?.data?.error || error.message;
       const friendly=layoutDiagnostics(rendered,{critical_errors:[raw]})[0]?.message || 'Try this edit again.';
       setAiFeedback({error:true,message:friendly});
-      toast.error(`Could not edit ${entity.name || primary.type}. See the inspector.`,{id:'cad-ai-result'});
+      toast.error(friendly.length <= 140 ? friendly : `${entity.name || entity.type?.replaceAll('_',' ') || primary.type}: ${friendly.slice(0,110)}…`,{id:'cad-ai-result'});
       return false;
     } finally {
       setAiBusy(false);
@@ -760,7 +764,7 @@ export default function FloorPlanEditorContainer({
           return;
         }
         if (g.handle === 'rotate') {
-          let angle = (90 - Math.atan2(point.y - source.position.y, point.x - source.position.x) * 180 / Math.PI + 360) % 360;
+          let angle = (Math.atan2(point.y - source.position.y, point.x - source.position.x) * 180 / Math.PI - 90 + 360) % 360;
           item.rotation = snap && !event.shiftKey ? Math.round(angle / 45) * 45 : round(angle);
           item.client_edited_3d = true;
           return;
@@ -769,7 +773,7 @@ export default function FloorPlanEditorContainer({
           const b = roomBox(source),
             centered = g.type === 'furniture';
           if (centered) {
-            const angle = -(source.rotation || 0) * Math.PI / 180,
+            const angle = (source.rotation || 0) * Math.PI / 180,
               c = Math.cos(angle),
               s = Math.sin(angle),
               local = {
@@ -1003,7 +1007,7 @@ export default function FloorPlanEditorContainer({
         }}>
         <defs><pattern id={gridId} width={gridStep * SCALE} height={gridStep * SCALE} patternUnits="userSpaceOnUse" x={mapX(0)} y={mapY(0)}><circle cx="1" cy="1" r=".65" fill="var(--border, #292929)" /></pattern><pattern id={`hatch-${id}`} width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="8" stroke="#64748b" strokeWidth=".7" /></pattern></defs>
         <rect x="-10000" y="-10000" width="20000" height="20000" fill={`url(#${gridId})`} pointerEvents="none" />
-        {layers.site.visible && <g pointerEvents="none"><rect x={mapX(0)} y={mapY(plotD)} width={plotW * SCALE} height={plotD * SCALE} fill="#0f172a55" stroke="#f8717188" strokeDasharray="8 5" strokeWidth="1.5" /><SitePlanLayer design={rendered} isGroundFloor={floorIndex === 0} mapX={mapX} mapY={mapY} orientation={rendered.project?.orientation || 'south'} plotW={plotW} scale={SCALE} /></g>}
+        {layers.site.visible && <g pointerEvents="none"><rect x={mapX(0)} y={mapY(plotD)} width={plotW * SCALE} height={plotD * SCALE} fill="#0f172a55" stroke="#f8717188" strokeDasharray="8 5" strokeWidth="1.5" /><SitePlanLayer design={rendered} isGroundFloor={floorIndex === 0} mapX={mapX} mapY={mapY} orientation={rendered.project?.orientation || 'south'} plotW={plotW} plotD={plotD} scale={SCALE} /></g>}
         {layers.site.visible && rendered.site?.setbacks && (() => {
           const s=rendered.site.setbacks, w=plotW-Number(s.left||0)-Number(s.right||0), d=plotD-Number(s.front||0)-Number(s.back||0);
           return w>0&&d>0 ? <rect x={mapX(s.left||0)} y={mapY(plotD-Number(s.back||0))} width={w*SCALE} height={d*SCALE} fill="none" stroke="#f9731666" strokeWidth="1" strokeDasharray="4 5" pointerEvents="none"/> : null;
@@ -1023,16 +1027,13 @@ export default function FloorPlanEditorContainer({
               const b = roomBox(o);
               return <g key={o.id} pointerEvents="none"><rect x={mapX(b.x)} y={mapY(b.top)} width={b.width * SCALE} height={b.depth * SCALE} fill={`url(#hatch-${id})`} stroke="#fbbf24" strokeDasharray="5 3" /><text x={mapX(b.x + b.width / 2)} y={mapY(b.y + b.depth / 2)} fill="#fbbf24" fontSize="10" textAnchor="middle">STAIR VOID</text></g>;
             })}{floor.stairs.map(s => {
-              const b = roomBox(s);
-              return <g key={s.id} data-entity-id={s.id} data-entity-type="stair" onPointerDown={e => startEntity(e, 'stair', s)}><rect x={mapX(b.x)} y={mapY(b.top)} width={b.width * SCALE} height={b.depth * SCALE} fill="#26354a" stroke={selected('stair', s.id) ? '#60a5fa' : '#94a3b8'} />{Array.from({
-                  length: 10
-                }, (_, i) => <line key={i} x1={mapX(b.x)} y1={mapY(b.y + b.depth * i / 10)} x2={mapX(b.right)} y2={mapY(b.y + b.depth * i / 10)} stroke="#64748b" strokeWidth="1" pointerEvents="none" />)}<path d={`M ${mapX(b.x + b.width / 2)} ${mapY(b.y + .2)} V ${mapY(b.top - .2)} l -5 8 m 5 -8 l 5 8`} fill="none" stroke="#e2e8f0" strokeWidth="1.5" pointerEvents="none" /><text x={mapX(b.x + .1)} y={mapY(b.y + .15)} fill="#e2e8f0" fontSize="9" pointerEvents="none">UP · {s.type?.replaceAll('_', ' ')}</text></g>;
+              return <g key={s.id} data-entity-id={s.id} data-entity-type="stair" onPointerDown={e => startEntity(e, 'stair', s)}><CadStairItem stair={s} scale={SCALE} mapX={mapX} mapY={mapY} selected={selected('stair', s.id)} /></g>;
             })}</g>}
         {layers.furniture.visible && floor.furniture.map(item => {
             const b = polygonBounds(rotatedRectangle(item));
             return <g key={item.id} data-entity-id={item.id} data-entity-type="furniture" onPointerDown={e => startEntity(e, 'furniture', item)} style={{
               cursor: canSelect ? 'move' : undefined
-            }}><rect x={mapX(b.x)} y={mapY(b.top)} width={b.width * SCALE} height={b.depth * SCALE} fill={hazardIds.has(item.id) ? '#f59e0b33' : 'transparent'} stroke={selected('furniture', item.id) ? '#60a5fa' : 'transparent'} strokeDasharray="4 3" /><g transform={`translate(${mapX(item.position.x)} ${mapY(item.position.y)}) rotate(${item.rotation || 0}) scale(${item.flip_x ? -1 : 1} ${item.flip_y ? -1 : 1}) rotate(${-Number(item.rotation || 0)}) translate(${-mapX(item.position.x)} ${-mapY(item.position.y)})`}><CadFurnitureItem item={item} scale={SCALE} mapX={mapX} mapY={mapY} /></g></g>;
+            }}><rect x={mapX(b.x)} y={mapY(b.top)} width={b.width * SCALE} height={b.depth * SCALE} fill={hazardIds.has(item.id) ? '#f59e0b33' : 'transparent'} stroke={selected('furniture', item.id) ? '#60a5fa' : 'transparent'} strokeDasharray="4 3" /><g transform={`translate(${mapX(item.position.x)} ${mapY(item.position.y)}) rotate(${-Number(item.rotation || 0)}) scale(${item.flip_x ? -1 : 1} ${item.flip_y ? -1 : 1}) rotate(${item.rotation || 0}) translate(${-mapX(item.position.x)} ${-mapY(item.position.y)})`}><CadFurnitureItem item={item} scale={SCALE} mapX={mapX} mapY={mapY} /></g></g>;
           })}
         {['door', 'window'].map(type => layers[collectionFor(type)].visible && floor[collectionFor(type)].map(o => {
             const wall = floor.walls.find(w => w.id === o.wall_id),
@@ -1078,6 +1079,9 @@ export default function FloorPlanEditorContainer({
           editor.setTool('furniture');
           editor.setOption('panel', null);
         }} /> : panel === 'layers' ? <LayerVisibilityPanel layers={layers} onChange={editor.setLayer} /> : panel==='stairs'?<StairPlacementPanel floor={floor} upper={rendered.floors[floorIndex+1]} type={stairType} onType={setStairType} onAddFloor={()=>floorAction('stair-floor')} busy={blocked}/>:<SelectionInspector key={`${primary?.type}:${primary?.id}:${floor.id}`} entity={entity} type={primary?.type} selection={selection} design={rendered} floor={floor} unit={unit} onUpdate={update} onAction={action} onProject={projectUpdate} onAiEdit={applyAi} aiFeedback={aiFeedback} onAiFocus={()=>{if(rootRef.current?.clientWidth<=540)editor.setOption('panelExpanded',true)}} busy={aiBusy || blocked} />}</aside>}</div>
-    <div className="cad-statusbar"><button aria-pressed={snap} onClick={() => editor.setOption('snap', !snap)} title="Toggle snapping (G); hold Shift to bypass"><Magnet size={14} /><span>Snap</span></button><select aria-label="Grid spacing" value={gridStep} onChange={e => editor.setOption('gridStep', Number(e.target.value))}>{[.1, .25, .5, 1, .1524, .3048].map(step => <option key={step} value={step}>{step === .1524 ? '6 in' : step === .3048 ? '1 ft' : `${step} m`}</option>)}</select><button aria-label="Strict placement" aria-pressed={strict} onClick={() => editor.setOption('strict', !strict)}>{strict ? 'Strict' : 'Warnings'}</button><button aria-label="Toggle layers" aria-pressed={panel === 'layers'} onClick={() => editor.setOption('panel', panel === 'layers' ? null : 'layers')}><Layers size={14} /><span>Layers</span></button><span className="cad-status-hint">{asset ? `Tap a room to place ${asset.name}` : activeTool === 'room' ? 'Drag to draw a room' : activeTool === 'wall' ? 'Draw across a room to split it' : activeTool === 'measure' ? 'Tap two points to measure' : `${floor.rooms.length} rooms · ${unit}`}</span>{onApproveLayout && <button className="cad-approve" aria-label="Build 3D" disabled={blocked} onClick={() => save(true)}>{isApproving || saving ? 'Building…' : 'Build 3D'}</button>}</div>
+    {(project.isGenerating3D || project.generation3D?.error) && <div className="cad-build-status" data-status={project.isGenerating3D ? 'running' : 'failed'} role="status">
+      {project.isGenerating3D ? 'Building 3D. You can return to this version to check progress.' : project.generation3D.error}
+    </div>}
+    <div className="cad-statusbar"><button aria-pressed={snap} onClick={() => editor.setOption('snap', !snap)} title="Toggle snapping (G); hold Shift to bypass"><Magnet size={14} /><span>Snap</span></button><select aria-label="Grid spacing" value={gridStep} onChange={e => editor.setOption('gridStep', Number(e.target.value))}>{[.1, .25, .5, 1, .1524, .3048].map(step => <option key={step} value={step}>{step === .1524 ? '6 in' : step === .3048 ? '1 ft' : `${step} m`}</option>)}</select><button aria-label="Strict placement" aria-pressed={strict} onClick={() => editor.setOption('strict', !strict)}>{strict ? 'Strict' : 'Warnings'}</button><button aria-label="Toggle layers" aria-pressed={panel === 'layers'} onClick={() => editor.setOption('panel', panel === 'layers' ? null : 'layers')}><Layers size={14} /><span>Layers</span></button><span className="cad-status-hint">{asset ? `Tap a room to place ${asset.name}` : activeTool === 'room' ? 'Drag to draw a room' : activeTool === 'wall' ? 'Draw across a room to split it' : activeTool === 'measure' ? 'Tap two points to measure' : `${floor.rooms.length} rooms · ${unit}`}</span>{onApproveLayout && <button className="cad-approve" aria-label="Build 3D" disabled={blocked} onClick={() => save(true)}>{isApproving || saving || project.isGenerating3D ? 'Building…' : project.generation3D?.error ? 'Retry Build 3D' : 'Build 3D'}</button>}</div>
   </section>;
 }

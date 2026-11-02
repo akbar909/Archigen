@@ -1,4 +1,4 @@
-import { snapToWallPlane, wallMountNormal, wallMountRotation } from './wallMount.js'
+import { snapToWallPlane, wallMountRotation, mountedWallNormal, mountedWallFace } from './wallMount.js'
 import { placeOnSupport } from './assetCompatibility.js'
 import { clampExteriorPosition } from './exteriorEditing.js'
 
@@ -268,8 +268,9 @@ export function alignWallFurniture(item, room, catalog) {
     const factor = furnitureDimensions(item).height / catalog.dimensions.height
     dimensions = Object.fromEntries(Object.entries(catalog.dimensions).map(([key, value]) => [key, value * factor]))
   }
-  const rotation = wallMountRotation(item.wall_side, item.wall_normal, item.rotation)
+  const normal = mountedWallNormal(item, room)
+  const rotation = wallMountRotation(item.wall_side, normal, item.rotation)
   const aligned = { ...item, mounting, dimensions, rotation, rotation_y: rotation,
-    wall_normal: wallMountNormal(item.wall_side, item.wall_normal), wall_orientation_version: version }
+    wall_normal: normal, wall_face: mountedWallFace(item, room), wall_orientation_version: version }
   return room ? { ...aligned, position: clampFurniturePosition(aligned, room, item.position || {}) } : aligned
 }
